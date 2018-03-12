@@ -1,5 +1,10 @@
 # Sanskrit
 A Total Smart Contract Virtual Machine with Affine type support.
+This is my PhD project related papers and research proposal links will follow soon.
+
+# License
+Copyright 2018 Markus Knecht, System Communication Group, University of Zurich.
+Concrete Licence has to be defined
 
 ## Status
 This is very early state and just the description on what to the goal is with no commited code yet.
