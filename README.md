@@ -1,5 +1,8 @@
 # Sanskrit
-A Total Smart Contract Virtual Machine with Affine type support
+A Total Smart Contract Virtual Machine with Affine type support.
+
+## Status
+This is very early state and just the description on what to the goal is with no commited code yet.
 
 ## Why another smart contract virtual machine
 Most currently used smart contract virtual machine couple the code and the state of a contract/blockchain object tightly. The code associated with a contract is the only code that can write and read to/from the associated storage/state. In exchange, this code can be granted arbitrary access to its storage and other local resources like its memory or stack and thus can be a simple low-level bytecode without a type system or any enforced guarantees. This model is simple and easy to implement but has some drawbacks as well. It is not possible to do cross contract optimisations like for example inlining a cross-contract call and further it is not possible to compile languages to it that require that certain guarantees given by the compiler hold at runtime as soon as these guarantees have to hold cross contracts.
