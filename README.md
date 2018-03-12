@@ -2,7 +2,7 @@
 A Total Smart Contract Virtual Machine with Affine type support.
 This is my PhD project related papers and research proposal links will follow soon.
 
-# License
+## License
 Copyright 2018 Markus Knecht, System Communication Group, University of Zurich.
 Concrete Licence has to be defined
 
