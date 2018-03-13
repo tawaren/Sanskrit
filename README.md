@@ -24,7 +24,7 @@ The Sanskrit virtual machine does not have any kind of dynamic dispatch making r
 The Sanskrit virtual machine is not Turing complete as it does not allow recursive function calls and does only allow loops with an upper bound of iterations. This does make it possible to calculate an upper cost of the resources consumed during a function call allowing to design alternative gas models that can never run out of gas by requiring the caller to have enough reserves to pay for the worst case execution path. 
 
 ### Error Handling
-The Sanskrit vm does not know the concept of an unexpected error for all code that is compiled sucessfully it can be ckecked before the transaction is executed that enough ressources are supplied, so even out of gas exeptions do not exists. Errors and Failures have to be encoded in the return type of a function in a functional style by using types like Option and alike. This can become complicated and lead to inefficent code even if their is no errors. This is one of the points that needs some work. (See Appendix)
+The Sanskrit vm does not know the concept of an unexpected error for all code that is compiled sucessfully it can be ckecked before the transaction is executed that enough ressources are supplied, so even out of gas exeptions do not exists. Errors and Failures have to be encoded in the return type of a function in a functional style by using types like Option and alike. This can become complicated and lead to inefficent code even if their is no errors. This is one of the points that needs some work.
 
 ### Algebraic Datatypes
 The Sanskrit virtual machine is founded on immutable non-recursive algebraic datatypes as its fundamental representation of values giving it a functional touch with all the benefits coming from that. Sanskrit algebraic datatypes have some special properties that make them especially well suited for programming smart contracts in a way different from current approaches and idiomatic to Sanskrit.
@@ -147,14 +147,3 @@ module Authenticated {
   public sign[affine S,affine T](capability:S, val:T) => Signed[S,T](val)
 }
 ```
-## Appendix Error Handilng
-Two concepts are currently considered for improving the error handling in the Sanskrit virtual machine. Further paths may be investigated. In addition to the presented approaches their is still the Option to leave it to the HHL to provide the Error handling (see an example in the Example code) and accept the added ineficency.
-
-### Transactions
-Introducing a new kind of function a transactional function, that when called can either return a result (if it commited) or return the inputs (if it did a rollback). It is important that on a rollback the function arguments are returned as otherwise affine values could get lost. On a rollback all modifications to state is reverted to the state at the beginning of the function call. A transactional function can call another transactional function by using the currently active transaction or by opening a new subtransaction. This can be implemented very efficently in Sanskrit as it is well suited for how the interpreter currently is structured. Transactions and rollback as error handling have the limitation that they don not allow to communicate what went wrong or why the transaction was rolled back.
-
-### Checked Exceptions
-With this method each function declares its potential exceptional behaviour and a caller of such a function is either required to declare the same exceptional behaviour themself or define a handler for the exception when calling the function. An exception can contain values that are made avaiable to the handler. A function can raise its declared exceptions which requires to provide the contained values. This is generally more complicated to implement than the Transaction approach as it adds a new Dimension to the static verification during compilation but allows to precisely communicate the Error. This system could be combined with Transaction if done carefully.
-
-### Dedicated Error Algebraic Datatype
-Instead of changing the way how errors are handled a (or multiple) dedicated algebraic data type could be introduced where the compiler knows that the Error case is expected rarely allowing it to optimize for the non-error case, reducing or even eliminating the runtime overhead introduced by error handling. The limitation of this method is that the optimisation will not lead to a reduction of the worst case consued ressources paid for by the transaction sender, as the compiler needs to assume that the error path can be taken each time or else would play into the hands of an attacker provoking this situation to trigger the consumption of more ressources than was paid for.
