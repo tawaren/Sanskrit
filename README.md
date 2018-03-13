@@ -42,7 +42,10 @@ The Sanskrit virtual machine does support Generic Functions and Types meaning th
 The type system of Sanskrit is powerful enough to provide a capability-based access control system that has near zero runtime overhead and allows to check access control during compilation and thus code accessing values or calling functions it is not allowed to does not  compile.
 
 ### Cells and References
-Cells and References are Sanskrit way of providing persisted state. Every type can have an initialisation function that can be used to generate a cell containing an initial value of that type. The creator does only receive a reference to the cell. This reference has the same behaviour as an authentic type and thus inherently encodes a capability giving access to the cell. A normal cell can only be modified and read by code from the same Module as the type of the cell. If the type is transient other Modules can read the value in the cell. References to cells can be wrapped (or unwrapped) into special wrapper types (types with exactly one constructor and exactly one field) allowing to provide different views on to the value (to create or drop a wrapper the normal rules are followed in respect of creating an instance or reading fields). This allows to encode further capabilities (or drop them) into the reference and thus program by the principle of Least Authority. Besides creating new instances, cells can be used as a global map, mapping a set of arguments (including generics) to references.
+Cells and References are Sanskrit way of providing persisted state. Every type can have an initialisation function that can be used to generate a cell containing an initial value of that type. The creator does only receive a reference to the cell. This reference has the same behaviour as an authentic type and thus inherently encodes a capability giving access to the cell. A normal cell can only be modified and read by code from the same Module as the type of the cell. These modification is represented as effect free state transition from the old to the new state and is not allowed to modify other cells in the process (preventing shared state problems like reentrancy attacks). If the type is transient other Modules can read the value in the cell. References to cells can be wrapped (or unwrapped) into special wrapper types (types with exactly one constructor and exactly one field) allowing to provide different views on to the value (to create or drop a wrapper the normal rules are followed in respect of creating an instance or reading fields). This allows to encode further capabilities (or drop them) into the reference and thus program by the principle of Least Authority. Besides creating new instances, cells can be used as a global map, mapping a set of arguments (including generics) to references.
+
+### Minimal Effect System
+Sanskrit vm makes a difference between effect free functions (default) and so called active functions. Effect free functions can not modify state of cells or call active fuinctions. Active functions can do all of this. This gives an easy way to detect which functions can be coputed off-chain as well as provides some potential for optimisations as well as making the job of an auditor and static analyzis tools simpler.
 
 ### Sharding Aware
 The Sanskrit virtual machine is designed in a way that has certain benefits in a sharded environment. This includes that Module code is immutable and stateless and once the code is compiled and deployed it will always be their and has the same functionallity independent of the active shard. This means that one shard could use code deployed on another shard or on a dedicated deployment shard / chain. This makes it possible that values can be transferred between shards as the code that operates on them is available on other shards. Even references can be transferred between shards on each shard the reference initially points to a cell with the value containing the initial value (lazy initialised).
@@ -76,12 +79,12 @@ module Purse {
   public transient type Owned[T](Purse[T])                  //Capability allowing to withdraw funds (In reality would use Cap see later)
   public init Purse[T] => Owned[T](Purse[T](Token.zero()))  //The creator is the Owner
 
-  public deposit[affine T](purse: ref Purse[T], deposit:Token[T]) => modify purse with 
-                                                                        Purse(t) => store Purse(Token.merge(t, deposit))
-  public withdraw[affine T](purse: ref Owned[T], amount:Int) => modify purse with 
-                                                                  Owned(Purse(t)) => case Token.split(t,amount) of
-                                                                    Some((rem,split)) => store Owned(Purse(re)) and return split
-                                                                    None => store Owned(Purse(t)) and return Token.zero()
+  public active deposit[affine T](purse: ref Purse[T], deposit:Token[T]) => modify purse with 
+                                                                              Purse(t) => store Purse(Token.merge(t, deposit))
+  public active withdraw[affine T](purse: ref Owned[T], amount:Int) => modify purse with 
+                                                                        Owned(Purse(t)) => case Token.split(t,amount) of
+                                                                          Some((rem,split)) => store Owned(Purse(re)) and return split
+                                                                          None => store Owned(Purse(t)) and return Token.zero()
 }
 
 module DefaultPurseStore{
@@ -89,7 +92,7 @@ module DefaultPurseStore{
 
   public getMyPurse[affine T]() => purse[T](this)   //this is the transaction initiator                                                 
   public getPurse[affine T](address:Address) => purse[T](address).unwrap[Purse[T]] //unwrap removes the Owned capability
-  public transfer[affine T](target:Address, amount:Int) => getPurse[T](target).deposit(Purse[T].withdraw(getMyPurse[T](), amount)) 
+  public active transfer[affine T](target:Address, amount:Int) => getPurse[T](target).deposit(Purse[T].withdraw(getMyPurse[T], amount)) 
   
   .... //Probably some more stuff
 }
