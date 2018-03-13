@@ -114,9 +114,9 @@ module Capability {
   public transient type Cap[C,T](ref T)
   public addCap[affine C,affine T](capability:C, value:ref T) => Cap[C,T](value)
   public combineCap[affine C1,affine C2,affine T](Cap[C1,T](ref val1), Cap[C2,T](ref val2)) => case val1 == val2 of
-                                                                                                  True => Some(Cap[(C1,C2),T](val))
+                                                                                                  True => Some(val.wrap[Cap[(C1,C2),T]])
                                                                                                   False => None
-  public splitCap[affine C1,affine C2,affine T](Cap[(C1,C2),T](ref val)) => (Cap[C1,T](val), Cap[C2,T](val))
+  public splitCap[affine C1,affine C2,affine T](Cap[(C1,C2),T](ref val)) => (val.wrap[Cap[C1,T]], val.wrap[Cap[C2,T]])
   
   .... //probably much more
 }
