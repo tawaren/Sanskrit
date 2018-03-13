@@ -23,8 +23,8 @@ The Sanskrit virtual machine does not have any kind of dynamic dispatch making r
 ### Total Language
 The Sanskrit virtual machine is not Turing complete as it does not allow recursive function calls and does only allow loops with an upper bound of iterations. This does make it possible to calculate an upper cost of the resources consumed during a function call allowing to design alternative gas models that can never run out of gas by requiring the caller to have enough reserves to pay for the worst case execution path. 
 
-### Error Free
-The Sanskrit vm does not know the concept of an exception or unexpected error for all code that is compiled sucessfully it can be ckecked before the transaction is executed that enough ressources are supplied, so even out of gas exeptions do not exists. Errors and Failures have to be encoded in the return type of a function in a functional style by using types like Option and alike. 
+### Error Handling
+The Sanskrit vm does not know the concept of an unexpected error for all code that is compiled sucessfully it can be ckecked before the transaction is executed that enough ressources are supplied, so even out of gas exeptions do not exists. Errors and Failures have to be encoded in the return type of a function in a functional style by using types like Option and alike. This can become complicated and lead to inefficent code even if their is no errors. This is one of the points that needs some work. (See Appendix)
 
 ### Algebraic Datatypes
 The Sanskrit virtual machine is founded on immutable non-recursive algebraic datatypes as its fundamental representation of values giving it a functional touch with all the benefits coming from that. Sanskrit algebraic datatypes have some special properties that make them especially well suited for programming smart contracts in a way different from current approaches and idiomatic to Sanskrit.
@@ -147,3 +147,11 @@ module Authenticated {
   public sign[affine S,affine T](capability:S, val:T) => Signed[S,T](val)
 }
 ```
+## Appendix Error Handilng
+Two concepts are currently considered for improving the error handling in the Sanskrit vm. Further path may be investigated.
+
+### Transactions
+Introducing a new kind of function a transactional function, that when called can either return a result (if it commited) or return the inputs (if it did a rollback). It is important that on a rollback the function arguments are returned as otherwise affine values could get lost. On a rollback all modifications to state is reverted to the state at the beginning of the function call. A transactional function can call another transactional function by using the currently active transaction or by opening a new subtransaction. This iscan be implemented very efficently in Sanskrit as it is well suited for how the interpreter currently is structured.
+
+### Checked Exceptions
+With this method each function declares its exceptional behaviour and a caller of such a function is either required to declare the same exceptional behaviour themself or handle the exceptions. This co but is generally more complicated to implement as it adds a new Dimension to the static verification during compilation. This system could be combined with Transaction if done carefully.
