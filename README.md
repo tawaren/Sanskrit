@@ -57,7 +57,7 @@ The Sanskrit virtual machine is designed in a way that reduces the proof overhea
 The Sanskrit virtual machine is designed in a way that it can run beside another vm that uses an account model like for example the Ethereum virtual machine and that it would be a comperatively low effort to allow the Host virtual machine to call into the Sanskrit virtual machine. The other way around is not as simple and would need further investigations. The compiler and interpreter parts will have some attention on performance with the goal that they eventually later may be run as smart contract on top of an existing smart contract virtual machine or at least with trusted computation services like TrueBit.
 
 ## Example Pseudo Code
-Sanskrit requires a different programming style than other smart contract systems the following pseudocode should give a feel for how Sanskrit could look like. Most of the presented code probably would be in a standard library. The syntax just descriptional as real Sanskrit is a bytecode format
+Sanskrit requires a different programming style than other smart contract systems the following pseudocode should give a feel for how Sanskrit could look like. Most of the presented code probably would be in a standard library. The syntax just descriptional as real Sanskrit is a bytecode format, it is inspired by the vision for the future high level language Mandala that will compile to Sanskrit byte code.
 
 ### Token
 This Module represents a Generic Token used to represent all kind of Tokens. 
@@ -66,10 +66,11 @@ This Module represents a Generic Token used to represent all kind of Tokens.
 module Token {
   public affine transient type Token[T](Int)                          //T is the concrete token type as well as the minting capability
   public mint[affine T](capability:T, amount:Int) => Token[T](amount) //only the possesor of a value of T can mint
-  public merge[affine T](Token[T](amount1), Token[T](amount2)) =>  Token[T](amount1 + amount2)
-  public split[affine T](Token[T](amount), split:Int) => case sub(amount,split) of 
-                                                    success(res) => Some((Token[T](res), Token[T](split)))
-                                                    underflow => None
+  
+  //"?" Syntactic sugar for Result handling (similar to rusts ? but returning unconsumed affine inputs to preserve them)
+  //"?" is used here to handle arithmetic errors during addition 
+  public merge[affine T](Token[T](amount1), Token[T](amount2)) => Token[T](add(amount1,amount2)?)                                       
+  public split[affine T](Token[T](amount), split:Int) => Token[T](sub(amount,split)?) 
   public zero[affine T]() => Token[T](0)
   .... //Probably more stuff
 }
@@ -80,19 +81,18 @@ module Purse {
   public init Purse[T] => Owned[T](Purse[T](Token.zero()))  //The creator is the Owner
 
   public active deposit[affine T](purse: ref Purse[T], deposit:Token[T]) => modify purse with 
-                                                                              Purse(t) => store Purse(Token.merge(t, deposit))
+                                                                                   Purse(t) => Purse(Token.merge(t, deposit)?)
   public active withdraw[affine T](purse: ref Owned[T], amount:Int) => modify purse with 
-                                                                        Owned(Purse(t)) => case Token.split(t,amount) of
-                                                                          Some((rem,split)) => store Owned(Purse(re)) and return split
-                                                                          None => store Owned(Purse(t)) and return Token.zero()
+                                                                        Owned(Purse(t)) => case Token.split(t,amount)? of
+                                                                          (rem,split) => Owned(Purse(re)) &return split
 }
 
 module DefaultPurseStore{
-  private cell purse[T](address:Address):Purse.Owned[T] //maps each T address pair to a reference to a Owned
+  private cell purse[T](address:Address):Purse.Owned[T] //maps each T address pair to a reference to a Owned Purse
 
-  public getMyPurse[affine T]() => purse[T](this)   //this is the transaction initiator                                                 
-  public getPurse[affine T](address:Address) => purse[T](address).unwrap[Purse[T]] //unwrap removes the Owned capability
-  public active transfer[affine T](target:Address, amount:Int) => getPurse[T](target).deposit(Purse[T].withdraw(getMyPurse[T], amount)) 
+  public getMyPurse[affine T]() => purse[T](this)                                   //"this" is the transaction initiator
+  public getPurse[affine T](address:Address) => purse[T](address).unwrap[Purse[T]]  //unwrap removes the Owned capability
+  public active transfer[affine T](trg:Address, amount:Int) => getPurse[T](trg).deposit(Purse[T].withdraw(getMyPurse[T], amount)?)? 
   
   .... //Probably some more stuff
 }
@@ -105,7 +105,7 @@ import Token;     //In reality, the hash of the Token Module, Sanskrit is conten
 module MyFixSupplyToken {
     public type MyToken
     //MyToken instance is capability allowing to create Token[MyToken]
-    on deploy => DefaultPurseStore.getMyPurse().deposit(Token.mint[MyToken](MyToken, 100000000)) 
+    on deploy => DefaultPurseStore.getMyPurse().deposit(Token.mint[MyToken](MyToken, 100000000))? 
 }
 ```
 ### Generic Capabilities
