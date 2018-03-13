@@ -23,9 +23,6 @@ The Sanskrit virtual machine does not have any kind of dynamic dispatch making r
 ### Total Language
 The Sanskrit virtual machine is not Turing complete as it does not allow recursive function calls and does only allow loops with an upper bound of iterations. This does make it possible to calculate an upper cost of the resources consumed during a function call allowing to design alternative gas models that can never run out of gas by requiring the caller to have enough reserves to pay for the worst case execution path. 
 
-### Error Handling
-The Sanskrit vm does not know the concept of an unexpected error for all code that is compiled sucessfully it can be ckecked before the transaction is executed that enough ressources are supplied, so even out of gas exeptions do not exists. Errors and Failures have to be encoded in the return type of a function in a functional style by using types like Option and alike. This can become complicated and lead to inefficent code even if their is no errors. This is one of the points that needs some work.
-
 ### Algebraic Datatypes
 The Sanskrit virtual machine is founded on immutable non-recursive algebraic datatypes as its fundamental representation of values giving it a functional touch with all the benefits coming from that. Sanskrit algebraic datatypes have some special properties that make them especially well suited for programming smart contracts in a way different from current approaches and idiomatic to Sanskrit.
 
@@ -44,6 +41,9 @@ The type system of Sanskrit is powerful enough to provide a capability-based acc
 ### Cells and References
 Cells and References are Sanskrit way of providing persisted state. Every type can have an initialisation function that can be used to generate a cell containing an initial value of that type. The creator does only receive a reference to the cell. This reference has the same behaviour as an authentic type and thus inherently encodes a capability giving access to the cell. A normal cell can only be modified and read by code from the same Module as the type of the cell. These modification is represented as effect free state transition from the old to the new state and is not allowed to modify other cells in the process (preventing shared state problems like reentrancy attacks). If the type is transient other Modules can read the value in the cell. References to cells can be wrapped (or unwrapped) into special wrapper types (types with exactly one constructor and exactly one field) allowing to provide different views on to the value (to create or drop a wrapper the normal rules are followed in respect of creating an instance or reading fields). This allows to encode further capabilities (or drop them) into the reference and thus program by the principle of Least Authority. Besides creating new instances, cells can be used as a global map, mapping a set of arguments (including generics) to references.
 
+### Transactional
+The Sanskrit virtual machine supports transactional functions in addition to normal ones. A transactional function can either return a result (if it is commited) or return the inputs (if it did a rollback). It is important that on a rollback the function arguments are returned as otherwise affine values could get lost. On a rollback all modifications to cells are reverted to the value they had before the function call. A transactional function can call another transactional function by using the currently active transaction or by opening a new subtransaction. The second one is the only option for non-transactional functions calling a transactional one. When opening a subtransaction the caller has to handle the commit and the rollback case. This can be implemented very efficently in Sanskrit as it is well suited for how the interpreter currently is structured. Transactions and rollback can be used as an efficient error handling method with the limitation that they do not allow to communicate what went wrong but it gives a potential high level language the necessary tools to provide error handling mechanisms in the presents of affine types.
+
 ### Minimal Effect System
 Sanskrit vm makes a difference between effect free functions (default) and so called active functions. Effect free functions can not modify state of cells or call active fuinctions. Active functions can do all of this. This gives an easy way to detect which functions can be coputed off-chain as well as provides some potential for optimisations as well as making the job of an auditor and static analyzis tools simpler.
 
@@ -60,7 +60,7 @@ The Sanskrit virtual machine is designed in a way that it can run beside another
 Sanskrit requires a different programming style than other smart contract systems the following pseudocode should give a feel for how Sanskrit could look like. Most of the presented code probably would be in a standard library. The syntax just descriptional as real Sanskrit is a bytecode format, it is inspired by the vision for the future high level language Mandala that will compile to Sanskrit byte code.
 
 ### Token
-This Module represents a Generic Token used to represent all kind of Tokens. 
+These Modules represent a Generic Token and related concepts. 
 
 ```
 module Token {
