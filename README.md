@@ -148,7 +148,7 @@ module Authenticated {
 }
 ```
 ## Appendix Error Handilng
-Two concepts are currently considered for improving the error handling in the Sanskrit vm. Further path may be investigated.
+Two concepts are currently considered for improving the error handling in the Sanskrit virtual machine. Further paths may be investigated.
 
 ### Transactions
 Introducing a new kind of function a transactional function, that when called can either return a result (if it commited) or return the inputs (if it did a rollback). It is important that on a rollback the function arguments are returned as otherwise affine values could get lost. On a rollback all modifications to state is reverted to the state at the beginning of the function call. A transactional function can call another transactional function by using the currently active transaction or by opening a new subtransaction. This iscan be implemented very efficently in Sanskrit as it is well suited for how the interpreter currently is structured.
