@@ -64,8 +64,11 @@ This Module represents a Generic Token used to represent all kind of Tokens.
 
 ```
 module Token {
-  public affine transient type Token[T](Int)                          //T is the concrete token type as well as the minting capability
-  public mint[affine T](capability:T, amount:Int) => Token[T](amount) //only the possesor of a value of T can mint
+  //T is the concrete token type as well as the minting capability
+  public affine transient type Token[T](Int)                          
+  //affine T means T can be instantiated by at most an affine type (basic, plain, affine)
+  //only the possesor of a value of T can mint
+  public mint[affine T](capability:T, amount:Int) => Token[T](amount) 
   
   //"?" Syntactic sugar for Result handling (similar to rusts ? but returning unconsumed affine inputs to preserve them)
   //"?" is used here to handle arithmetic errors during addition 
@@ -77,8 +80,10 @@ module Token {
 
 module Purse {
   public affine type Purse[T]
-  public transient type Owned[T](Purse[T])                  //Capability allowing to withdraw funds (In reality would use Cap see later)
-  public init Purse[T] => Owned[T](Purse[T](Token.zero()))  //The creator is the Owner
+  //Capability allowing to withdraw funds (In reality would use Cap[Owner,Purse[T]] see later)
+  public transient type Owned[T](Purse[T])   
+  //The creator is the Owner
+  public init Purse[T] => Owned[T](Purse[T](Token.zero()))  
 
   public active deposit[affine T](purse: ref Purse[T], deposit:Token[T]) => modify purse with 
                                                                                    Purse(t) => Purse(Token.merge(t, deposit)?)
@@ -88,10 +93,12 @@ module Purse {
 }
 
 module DefaultPurseStore{
-  private cell purse[T](address:Address):Purse.Owned[T] //maps each T address pair to a reference to a Owned Purse
-
-  public getMyPurse[affine T]() => purse[T](this)                                   //"this" is the transaction initiator
-  public getPurse[affine T](address:Address) => purse[T](address).unwrap[Purse[T]]  //unwrap removes the Owned capability
+  //maps each T address pair to a reference to a Owned Purse
+  private cell purse[T](address:Address):Purse.Owned[T]
+  //"this" is the transaction initiator
+  public getMyPurse[affine T]() => purse[T](this)  
+  //unwrap removes the Owned capability                                 
+  public getPurse[affine T](address:Address) => purse[T](address).unwrap[Purse[T]]  
   public active transfer[affine T](trg:Address, amount:Int) => getPurse[T](trg).deposit(Purse[T].withdraw(getMyPurse[T], amount)?)? 
   
   .... //Probably some more stuff
@@ -101,8 +108,9 @@ module DefaultPurseStore{
 
 #### Token Instantiation
 ```
-import Token;     //In reality, the hash of the Token Module, Sanskrit is content addressed
+import Token;     
 module MyFixSupplyToken {
+    //Identifier for Specific Token as well as Minting capability
     public type MyToken
     //MyToken instance is capability allowing to create Token[MyToken]
     on deploy => DefaultPurseStore.getMyPurse().deposit(Token.mint[MyToken](MyToken, 100000000))? 
@@ -127,13 +135,15 @@ module Capability {
 ```
 //Virtual encryption
 module Sealed {
-  public affine type Sealed[F,T](T)
-  public sealFor[affine F,affine T](val:T) => Sealed(val)
-  public unseal[affine F,affine T](capability:F, Sealed[F,T](val)) => val //only possesor of capability F can unseal
+  //basic = everybody can generate Sealead 
+  public basic type Sealed[F,T](T)
+  //only possesor of capability F can unseal
+  public unseal[affine F,affine T](capability:F, Sealed[F,T](val)) => val 
 }
 //Virtual Signature
 module Authenticated {
-  public transient affine type Signed[S,T](T)
-  public sign[affine S,affine T](capability:S, val:T) => Signed[S,T](val) //only possesor of capability S can sign
+  public transient type Signed[S,T](T)
+  //only possesor of capability S can sign
+  public sign[affine S,affine T](capability:S, val:T) => Signed[S,T](val)
 }
 ```
