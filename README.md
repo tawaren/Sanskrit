@@ -23,6 +23,9 @@ The Sanskrit virtual machine does not have any kind of dynamic dispatch making r
 ### Total Language
 The Sanskrit virtual machine is not Turing complete as it does not allow recursive function calls and does only allow loops with an upper bound of iterations. This does make it possible to calculate an upper cost of the resources consumed during a function call allowing to design alternative gas models that can never run out of gas by requiring the caller to have enough reserves to pay for the worst case execution path. 
 
+### Error Free
+The Sanskrit vm does not know the concept of an exception or unexpected error for all code that is compiled sucessfully it can be ckecked before the transaction is executed that enough ressources are supplied, so even out of gas exeptions do not exists. Errors and Failures have to be encoded in the return type of a function in a functional style by using types like Option and alike. 
+
 ### Algebraic Datatypes
 The Sanskrit virtual machine is founded on immutable non-recursive algebraic datatypes as its fundamental representation of values giving it a functional touch with all the benefits coming from that. Sanskrit algebraic datatypes have some special properties that make them especially well suited for programming smart contracts in a way different from current approaches and idiomatic to Sanskrit.
 
@@ -46,6 +49,9 @@ The Sanskrit virtual machine is designed in a way that has certain benefits in a
 
 ### Stateless Client Aware
 The Sanskrit virtual machine is designed in a way that reduces the proof overhead in a stateless client model. Beside the already mentioned inlining references to other components that are not eliminated are represented as hashes of the targets content. This means that a proof to the  entry point of the transaction is sufficient to proof the existenz and validity of all code that can be executed during a function call. Further Sanskrits optimisations and overall paradigm encourages a programming style where state is manipulated over pure functions and only persisted into cells when needed. It Further allows to represent a lot of concepts like for example access contoll as pure type system concepts which do not need to access cells at all during runtime. If multiple cells are accessed, the proof may be slightly bigger in contrast to other smart contract vm's as related cells are not bundled under a common prefix (contract).
+
+### Embedabble
+The Sanskrit virtual machine is designed in a way that it can run beside another vm that uses an account model like for example the Ethereum virtual machine and that it would be a comperatively low effort to allow the Host virtual machine to call into the Sanskrit virtual machine. The other way around is not as simple and would need further investigations. The compiler and interpreter parts will have some attention on performance with the goal that they eventually later may be run as smart contract on top of an existing smart contract virtual machine or at least with trusted computation services like TrueBit.
 
 ## Example Pseudo Code
 Sanskrit requires a different programming style than other smart contract systems the following pseudocode should give a feel for how Sanskrit could look like. Most of the presented code probably would be in a standard library. The syntax just descriptional as real Sanskrit is a bytecode format
