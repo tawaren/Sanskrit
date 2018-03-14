@@ -102,7 +102,7 @@ module Purse {
 
 module DefaultPurseStore{
   //maps each T address pair to a reference to a Owned Purse
-  private cell purse[T](address:Address):Purse.Owned[T]
+  private const purse[T](address:Address) => new[Purse.Owned[T]]
   //"this" is the transaction initiator
   public getMyPurse[affine T]() => purse[T](this)  
   //unwrap removes the Owned capability                                 
