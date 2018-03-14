@@ -76,7 +76,8 @@ module Token {
   //"?" Syntactic sugar for Result handling (similar to rusts ? but returning unconsumed affine inputs to preserve them)
   //"?" is used here to handle arithmetic errors during addition 
   public merge[affine T](Token[T](amount1), Token[T](amount2)) => Token[T](add(amount1,amount2)?)                                       
-  public split[affine T](Token[T](amount), split:Int) => Token[T](sub(amount,split)?) 
+  public split[affine T](Token[T](amount), split:Int) => case sub(amount,split)? of 
+															(rem,split) => (Token[T](rem), Token[T](split)) 
   public zero[affine T]() => Token[T](0)
   .... //Probably more stuff
 }
@@ -138,14 +139,38 @@ module Capability {
 ```
 //Virtual encryption
 module Sealed {
-  public open type Sealed[F,T](T)
+  public sealed type Sealed[F,T](T)
   //only possesor of capability F can unseal
   public unseal[affine F,affine T](capability:F, Sealed[F,T](val)) => val 
 }
+
 //Virtual Signature
 module Authenticated {
   public transient type Signed[S,T](T)
   //only possesor of capability S can sign
   public sign[affine S,affine T](capability:S, val:T) => Signed[S,T](val)
 }
+
+//Virtual Threshold encription 
+module Tresor {
+  //Int -> needed Keys, Id -> special unique identifier type
+  public affine type Tresor[affine T](Int,Id,T) 
+  public affine type Keys(Int,Id)
+ 
+  public create(total:Int, needed:Int, val:T) => let id = new Id in 
+													(Tresor[T](needed,id, val), Keys(total,id))
+  
+  public split(Keys(amount,id), split:Int) => case sub(amount,split)? of 
+												(rem,split) => (Keys(rem,id), Keys(split,id)) 
+  
+  public merge(Keys(amount1,id1), Keys(amount2,id2)) => case id1 == id2 of
+															True => Success(Keys(add(amount1,amount2)?,id1))                                       
+															False => Failure((Keys(amount1,id1), Keys(amount2,id2)))
+															
+  public open[T](Tresor[T](needed,id1,value), Keys(provided,id2)) =>  case id1 == id2 && needed <= provided of
+															True => Success(value)                                       
+															False => Failure((Tresor[T](needed,id1,value), Keys(provided,id2)))
+															
+}
+
 ```
