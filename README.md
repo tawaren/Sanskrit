@@ -15,6 +15,9 @@ Most currently used smart contract virtual machine couple the code and the state
 ## What is different about the Sanskrit virtual machine
 The Sanskrit virtual machine does not only include a low-level bytecode interpreter but additionally a compiler that compiles a mid-level code representation into low-level bytecode. High-level languages do produce the mid-level code which then is compiled to low-level code. This compilation is part of the blockchain consensus and only low-level code produced by this compilation step is deployed to the blockchain. This allows having a type system as well as certain cross contract guarantees in the mid-level code that can not be circumvented at. Thanks to optimisations during the on chain compilation the runtime overhead can be kept near zero and often be eliminated completely. It does further allow to have optimisations like for example cross contract inlining. 
 
+## What is the goal of the Sanskrit virtual machine
+The goal of the Sanskrit virtual machine is to explore new concepts and paradigms that are rarely if at all used in other language and evaluate if they provide a benefit for smart contract programming. The assumption behind this approach is that the smart contract programming environment is different enough to the classical (non-smart contract) programming enviroments such that it is plausible that approaches that are inappropriate in the later may be viable and benefical in the former.
+
 ## What are the design decisions and features of the Sanskrit virtual machine
 
 ### Static Dispatch
@@ -64,13 +67,10 @@ The Sanskrit virtual machine is designed in a way that reduces the proof overhea
 The Sanskrit virtual machine is designed in a way that it can run beside another virtual machine that uses an account model like for example the Ethereum virtual machine and that it would be a comparatively low effort to allow the Host virtual machine to call into the Sanskrit virtual machine. The other way around is not as simple and would need further investigations. The compiler and interpreter parts will have some attention on performance with the goal that they eventually later may be run as smart contract on top of an existing smart contract virtual machine or at least with trusted computation services like TrueBit.
 
 ## Example Pseudo Code
-Sanskrit requires a different programming style than other smart contract systems the following pseudocode should give a feel for what Sanskrit can do. 
-Most of the presented code probably would be in a standard library. The syntax is just descriptional as real Sanskrit is a bytecode format.
-The used syntax is inspired by the vision for the future high-level language Mandala that will compile to Sanskrit bytecode.
-As Error handling in Sanskrit can get verbose very fast without the support of a higher level language a concept similar to the "?" from Rust was used here.
+Sanskrit requires a different programming style than other smart contract systems the following pseudocode should give a feel for what Sanskrit can do and how it achieves it. Most of the presented code probably would be in a standard library. The syntax is just descriptional as real Sanskrit is a bytecode format. The used syntax is inspired by the vision for the future high-level language Mandala that will compile to Sanskrit bytecode.
+As Error handling in Sanskrit can get verbose very fast without the support of a higher level language a concept similar to the "?" from Rust was used here to make the code more readable.
 
 ### Token
-These Modules represent a Generic Token and related concepts. 
 
 ```
 module Token {
@@ -80,7 +80,7 @@ module Token {
   //only the possesor of a value of T can mint
   public mint[affine T](capability:T, amount:Int) => Token[T](amount) 
   
-  //"?" Syntactic sugar for Result handling (similar to rusts ? but returning unconsumed affine inputs to preserve them)
+  //"?" Syntactic sugar for Result handling (similar to rusts ? but returning unconsumed affine inputs on a failure to preserve them)
   //"?" is used here to handle arithmetic errors during addition 
   public merge[affine T](Token[T](amount1), Token[T](amount2)) => Token[T](add(amount1,amount2)?)                                       
   public split[affine T](Token[T](amount), split:Int) => case sub(amount,split)? of 
@@ -93,14 +93,14 @@ module Purse {
   public affine type Purse[T]
   //Capability allowing to withdraw funds (In reality would use Cap[Owner,Purse[T]] see later)
   public transient view type Owned[T](Purse[T])   
-  //The creator is the Owner
+  //The creator recieves a reference with the Owner view, which represents the withdraw capability
   public init Purse[T] => Owned[T](Purse[T](Token.zero()))  
 
   public active deposit[affine T](purse: ref Purse[T], deposit:Token[T]) => modify purse with 
                                                                                    Purse(t) => Purse(Token.merge(t, deposit)?)
   public active withdraw[affine T](purse: ref Owned[T], amount:Int) => modify purse with 
                                                                         Owned(Purse(t)) => case Token.split(t,amount)? of
-                                                                          (rem,split) => Owned(Purse(re)) &return split
+                                                                          (rem,split) => Owned(Purse(rem)) &return split
 }
 
 module DefaultPurseStore{
@@ -119,11 +119,10 @@ module DefaultPurseStore{
 
 #### Token Instantiation
 ```
-import Token;     
 module MyFixSupplyToken {
     //Identifier for Specific Token as well as Minting capability
     public type MyToken
-    //MyToken instance is capability allowing to create Token[MyToken]
+    //MyToken instance is used as capability allowing to create Token[MyToken]
     on deploy => DefaultPurseStore.getMyPurse().deposit(Token.mint[MyToken](MyToken, 100000000))? 
 }
 ```
@@ -131,12 +130,11 @@ module MyFixSupplyToken {
 ```
 module Capability {
   public transient view type Cap[C,T](T)
-  public addCap[affine C,affine T](capability:C, value:ref T) => value.wrap[Cap[C,T]]
-  //the pattern for the function parameters do an implicit unwrap of the view
-  public combineCap[affine C1,affine C2,affine T](Cap[C1,T](ref val), Cap[C2,T](ref val2)) => case val == val2 of
-                                                                                                  True => Some(val.wrap[Cap[(C1,C2),T]])
-                                                                                                  False => None
-  public splitCap[affine C1,affine C2,affine T](Cap[(C1,C2),T](ref val)) => (val.wrap[Cap[C1,T]], val.wrap[Cap[C2,T]])
+  public addCap[C,affine T](capability:C, value:ref T) => value.wrap[Cap[C,T]]
+  //the pattern matching in the function parameters do an implicit unwrap of the view
+  //assert fails if the first param is false and returns the second if not
+  public combineCap[C1,C2, affine T](Cap[C1,T](ref val), Cap[C2,T](ref val2)) => assert(val == val2,val)?.wrap[Cap[(C1,C2),T]])
+  public splitCap[C1,C2, affine T](Cap[(C1,C2),T](ref val)) => (val.wrap[Cap[C1,T]], val.wrap[Cap[C2,T]])
   
   .... //probably much more
 }
@@ -147,16 +145,22 @@ module Capability {
 ```
 //Virtual encryption
 module Sealed {
-  public sealed type Sealed[F,T](T)
+  public sealed view type Sealed[F,T](T)
   //only possesor of capability F can unseal
   public unseal[affine F,affine T](capability:F, Sealed[F,T](val)) => val 
+  //allows usage of Sealed as view
+  public unsealRef[affine F,affine T](capability:F, Sealed[F,T](ref val)) => val 
+
 }
 
 //Virtual Signature
 module Authenticated {
-  public transient type Signed[S,T](T)
+  public transient view type Signed[S,T](T)
   //only possesor of capability S can sign
   public sign[affine S,affine T](capability:S, val:T) => Signed[S,T](val)
+  //allows usage of Signed as view
+  public signRef[affine S,affine T](capability:S, ref val:T) => val.wrap[Signed[S,T]]
+
 }
 
 //Virtual Threshold encription 
@@ -166,18 +170,14 @@ module Tresor {
   public affine type Keys(Int,Id)
  
   public create(total:Int, needed:Int, val:T) => let id = new Id in 
-                            (Tresor[T](needed,id, val), Keys(total,id))
+                                                    (Tresor[T](needed,id, val), Keys(total,id))
   
   public split(Keys(amount,id), split:Int) => case sub(amount,split)? of 
-                            (rem,split) => (Keys(rem,id), Keys(split,id)) 
+                                                  (rem,split) => (Keys(rem,id), Keys(split,id)) 
   
-  public merge(Keys(amount1,id1), Keys(amount2,id2)) => case id1 == id2 of
-                                True => Success(Keys(add(amount1,amount2)?,id1))                   
-                                False => Failure((Keys(amount1,id1), Keys(amount2,id2)))
-                                                            
-  public open[T](Tresor[T](needed,id1,value), Keys(provided,id2)) =>  case id1 == id2 && needed <= provided of
-                                      True => Success(value) 
-                                    False => Failure((Tresor[T](needed,id1,value), Keys(provided,id2)))
+  public merge(Keys(amount1,id1), Keys(amount2,id2)) => Keys(add(amount1,amount2)?,assert(id1==id2,id1)?)                               
+  public open[T](Tresor[T](needed,id1,value), Keys(provided,id2)) => assert(id1 == id2 && needed <= provided, value)
+
                                                             
 }
 
