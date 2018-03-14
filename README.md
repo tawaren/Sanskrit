@@ -158,18 +158,18 @@ module Tresor {
   public affine type Keys(Int,Id)
  
   public create(total:Int, needed:Int, val:T) => let id = new Id in 
-													(Tresor[T](needed,id, val), Keys(total,id))
+							(Tresor[T](needed,id, val), Keys(total,id))
   
   public split(Keys(amount,id), split:Int) => case sub(amount,split)? of 
-												(rem,split) => (Keys(rem,id), Keys(split,id)) 
+							(rem,split) => (Keys(rem,id), Keys(split,id)) 
   
   public merge(Keys(amount1,id1), Keys(amount2,id2)) => case id1 == id2 of
-															True => Success(Keys(add(amount1,amount2)?,id1))                                       
-															False => Failure((Keys(amount1,id1), Keys(amount2,id2)))
+								True => Success(Keys(add(amount1,amount2)?,id1))                   
+								False => Failure((Keys(amount1,id1), Keys(amount2,id2)))
 															
   public open[T](Tresor[T](needed,id1,value), Keys(provided,id2)) =>  case id1 == id2 && needed <= provided of
-															True => Success(value)                                       
-															False => Failure((Tresor[T](needed,id1,value), Keys(provided,id2)))
+  									True => Success(value) 
+									False => Failure((Tresor[T](needed,id1,value), Keys(provided,id2)))
 															
 }
 
