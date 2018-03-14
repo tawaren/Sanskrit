@@ -38,11 +38,14 @@ The Sanskrit virtual machine does support Generic Functions and Types meaning th
 ### Capabilities
 The type system of Sanskrit is powerful enough to provide a capability-based access control system that has near zero runtime overhead and allows to check access control during compilation and thus code accessing values or calling functions it is not allowed to does not compile.
 
-### Cells and References
-Cells and References are Sanskrit way of providing persisted state. Every type can have an initialisation function that can be used to generate a cell containing an initial value of that type. The creator does only receive a reference to the cell. This reference has the same behaviour as an authentic type and thus inherently encodes a capability giving access to the cell. A normal cell can only be modified and read by code from the same Module as the type of the cell. This modification is represented as an effect free state transition from the old to the new state and is not allowed to modify other cells in the process (preventing shared state problems like reentrancy attacks). If the type is transient other Modules can read the value in the cell. References to cells can be wrapped (or unwrapped) into special wrapper types (types with exactly one constructor and exactly one field) allowing to provide different views on to the value (to create or drop a wrapper the normal rules are followed in respect of creating an instance or reading fields). This allows to encode further capabilities (or drop them) into the reference and thus program by the principle of Least Authority. 
-
-### Minimal Effect System
+### Effect System
 Sanskrit virtual machine makes a difference between three kinds of functions. Pure (default), plain, dependent and active functions. Pure functions can not create, read or write cells. Plain functions are like pure ones but can create new cells. Dependent function can in addition to plain functions read cells, and active functions have no limitations. This gives an easy way to detect which functions can be computed off-chain (pure, plain, dependent) and which need the state during the off-chain computation (dependent), as well as provides some potential for optimisations and making the job of auditors and static analysis tools simpler.
+
+### Cells and References
+Cells and References are Sanskrit way of providing persisted and shared state. A type can have a single assosiated initialisation function that can be used to generate a cell containing an initial value of that type. The creator does receive a reference to the cell. The same modifiers (Opaque, Transparent, Sealed and Open) define who can access the cell in what way. If a Module can create new instances of the value in the cell it can write to the cell and if it can access fields of the value it can read from the cell. Modification to the cell is represented as a pure state transition from the old to the new value and thus is not allowed to access other cells in the process (preventing shared state problems like reentrancy attacks).
+
+#### View Types
+View types are types that allow to generate references of a different type to the same cell from an existing reference to it. They are predestined to be used as cababilities that define how the posessor of the reference can interact with the cell and thus enable to program by the principle of Least Authority. A View type can not have an initialisation function itself and is restricted to a single constructor with a single field. If a cell is read over a view, then the returned value is imideately wrapped into a value of the view type and if a value of a view type is stored into a cell the inner value is extracted from the view type before storing it. An initialisation fucntion for a non-view type can return a value wrapped into a view type instead of the true value. Who can read and write to a cell is still governed by the true type of the cell but the modifiers (Opaque, Transparent, Sealed and Open) of the view type define who can wrap a reference into a view (needs create allowance) and who can remove a view wrapper (needs field access allowance). It is possible to apply multiple views to a reference and not just one. 
 
 ### Deterministic Parameterized Constants
 Deterministic Parameterized Constants provide root storage slots in the Sanskrit virtual machine. They are very similar to functions but with one crucial difference. They behave as if the result is memorized, meaning if the constant is invoked with the same generic and value parameters multiple time then the same result is produced, this includes newly created references, meaning they will point to the same cell. Such a const must be pure or plain which ensures that the value of a const for a specific set of arguments is not dependent on when it is executed. This allows recomputing consts each time they are needed instead of storing its result (storage on a blockchain is usually way more expensive than calculations).
@@ -89,7 +92,7 @@ module Token {
 module Purse {
   public affine type Purse[T]
   //Capability allowing to withdraw funds (In reality would use Cap[Owner,Purse[T]] see later)
-  public transient type Owned[T](Purse[T])   
+  public transient view type Owned[T](Purse[T])   
   //The creator is the Owner
   public init Purse[T] => Owned[T](Purse[T](Token.zero()))  
 
@@ -105,8 +108,8 @@ module DefaultPurseStore{
   private const purse[T](address:Address) => new[Purse.Owned[T]]
   //"this" is the transaction initiator
   public getMyPurse[affine T]() => purse[T](this)  
-  //unwrap removes the Owned capability                                 
-  public getPurse[affine T](address:Address) => purse[T](address).unwrap[Purse[T]]  
+  //unwrap removes the Owned view                                 
+  public getPurse[affine T](address:Address) => purse[T](address).unwrap 
   public active transfer[affine T](trg:Address, amount:Int) => getPurse[T](trg).deposit(Purse[T].withdraw(getMyPurse[T], amount)?)? 
   
   .... //Probably some more stuff
@@ -127,9 +130,10 @@ module MyFixSupplyToken {
 ### Generic Capabilities
 ```
 module Capability {
-  public transient type Cap[C,T](ref T)
-  public addCap[affine C,affine T](capability:C, value:ref T) => Cap[C,T](value)
-  public combineCap[affine C1,affine C2,affine T](Cap[C1,T](ref val1), Cap[C2,T](ref val2)) => case val1 == val2 of
+  public transient view type Cap[C,T](T)
+  public addCap[affine C,affine T](capability:C, value:ref T) => value.wrap[Cap[C,T]]
+  //the pattern for the function parameters do an implicit unwrap of the view
+  public combineCap[affine C1,affine C2,affine T](Cap[C1,T](ref val), Cap[C2,T](ref val2)) => case val == val2 of
                                                                                                   True => Some(val.wrap[Cap[(C1,C2),T]])
                                                                                                   False => None
   public splitCap[affine C1,affine C2,affine T](Cap[(C1,C2),T](ref val)) => (val.wrap[Cap[C1,T]], val.wrap[Cap[C2,T]])
