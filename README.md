@@ -27,13 +27,13 @@ The Sanskrit virtual machine is not Turing complete as it does not allow recursi
 The Sanskrit virtual machine is founded on immutable non-recursive algebraic datatypes as its fundamental representation of values giving it a functional touch with all the benefits coming from that. Sanskrit algebraic datatypes have some special properties that make them especially well suited for programming smart contracts in a way different from current approaches and idiomatic to Sanskrit.
 
 #### Authentic Opaque Types
-The Sanskrit types have by default two fundamental properties differentiating them from classical algebraic datatypes. First, only code belonging to the same Module (Sanskrit deployment unit) as the type can create values of that type (Authentic) and access the fields inside the type (Opaque). This ensures a holder of a value that it was constructed under certain circumstances dictated by the Module containing the type. If it is wished that a field of a type can be read by other Modules, the type can be declared Transparent. Further, a type can be declared Basic, allowing other Modules to create instances (but not read the fields, except it is transparent as well)
+The Sanskrit types have by default two fundamental properties differentiating them from classical algebraic datatypes. First, only code belonging to the same Module (Sanskrit deployment unit) as the type can create values of that type (Authentic) and access the fields inside the type (Opaque). This ensures a holder of a value that it was constructed under certain circumstances dictated by the Module containing the type. If it is wished that a field of a type can be read by other Modules, the type can be declared Transparent. Further, a type can be declared Sealed, allowing other Modules to create instances. A type declared Open allows other modules to read fields and create new instances.
 
 #### Affine Types
-Beside Basic and Authentic (the default) a Sanskrit type can be declared to be Affine which has all the benefits of Authentic but the compiler does additionally enforce that a value of this type once created cannot be duplicated. Meaning that a function receiving a value of an affine type can use this value at most once. This makes affine types the perfect candidate for representing assets, tokens, cryptocurrencies etc... and thus the Sanskrit virtual machine does not have a native cryptocurrency that it must treat specially as it can conveniently be represented on the type level with the existing concepts.
+Beside varying in who can create and read a value a Sanskrit type can additionally be declared to be Affine and in that case the compiler does enforce that a value of this type once created cannot be duplicated. Meaning that a function receiving a value of an affine type can use this value at most once. This makes affine types the perfect candidate for representing assets, tokens, cryptocurrencies etc... and thus the Sanskrit virtual machine does not have a native cryptocurrency that it must treat specially as it can conveniently be represented on the type level with the existing concepts.
 
 ### Generics
-The Sanskrit virtual machine does support Generic Functions and Types meaning that a Type or Function can take another type as a parameter and thus can be defined in a more general type independent way. To interact with the behaviour system (Basic, ... , Affine) generic parameters have additional markers on functions that declare the most restrictive behaviour they support. A generic algebraic datatype doe increae its behavioural restriction if instantiated with a more restrictive type then itself.
+The Sanskrit virtual machine does support Generic Functions and Types meaning that a Type or Function can take another type as a parameter and thus can be defined in a more general type independent way. To interact with affine types, generic parameters on functions can be declared affine allowing the caller to instantiate them with an affine type. A generic algebraic datatype becomes affine if one of its generic parameters is instantiated with an affine type
 
 ### Capabilities
 The type system of Sanskrit is powerful enough to provide a capability-based access control system that has near zero runtime overhead and allows to check access control during compilation and thus code accessing values or calling functions it is not allowed to does not  compile.
@@ -69,7 +69,7 @@ These Modules represent a Generic Token and related concepts.
 module Token {
   //T is the concrete token type as well as the minting capability
   public affine transient type Token[T](Int)                          
-  //affine T means T can be instantiated by at most an affine type (basic, plain, affine)
+  //affine T means T can be instantiated by an affine type
   //only the possesor of a value of T can mint
   public mint[affine T](capability:T, amount:Int) => Token[T](amount) 
   
@@ -138,8 +138,7 @@ module Capability {
 ```
 //Virtual encryption
 module Sealed {
-  //basic = everybody can generate Sealead 
-  public basic type Sealed[F,T](T)
+  public open type Sealed[F,T](T)
   //only possesor of capability F can unseal
   public unseal[affine F,affine T](capability:F, Sealed[F,T](val)) => val 
 }
