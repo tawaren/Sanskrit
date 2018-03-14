@@ -57,7 +57,10 @@ The Sanskrit virtual machine is designed in a way that reduces the proof overhea
 The Sanskrit virtual machine is designed in a way that it can run beside another vm that uses an account model like for example the Ethereum virtual machine and that it would be a comperatively low effort to allow the Host virtual machine to call into the Sanskrit virtual machine. The other way around is not as simple and would need further investigations. The compiler and interpreter parts will have some attention on performance with the goal that they eventually later may be run as smart contract on top of an existing smart contract virtual machine or at least with trusted computation services like TrueBit.
 
 ## Example Pseudo Code
-Sanskrit requires a different programming style than other smart contract systems the following pseudocode should give a feel for how Sanskrit could look like. Most of the presented code probably would be in a standard library. The syntax just descriptional as real Sanskrit is a bytecode format, it is inspired by the vision for the future high level language Mandala that will compile to Sanskrit byte code.
+Sanskrit requires a different programming style than other smart contract systems the following pseudocode should give a feel for what Sanskrit can do. 
+Most of the presented code probably would be in a standard library. The syntax just descriptional as real Sanskrit is a bytecode format.
+The used syntax is inspired by the vision for the future high level language Mandala that will compile to Sanskrit bytecode.
+As Error handling in Sanskrit can get verbose very fast without the support of a higher level language a concept similar to the "?" from Rust was used here.
 
 ### Token
 These Modules represent a Generic Token and related concepts. 
