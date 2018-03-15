@@ -91,7 +91,7 @@ module Token {
 
 module Purse {
   public affine type Purse[T]
-  //Capability allowing to withdraw funds (In reality would use Cap[Owner,Purse[T]] see later)
+  //Capability allowing to withdraw funds 
   public transient view type Owned[T](Purse[T])   
   //The creator recieves a reference with the Owner view, which represents the withdraw capability
   public init Purse[T] => Owned[T](Purse[T](Token.zero()))  
@@ -126,21 +126,6 @@ module MyFixSupplyToken {
     on deploy => DefaultPurseStore.getMyPurse().deposit(Token.mint[MyToken](MyToken, 100000000))? 
 }
 ```
-### Generic Capabilities
-```
-module Capability {
-  public transient view type Cap[C,T](T)
-  public addCap[C,affine T](capability:C, value:ref T) => value.wrap[Cap[C,T]]
-  //the pattern matching in the function parameters do an implicit unwrap of the view
-  //assert fails if the first param is false and returns the second if not
-  public combineCap[C1,C2, affine T](Cap[C1,T](ref val), Cap[C2,T](ref val2)) => assert(val == val2,val)?.wrap[Cap[(C1,C2),T]])
-  public splitCap[C1,C2, affine T](Cap[(C1,C2),T](ref val)) => (val.wrap[Cap[C1,T]], val.wrap[Cap[C2,T]])
-  
-  .... //probably much more
-}
-
-```
-
 ### Some Virtual Crypto
 ```
 //Virtual encryption
