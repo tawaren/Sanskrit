@@ -40,10 +40,10 @@ The Sanskrit virtual machine does support generic functions and types meaning th
 The type system of Sanskrit is powerful enough to provide a capability-based access control system that has near zero runtime overhead and allows to check access control during compilation and thus code accessing values or calling functions it is not allowed to does not compile.
 
 ### Cells and References
-Cells and References are Sanskrit way of providing persisted and shared state. A type can have a single assosiated initialisation function that can be used to generate a cell containing an initial value of that type. The creator does receive a reference to the cell instead of the blank value. The same modifiers (Opaque, Transparent, Sealed and Open) define who can access the cell in what way. If a Module can create new instances of the value in the cell it can write to the cell and if it can access fields of the value it can read from the cell. Modification to the cell is represented as a pure (side effect free) state transition from the old to the new value and thus is not allowed to access other cells in the process (preventing shared state problems like reentrancy attacks).
+Cells and References are Sanskrit way of providing persisted and shared state. A type can have a single assosiated initialisation function that can be used to generate a cell containing an initial value of that type. The creator does receive a reference to the cell instead of the blank value. The powers regulating who can access the cell in what way. If a Module can create new instances of the value in the cell it can write to the cell and if it can access fields of the value it can read from the cell. Only values that have the persist power can be stored into cells overruling the create and read powers. Modification to the cell is represented as a pure (side effect free) state transition from the old to the new value and thus is not allowed to access other cells in the process (preventing shared state problems like reentrancy attacks).
 
 #### View Types
-View types are types that allow to generate references of a different type to the same cell from an existing reference to it. They are predestined to be used as capabilities that define how the posessor of the reference can interact with the cell and thus enable to program by the principle of Least Authority. A View type can not have an initialisation function itself and is restricted to a single constructor with a single field. If a cell is read over a view, then the returned value is imideately wrapped into a value of the view type and if a value of a view type is stored into a cell the inner value is extracted from the view type before storing it. An initialisation fucntion for a non-view type can return a value wrapped into a view type instead of the true value. Who can read and write to a cell is governed by the power of type of the cell but the powers of the view type define who can wrap a reference into a view (needs create power) and who can remove a view wrapper (needs read power). It is possible to apply multiple views to a reference and not just one. 
+View types are types that allow to generate references of a different type to the same cell from an existing reference to it. They are predestined to be used as capabilities that define how the posessor of the reference can interact with the cell and thus enable to program by the principle of Least Authority. A View type can not have an initialisation function itself and is restricted to a single constructor with a single field. If a cell is read over a view, then the returned value is imideately wrapped into a value of the view type and if a value of a view type is stored into a cell the inner value is extracted from the view type before storing it. An initialisation fucntion for a non-view type can return a value wrapped into a view type instead of the true value. Who can read and write to a cell is governed by the power of type of the cell (read and create are treated as recursive in the context of views) but the view type declares seperately who can wrap a reference into a view  and who can remove a view wrapper (two new non-recursive powers only usable with views). It is possible to apply multiple views to a reference and not just one. 
 
 ### Effect System
 Sanskrit virtual machine makes a difference between four kind of functions. Pure (default), plain, dependent and active functions. Pure functions can not create, read or write cells. Plain functions are like pure ones but can create new cells. Dependent function can in addition to plain functions read cells, and active functions have no limitations. This gives an easy way to detect which functions can be computed off-chain (pure, plain, dependent) and which need the state during the off-chain computation (dependent), as well as provides some optimisation potential for non-active functions. Additionally this does make the job of auditors and static analysis tools simpler.
@@ -90,7 +90,7 @@ module Purse {
   powers<discard, read, store>
   public type Purse[phantom T](Token[T])
   //Capability allowing to withdraw funds 
-  powers<discard, read, store>
+  powers<discard, read, store, unwrap>  //unwrap is the power to remove the view
   public view Owned[phantom T](Purse[T])   
   //The creator recieves a reference with the Owned view, which represents the withdraw capability
   public init Purse[T] => Owned[T](Purse[T](Token.zero()))  
@@ -131,7 +131,7 @@ module MyFixSupplyToken {
 module Sealed {
   //All except read
   powers<create, discard, copy, persist> // T may strip some powers away  
-  public view Sealed[phantom F,T](T)
+  public type Sealed[phantom F,T](T)
   //only possesor of capability F can unseal
   public unseal[discard F,T](capability:F, Sealed[F,T](val)) => val 
   //allows usage of Sealed as view
@@ -143,12 +143,9 @@ module Sealed {
 module Authenticated {
   //All except create
   powers<read, discard, copy, persist> // T may strip some powers away 
-  public view Signed[phantom S,T](T)
+  public type Signed[phantom S,T](T)
   //only possesor of capability S can sign
   public sign[discard S,T](capability:S, val:T) => Signed[S,T](val)
-  //allows usage of Signed as view
-  public signRef[discard S,T](capability:S, ref val:T) => val.wrap[Signed[S,T]]
-
 }
 
 //Virtual Threshold encription 
