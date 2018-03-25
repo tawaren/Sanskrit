@@ -29,21 +29,21 @@ The Sanskrit virtual machine is not Turing complete as it does not allow recursi
 ### Algebraic Datatypes
 The Sanskrit virtual machine is founded on immutable non-recursive algebraic datatypes as its fundamental representation of values giving it a functional touch with all the benefits coming from that. Sanskrit algebraic datatypes have some special properties that make them especially well suited for programming smart contracts in a way different from current approaches and idiomatic to Sanskrit.
 
-#### Resticted Types
-The Sanskrit types do by restrict the interaction possibilitties for functions considerably. By default functions cannot create values, access fields, copy values, discard values, wrap references, unwrap references, load from references, write to references or persist values (see cells and views for the last five). When declaring a type, these restriction can individually be removed to create a type that provides the needed behaviour. Some of the powers (all except read, create, load, write, wrap and unwrap) are recursive, meaning that an algebraic data type can only have these powers if the parameters of all constructor fields have them as well. Functions that are defined in the same Module as the type are always treated as if they have the non-recursive powers even if the type declaration does not grant these powers.
-For Example a type with access, discard and perstsit powers make the perfect candidate for representing assets, tokens, cryptocurrencies etc... and thus the Sanskrit virtual machine does not have a native cryptocurrency that it must treat differently as they can conveniently be represented with the existing concepts. 
+#### Priviledged Types
+The Sanskrit types do by default restrict the interaction possibilitties for functions with types considerably. By default functions cannot create values, access fields, copy values, discard values, wrap references, unwrap references, load from references, write to references or persist values (see cells and views for the last five). When declaring a type, these restriction can individually be removed by granting priviledges resulting in a finetuned type that provides the needed behaviour. Some of the privileges (copy, deiscard and persist) are recursive, meaning that an algebraic data type can only have these privileges if the parameters of all constructor fields have them as well. Functions that are defined in the same Module as the type are always treated as if they have the non-recursive privileges even if the type declaration does not grant these privileges.
+For Example a type with access, discard and perstsit priviliges make the perfect candidate for representing assets, tokens, cryptocurrencies etc... and thus the Sanskrit virtual machine does not have a native cryptocurrency that it must treat differently as they can conveniently be represented with the existing concepts. 
 
 ### Generics
-The Sanskrit virtual machine does support generic functions and types meaning that a type or function can take other types as parameters and thus can be defined in a more type independent way. To interact with the restriction system, generic parameters on functions must declare if they support additional powers (lifted restrictions) preventing the caller to instantiate them with a type that does not have the requested power. If a type parameter in an algebraic datatype is less powerfull in respect to its recursive powers then the resulting types powers are reduced accordingly. A type parameter can be marked phantom and in that case it can not be used as a type for a constructor parameter and can only used as generic parameter to other phantom type parameters, in return phantom generic parameters never strip power away from the resulting type.
+The Sanskrit virtual machine does support generic functions and types meaning that a type or function can take other types as parameters and thus can be defined in a more type independent way. To interact with the restriction system, generic parameters on functions must declare if they require additional priviledges preventing the caller to instantiate them with a type that does not grant the requested privileges. If a type parameter in an algebraic datatype is less priviledged in respect to its recursive priviledges then the resulting types priviledges are reduced accordingly. A type parameter can be marked phantom and in that case it can not be used as a type for a constructor parameter and can only used as generic parameter to other phantom type parameters, in return phantom generic parameters never strip privileges away from the resulting type.
 
 ### Capabilities
 The type system of Sanskrit is powerful enough to provide a capability-based access control system that has near zero runtime overhead and allows to check access control during compilation and thus code accessing values or calling functions it is not allowed to does not compile.
 
 ### Cells and References
-Cells and References are Sanskrit way of providing persisted and shared state. Beside normal data types, their are cell types that can be used as ordinary data types but have an assosiated initialisation function that can be used by anybody to generate a cell containing an initial value of that type. The creator does receive a reference to the cell instead of the blank value. The load and write powers regulate who can load or write the value in a cell. Certain usecases need types that can never be persisted as the write power is non-recursive the recursive persist power is added and all cell type must have the persist power. Modifications to a cell are represented as a pure (side effect free) state transition from the old to the new value and thus are not allowed to access other cells in the process (preventing shared state problems like reentrancy attacks).
+Cells and References are Sanskrit way of providing persisted and shared state. Beside normal data types, their are cell types that can be used as ordinary data types but have an assosiated initialisation function that can be used by anybody to generate a cell containing an initial value of that type. The creator does receive a reference to the cell instead of the blank value. The load and write privileges regulate who can load or write the value in a cell. Certain usecases need types that can never be persisted as the write privilege is non-recursive the recursive persist priviledge is added and all cell type must have the persist privilege. Modifications to a cell are represented as a pure (side effect free) state transition from the old to the new value and thus are not allowed to access other cells in the process (preventing shared state problems like reentrancy attacks).
 
 #### View Types
-View types are types that allow to generate references of a different type to the same cell from an existing reference to it. They are predestined to be used as capabilities that define how the posessor of the reference can interact with the cell and thus enable to program by the principle of Least Authority. A View type can not have an initialisation function itself and is restricted to a single constructor with a single field. If a cell is accessed over a view, then the returned value is imideately wrapped into a value of the view type and if a value of a view type is stored into a cell the inner value is extracted from the view type before storing it. An initialisation fucntion for a non-view type can return a cell type wrapped into a view type instead of the true value. When a view type is checked the load and write power are treated as if they are recursive but the view type declares seperately who can wrap a reference into a view  and who can remove a view wrapper (two new non-recursive powers only usable with views). It is possible to apply multiple views to a reference and not just one. 
+View types are types that allow to generate references of a different type to the same cell from an existing reference to it. They are predestined to be used as capabilities that define how the posessor of the reference can interact with the cell and thus enable to program by the principle of Least Authority. A View type can not have an initialisation function itself and is restricted to a single constructor with a single field. If a cell is accessed over a view, then the returned value is imideately wrapped into a value of the view type and if a value of a view type is stored into a cell the inner value is extracted from the view type before storing it. An initialisation fucntion for a non-view type can return a cell type wrapped into a view type instead of the true value. A view type can only be defined in a Module that has load and write priviledge on the cell type that the view applies to. It is possible to apply multiple views to a reference and not just one. 
 
 ### Effect System
 Sanskrit virtual machine makes a difference between four kind of functions. Pure (default), plain, dependent and active functions. Pure functions can not create, access or write cells. Plain functions are like pure ones but can create new cells. Dependent function can in addition to plain functions access cells, and active functions have no limitations. This gives an easy way to detect which functions can be computed off-chain (pure, plain, dependent) and which need the state during the off-chain computation (dependent), as well as provides some optimisation potential for non-active functions. Additionally this does make the job of auditors and static analysis tools simpler.
@@ -73,7 +73,7 @@ As Error handling in Sanskrit can get verbose very fast without the support of a
 ```
 module Token {
   //T is the concrete token type as well as the minting capability
-  powers<discard, access, persist>
+  privileges<discard, access, persist>
   public data type Token[phantom T](Int)                          
   //only the possesor of a value of T can mint
   public mint[discard T](capability:T, amount:Int) => Token[T](amount) 
@@ -87,10 +87,10 @@ module Token {
 }
 
 module Purse {
-  powers<discard, access, load, persist> //unwrap is the power to inspect the value in a cell
+  privileges<discard, access, load, persist> //unwrap is the power to inspect the value in a cell
   public cell type Purse[phantom T](Token[T])
   //Capability allowing to withdraw funds 
-  powers<discard, access, load, persist, unwrap>  //unwrap is the power to remove the view
+  privileges<discard, access, load, persist, unwrap>  //unwrap is the power to remove the view
   public view type Owned[phantom T](Purse[T])   
   //The creator recieves a reference with the Owned view, which represents the withdraw capability
   public init Purse[T] => Owned[T](Purse[T](Token.zero()))  
@@ -119,7 +119,7 @@ module DefaultPurseStore{
 ```
 module MyFixSupplyToken {
     //Identifier for Specific Token as well as Minting capability
-    powers<discard>
+    privileges<discard>
     public data type MyToken
     //MyToken instance is used as capability allowing to create Token[MyToken]
     on deploy => DefaultPurseStore.getMyPurse().deposit(Token.mint[MyToken](MyToken, 100000000))? 
@@ -130,7 +130,7 @@ module MyFixSupplyToken {
 //Virtual encryption
 module Sealed {
   //All except access
-  powers<create, discard, copy, persist> // T may strip some powers away  
+  privileges<create, discard, copy, persist> // T may strip some powers away  
   public data type Sealed[phantom F,T](T)
   //only possesor of capability F can unseal
   public unseal[discard F,T](capability:F, Sealed[F,T](val)) => val 
@@ -140,7 +140,7 @@ module Sealed {
 //Virtual Signature
 module Authenticated {
   //All except create
-  powers<access, discard, copy, persist> // T may strip some powers away 
+  privileges<access, discard, copy, persist> // T may strip some powers away 
   public data type Signed[phantom S,T](T)
   //only possesor of capability S can sign
   public sign[discard S,T](capability:S, val:T) => Signed[S,T](val)
@@ -150,9 +150,9 @@ module Authenticated {
 module Tresor {
   //Int -> needed Keys, Id -> special unique identifier type
   //All except read and create
-  powers<discard, copy, persist> // T may strip some powers away 
+  privileges<discard, copy, persist> // T may strip some powers away 
   public data type Tresor[T](Int,Id,T) 
-  powers<read,discard,store>
+  privileges<read,discard,store>
   public data type Keys(Int,Id)
  
   public create[T](total:Int, needed:Int, val:T) => let id = new Id in (Tresor[T](needed,id, val), Keys(total,id))
