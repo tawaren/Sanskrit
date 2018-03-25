@@ -29,14 +29,12 @@ The Sanskrit virtual machine is not Turing complete as it does not allow recursi
 ### Algebraic Datatypes
 The Sanskrit virtual machine is founded on immutable non-recursive algebraic datatypes as its fundamental representation of values giving it a functional touch with all the benefits coming from that. Sanskrit algebraic datatypes have some special properties that make them especially well suited for programming smart contracts in a way different from current approaches and idiomatic to Sanskrit.
 
-#### Authentic Opaque Types
-The Sanskrit types have by default two fundamental properties differentiating them from classical algebraic datatypes. First, only code belonging to the same Module (Sanskrit deployment unit) as the type can create values of that type (Authentic) and access the fields inside the type (Opaque). This ensures to a holder of a value that it was constructed under the circumstances dictated by the Module containing the type. If it is wished that a field of a type can be read by other Modules, the type can be declared Transparent. Further, a type can be declared Sealed, allowing other Modules to create instances. A type declared Open allows other modules to read fields and create new instances.
-
-#### Affine adn Fragile Types
-Besides varying in who can create and read a value, a Sanskrit type can additionally be declared to be Affine, and in that case, the compiler does enforce that a value of this type once created cannot be duplicated. Meaning that a function receiving a value of an affine type can use this value at most once. This makes affine types the perfect candidate for representing assets, tokens, cryptocurrencies etc... and thus the Sanskrit virtual machine does not have a native cryptocurrency that it must treat differently as they can conveniently be represented with the existing concepts. The Sanskrit virtual does even go one step further and provides Fragile (similar to so called linear types) types where the compiler enforces that the values of the type can not be duplicated, discarded (except by code from the same module) or persistently stored. Fragile values can be used as responsibility to force the receiver od a value to take a certain action (to get rid of the value).
+#### Resticted Types
+The Sanskrit types do by restrict the interaction possibilitties for functions from other Modules (Sanskrit deployment unit) as the declaring one considerably. Other Modules cannot create values, read fields, copy values, discard values or persist values (see cells).
+When declaring a type, these restriction can individually be removed to create a type that provides the needed behaviour. Some of the powers (all except read, create) are recursive, meaning that constructor parameters can only have these powers if the constructed algebraic data type has them as well. For Example a type with read, discard and perstsit powers granted to other Modules make the perfect candidate for representing assets, tokens, cryptocurrencies etc... and thus the Sanskrit virtual machine does not have a native cryptocurrency that it must treat differently as they can conveniently be represented with the existing concepts. 
 
 ### Generics
-The Sanskrit virtual machine does support generic functions and types meaning that a type or function can take other types as parameters and thus can be defined in a more type independent way. To interact with affine types, generic parameters on functions can be declared affine allowing the caller to instantiate them with an affine type. A generic algebraic datatype becomes affine if one of its generic parameters is instantiated with an affine type.
+The Sanskrit virtual machine does support generic functions and types meaning that a type or function can take other types as parameters and thus can be defined in a more type independent way. To interact with the restriction system, generic parameters on functions must declare if they support additional powers (lifted restrictions) preventing the caller to instantiate them with a type that does not have the requested power. If a type has a generic parameter they can be marked with one of three modifiers: fixed (default), dynamic, phantom. Fixed type parameters can only be instantiated with types less or equally powerfull then the adt itself. Dynamic type parameters can be instantiated by any type and if that type is more powerfull then the adt, the missing powers are added to the resulting type. Phantom type parameters can be instantiated by any type without changing the adts powers but can not be used as type for parameters of a constructor. The non-recursive powers read and create are ignored when checking fixed and dynamic to represent the fact that a adt without read or create still can contain constructor params with these powers.
 
 ### Capabilities
 The type system of Sanskrit is powerful enough to provide a capability-based access control system that has near zero runtime overhead and allows to check access control during compilation and thus code accessing values or calling functions it is not allowed to does not compile.
@@ -45,17 +43,17 @@ The type system of Sanskrit is powerful enough to provide a capability-based acc
 Cells and References are Sanskrit way of providing persisted and shared state. A type can have a single assosiated initialisation function that can be used to generate a cell containing an initial value of that type. The creator does receive a reference to the cell instead of the blank value. The same modifiers (Opaque, Transparent, Sealed and Open) define who can access the cell in what way. If a Module can create new instances of the value in the cell it can write to the cell and if it can access fields of the value it can read from the cell. Modification to the cell is represented as a pure (side effect free) state transition from the old to the new value and thus is not allowed to access other cells in the process (preventing shared state problems like reentrancy attacks).
 
 #### View Types
-View types are types that allow to generate references of a different type to the same cell from an existing reference to it. They are predestined to be used as cababilities that define how the posessor of the reference can interact with the cell and thus enable to program by the principle of Least Authority. A View type can not have an initialisation function itself and is restricted to a single constructor with a single field. If a cell is read over a view, then the returned value is imideately wrapped into a value of the view type and if a value of a view type is stored into a cell the inner value is extracted from the view type before storing it. An initialisation fucntion for a non-view type can return a value wrapped into a view type instead of the true value. Who can read and write to a cell is still governed by the true type of the cell but the modifiers (Opaque, Transparent, Sealed and Open) of the view type define who can wrap a reference into a view (needs create allowance) and who can remove a view wrapper (needs field access allowance). It is possible to apply multiple views to a reference and not just one. 
+View types are types that allow to generate references of a different type to the same cell from an existing reference to it. They are predestined to be used as cababilities that define how the posessor of the reference can interact with the cell and thus enable to program by the principle of Least Authority. A View type can not have an initialisation function itself and is restricted to a single constructor with a single field. If a cell is read over a view, then the returned value is imideately wrapped into a value of the view type and if a value of a view type is stored into a cell the inner value is extracted from the view type before storing it. An initialisation fucntion for a non-view type can return a value wrapped into a view type instead of the true value. Who can read and write to a cell is governed by the power of type of the cell but the powers of the view type define who can wrap a reference into a view (needs create power) and who can remove a view wrapper (needs read power). It is possible to apply multiple views to a reference and not just one. 
 
 ### Effect System
 Sanskrit virtual machine makes a difference between four kind of functions. Pure (default), plain, dependent and active functions. Pure functions can not create, read or write cells. Plain functions are like pure ones but can create new cells. Dependent function can in addition to plain functions read cells, and active functions have no limitations. This gives an easy way to detect which functions can be computed off-chain (pure, plain, dependent) and which need the state during the off-chain computation (dependent), as well as provides some optimisation potential for non-active functions. Additionally this does make the job of auditors and static analysis tools simpler.
 
 ### Deterministic Parameterized Constants
-Deterministic Parameterized Constants provide root storage slots in the Sanskrit virtual machine. They are very similar to functions but with a crucial difference. They behave as if the result is memorized, meaning if the constant is invoked with the same generic and value parameters multiple time then the same result is produced, this includes newly created references, meaning they will point to the same cell. Such a const must be a pure or plain function and can not return Affine or Fragile values which ensures that the value of a const for a specific set of arguments is not dependent on when and how often it is executed. This allows recomputing consts each time they are needed instead of storing its result (storage on a blockchain is usually way more expensive than calculations).
+Deterministic Parameterized Constants provide root storage slots in the Sanskrit virtual machine. They are very similar to functions but with a crucial difference. They behave as if the result is memorized, meaning if the constant is invoked with the same generic and value parameters multiple time then the same result is produced, this includes newly created references, meaning they will point to the same cell. Such a const must be a pure or plain function and return a type with the store and copy restrictions lifted to ensures that the value of a const for a specific set of arguments is not dependent on when and how often it is created. This allows recomputing consts each time they are needed instead of storing its result (storage on a blockchain is usually way more expensive than calculations).
 Without these consts, cells could not be used to persist state as every reference would only exist during one transaction and the next would create a new reference to a new cell even when obtained by calling the same function with the same arguments as the previous transaction did.
 
 ### Transactional
-The Sanskrit virtual machine supports transactional functions in addition to normal ones. A transactional function can either return a result (if it did a committ) or return the inputs and an error code (if it did a rollback). It is important that on a rollback the function arguments are returned as otherwise affine values could get lost. On a rollback, all modifications to cells are reverted to the value they had before the function call. A transactional function can call another transactional function by using the currently active transaction or by opening a new subtransaction. The second one is the only option for non-transactional functions calling a transactional one. When opening a subtransaction, the caller has to handle the commit and the rollback case. This can be implemented very efficiently in Sanskrit as it is well suited for how the interpreter currently is structured. Transactions and rollback can be used as an efficient error handling method with the limitation that they do only allow to communicate an error in case of a rollback and not a detailed description. This gives the necessary tools to a high-level language for provide error handling mechanisms in the presence of affine types.
+The Sanskrit virtual machine supports transactional functions in addition to normal ones. A transactional function can either return a result (if it did a committ) or return the inputs and an error code (if it did a rollback). It is important that on a rollback the function arguments are returned as otherwise values could get lost. On a rollback, all modifications to cells are reverted to the value they had before the function call. A transactional function can call another transactional function by using the currently active transaction or by opening a new subtransaction. The second one is the only option for non-transactional functions calling a transactional one. When opening a subtransaction, the caller has to handle the commit and the rollback case. This can be implemented very efficiently in Sanskrit as it is well suited for how the interpreter currently is structured. Transactions and rollback can be used as an efficient error handling method with the limitation that they do only allow to communicate an error in case of a rollback and not a detailed description. This gives the necessary tools to a high-level language for provide error handling mechanisms in the presence of restricted types.
 
 ### Sharding Aware
 The Sanskrit virtual machine is designed in a way that has certain benefits in a sharded environment. This includes that Module code is immutable and stateless and once the code is compiled and deployed it will always be there and has the same functionality independent of the active shard. This means that one shard could use code deployed on another shard or a dedicated deployment shard/chain. This makes it possible that values can be transferred between shards as the code that operates on them is available on other shards. Even references can be transferred between shards on each shard the reference initially points to a cell with the value containing the initial value (lazy initialised).
@@ -75,44 +73,43 @@ As Error handling in Sanskrit can get verbose very fast without the support of a
 ```
 module Token {
   //T is the concrete token type as well as the minting capability
-  public affine transient type Token[T](Int)                          
-  //fragile T means T can be instantiated by a normal or affine type
+  powers<discard, read, store>
+  public type Token[phantom T](Int)                          
   //only the possesor of a value of T can mint
-  public mint[affine T](capability:T, amount:Int) => Token[T](amount) 
+  public mint[discard T](capability:T, amount:Int) => Token[T](amount) 
   
   //"?" Syntactic sugar for Result handling (similar to rusts ? but returning unconsumed affine inputs on a failure to preserve them)
   //"?" is used here to handle arithmetic overflows during addition 
-  public merge[affine T](Token[T](amount1), Token[T](amount2)) => Token[T](add(amount1,amount2)?)                                       
-  public split[affine T](Token[T](amount), split:Int) => case sub(amount,split)? of 
-                                                            (rem,split) => (Token[T](rem), Token[T](split)) 
-  public zero[affine T]() => Token[T](0)
+  public merge[T](Token[T](amount1), Token[T](amount2)) => Token[T](add(amount1,amount2)?)                                       
+  public split[T](Token[T](amount), split:Int) => (Token[T](sub(amount,split)?), Token[T](split)) 
+  public zero[T]() => Token[T](0)
   .... //Probably more stuff
 }
 
 module Purse {
-  public affine type Purse[T](Token[T])
+  powers<discard, read, store>
+  public type Purse[phantom T](Token[T])
   //Capability allowing to withdraw funds 
-  public transient view type Owned[T](Purse[T])   
+  powers<discard, read, store>
+  public view Owned[phantom T](Purse[T])   
   //The creator recieves a reference with the Owned view, which represents the withdraw capability
   public init Purse[T] => Owned[T](Purse[T](Token.zero()))  
 
-  public active deposit[affine T](purse: ref Purse[T], deposit:Token[T]) => modify purse with 
-                                                                                   Purse(t) => Purse(Token.merge(t, deposit)?)
-  public active withdraw[affine T](purse: ref Owned[T], amount:Int) => modify purse with 
-                                                                        Owned(Purse(t)) => case Token.split(t,amount)? of
-                                                                          (rem,split) => Owned(Purse(rem)) &return split
+  public active deposit[T](purse: ref Purse[T], deposit:Token[T]) => modify purse with 
+                                                                            Purse(t) => Purse(Token.merge(t, deposit)?)
+  public active withdraw[T](purse: ref Owned[T], amount:Int) => modify purse with 
+                                                                       Owned(Purse(t)) => case Token.split(t,amount)? of
+                                                                            (rem,split) => Owned(Purse(rem)) &return split
 }
 
 module DefaultPurseStore{
   //maps each T, address pair to a reference to a Owned Purse
   private const purse[T](address:Address) => new[Purse.Owned[T]]
   //"self" is the transaction initiator
-  public plain getMyPurse[affine T]() => purse[T](self)  
+  public plain getMyPurse[T]() => purse[T](self)  
   //unwrap removes the Owned view                                 
-  public plain getPurse[affine T](address:Address) => purse[T](address).unwrap 
-  public active transfer[affine T](target:Address, amount:Int) => 
-         Purse.deposite(getPurse[T](target),Purse.withdraw(getMyPurse[T], amount)?)? 
-  
+  public plain getPurse[T](address:Address) => purse[T](address).unwrap 
+  public active transfer[T](target:Address, amount:Int) => Purse.deposite(getPurse[T](target),Purse.withdraw(getMyPurse[T], amount)?)?
   .... //Probably some more stuff
 }
 
@@ -122,6 +119,7 @@ module DefaultPurseStore{
 ```
 module MyFixSupplyToken {
     //Identifier for Specific Token as well as Minting capability
+    powers<discard>
     public type MyToken
     //MyToken instance is used as capability allowing to create Token[MyToken]
     on deploy => DefaultPurseStore.getMyPurse().deposit(Token.mint[MyToken](MyToken, 100000000))? 
@@ -131,38 +129,42 @@ module MyFixSupplyToken {
 ```
 //Virtual encryption
 module Sealed {
-  public sealed view type Sealed[F,T](T)
+  //All except read
+  powers<create,discard,copy,store>
+  public view Sealed[phantom F,T](T)
   //only possesor of capability F can unseal
-  public unseal[affine F,fragile T](capability:F, Sealed[F,T](val)) => val 
+  public unseal[discard F,T](capability:F, Sealed[F,T](val)) => val 
   //allows usage of Sealed as view
-  public unsealRef[affine F,affine T](capability:F, Sealed[F,T](ref val)) => val 
+  public unsealRef[discard F,T](capability:F, Sealed[F,T](ref val)) => val 
 
 }
 
 //Virtual Signature
 module Authenticated {
-  public transient view type Signed[S,T](T)
+  //All except create
+  powers<read,discard,copy,store>
+  public view Signed[phantom S,T](T)
   //only possesor of capability S can sign
-  public sign[affine S,fragile T](capability:S, val:T) => Signed[S,T](val)
+  public sign[discard S,T](capability:S, val:T) => Signed[S,T](val)
   //allows usage of Signed as view
-  public signRef[affine S,affine T](capability:S, ref val:T) => val.wrap[Signed[S,T]]
+  public signRef[discard S,T](capability:S, ref val:T) => val.wrap[Signed[S,T]]
 
 }
 
 //Virtual Threshold encription 
 module Tresor {
   //Int -> needed Keys, Id -> special unique identifier type
-  public affine type Tresor[T](Int,Id,T) 
-  public affine type Keys(Int,Id)
+  powers<discard,store>
+  public type Tresor[T](Int,Id,T) 
+  powers<read,discard,store>
+  public type Keys(Int,Id)
  
-  public create[fragile T](total:Int, needed:Int, val:T) => let id = new Id in 
-                                                    (Tresor[T](needed,id, val), Keys(total,id))
+  public create[T](total:Int, needed:Int, val:T) => let id = new Id in (Tresor[T](needed,id, val), Keys(total,id))
   
-  public split(Keys(amount,id), split:Int) => case sub(amount,split)? of 
-                                                  (rem,split) => (Keys(rem,id), Keys(split,id)) 
+  public split(Keys(amount,id), split:Int) => (Keys(sub(amount,split)?,id), Keys(split,id)) 
   
   public merge(Keys(amount1,id1), Keys(amount2,id2)) => Keys(add(amount1,amount2)?,assert(id1==id2,id1)?)                               
-  public open[fragile T](Tresor[T](needed,id1,value), Keys(provided,id2)) => assert(id1 == id2 && needed <= provided, value)
+  public open[T](Tresor[T](needed,id1,value), Keys(provided,id2)) => assert(id1 == id2 && needed <= provided, value)
 
                                                             
 }
