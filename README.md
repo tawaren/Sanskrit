@@ -130,8 +130,8 @@ module MyFixSupplyToken {
 //Virtual encryption
 module Sealed {
   //All except read
-  powers<create,discard,copy,store>
-  public view Sealed[phantom F,T](T)
+  powers<create> //remaining except read may be added by dynamic T
+  public view Sealed[phantom F,dynamic T](T)
   //only possesor of capability F can unseal
   public unseal[discard F,T](capability:F, Sealed[F,T](val)) => val 
   //allows usage of Sealed as view
@@ -141,9 +141,8 @@ module Sealed {
 
 //Virtual Signature
 module Authenticated {
-  //All except create
-  powers<read,discard,copy,store>
-  public view Signed[phantom S,T](T)
+  powers<read> //remaining except create may be added by dynamic T
+  public view Signed[phantom S,dynamic T](T)
   //only possesor of capability S can sign
   public sign[discard S,T](capability:S, val:T) => Signed[S,T](val)
   //allows usage of Signed as view
@@ -154,8 +153,7 @@ module Authenticated {
 //Virtual Threshold encription 
 module Tresor {
   //Int -> needed Keys, Id -> special unique identifier type
-  powers<discard,store>
-  public type Tresor[T](Int,Id,T) 
+  public type Tresor[dynamic T](Int,Id,T) 
   powers<read,discard,store>
   public type Keys(Int,Id)
  
