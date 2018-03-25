@@ -34,7 +34,7 @@ The Sanskrit types do by restrict the interaction possibilitties for functions f
 When declaring a type, these restriction can individually be removed to create a type that provides the needed behaviour. Some of the powers (all except read, create) are recursive, meaning that constructor parameters can only have these powers if the constructed algebraic data type has them as well. For Example a type with read, discard and perstsit powers granted to other Modules make the perfect candidate for representing assets, tokens, cryptocurrencies etc... and thus the Sanskrit virtual machine does not have a native cryptocurrency that it must treat differently as they can conveniently be represented with the existing concepts. 
 
 ### Generics
-The Sanskrit virtual machine does support generic functions and types meaning that a type or function can take other types as parameters and thus can be defined in a more type independent way. To interact with the restriction system, generic parameters on functions must declare if they support additional powers (lifted restrictions) preventing the caller to instantiate them with a type that does not have the requested power. If a type has a generic parameter they can be marked with one of three modifiers: fixed (default), dynamic, phantom. Fixed type parameters can only be instantiated with types less or equally powerfull then the adt itself. Dynamic type parameters can be instantiated by any type and if that type is more powerfull then the adt, the missing powers are added to the resulting type. Phantom type parameters can be instantiated by any type without changing the adts powers but can not be used as type for parameters of a constructor. The non-recursive powers read and create are ignored when checking fixed and dynamic to represent the fact that a adt without read or create still can contain constructor params with these powers.
+The Sanskrit virtual machine does support generic functions and types meaning that a type or function can take other types as parameters and thus can be defined in a more type independent way. To interact with the restriction system, generic parameters on functions must declare if they support additional powers (lifted restrictions) preventing the caller to instantiate them with a type that does not have the requested power. If a type parameter in an algebraic datatype is less powerfull in respect to its recursive powers (all except read and create) then the resulting types powers are reduced accordingly. A type parameter can be marked phantom and in that case it can not be used as a type for a constructor parameter and can only used as generic parameter to other phantom type parameters, in return phantom generic parameters never strip power away from the resulting type.
 
 ### Capabilities
 The type system of Sanskrit is powerful enough to provide a capability-based access control system that has near zero runtime overhead and allows to check access control during compilation and thus code accessing values or calling functions it is not allowed to does not compile.
@@ -130,8 +130,8 @@ module MyFixSupplyToken {
 //Virtual encryption
 module Sealed {
   //All except read
-  powers<create> //remaining except read may be added by dynamic T
-  public view Sealed[phantom F,dynamic T](T)
+  powers<create, discard, copy, persist> // T may strip some powers away  
+  public view Sealed[phantom F,T](T)
   //only possesor of capability F can unseal
   public unseal[discard F,T](capability:F, Sealed[F,T](val)) => val 
   //allows usage of Sealed as view
@@ -141,8 +141,9 @@ module Sealed {
 
 //Virtual Signature
 module Authenticated {
-  powers<read> //remaining except create may be added by dynamic T
-  public view Signed[phantom S,dynamic T](T)
+  //All except create
+  powers<read, discard, copy, persist> // T may strip some powers away 
+  public view Signed[phantom S,T](T)
   //only possesor of capability S can sign
   public sign[discard S,T](capability:S, val:T) => Signed[S,T](val)
   //allows usage of Signed as view
@@ -153,7 +154,9 @@ module Authenticated {
 //Virtual Threshold encription 
 module Tresor {
   //Int -> needed Keys, Id -> special unique identifier type
-  public type Tresor[dynamic T](Int,Id,T) 
+  //All except read and create
+  powers<discard, copy, persist> // T may strip some powers away 
+  public type Tresor[T](Int,Id,T) 
   powers<read,discard,store>
   public type Keys(Int,Id)
  
