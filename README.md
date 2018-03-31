@@ -7,7 +7,7 @@ Copyright 2018 Markus Knecht, System Communication Group, University of Zurich.
 Concrete Licence is not yet defined.
 
 ## Status
-This is in a very early stage and currently just a description of what the goal is with no commited code yet.
+This is in a very early stage. Currently only parts of the parsing layer are commited and tested.
 
 ## Why another smart contract virtual machine
 Most currently used smart contract virtual machine couple the code and the state of a contract/blockchain object tightly. The code associated with a contract is the only code that can write and read to/from the associated storage/state. In exchange, this code can be granted arbitrary access to its storage and other local resources like its memory or stack and thus can be a simple low-level bytecode without a type system or any enforced guarantees. This model is simple and easy to implement but has some drawbacks as well. It is not possible to do cross contract optimisations like for example inlining a cross-contract call and further it is not possible to compile languages to it that require that certain guarantees given by the compiler hold at runtime as soon as these guarantees have to hold cross contracts. This prevents the use of alternative concepts and paradigms that may be a beneficial addition to smart contract programming. With Sanskrit VM and later a high-level language (codename: Mandala) such alternative concepts and paradigms will be explored.
