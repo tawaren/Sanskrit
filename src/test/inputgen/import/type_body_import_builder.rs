@@ -5,11 +5,13 @@ use test::inputgen::serializer::*;
 use test::inputgen::type_builder::*;
 use compiler::common::macros::view::Deserializer;
 
+#[derive(Clone)]
 pub struct ConstructorsImportBuilder {
     data:Vec<u8>,
     ctrs:Vec<(usize,ConstructorCaseBuilder)>,
 }
 
+#[derive(Clone)]
 pub struct InitImportBuilder {
     data:Vec<u8>,
 }

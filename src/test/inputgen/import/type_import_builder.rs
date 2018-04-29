@@ -3,6 +3,7 @@ use compiler::common::parsing::*;
 use compiler::typ::fields::imported::*;
 use test::inputgen::serializer::*;
 
+#[derive(Clone)]
 pub struct TypeImportBuilder {
     data:Vec<u8>,
 }

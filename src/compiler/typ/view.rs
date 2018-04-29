@@ -45,7 +45,8 @@ impl<'a> TypeView<'a> {
         if data[main::MAGIC_NUMBER.start] != main::TYPE_MAGIC_NUMBER {return Result::Err(ParsingError::WrongMagicNumber {expected:main::TYPE_MAGIC_NUMBER, actual:data[main::MAGIC_NUMBER.start]})}
         if data[main::VERSION.start] != PARSER_VERSION {return Result::Err(ParsingError::WrongInputVersion {expected:PARSER_VERSION, actual:data[main::VERSION.start]})}
 
-        let has_init =  with_body && TypeKind::from_bytes(&data[main::KIND.start..(main::KIND.start+main::KIND.len)])? == TypeKind::Cell;
+        let has_init = TypeKind::from_bytes(&data[main::KIND.start..])? == TypeKind::Cell;
+        let has_body =  with_body && has_init;
         let dynstart = if !has_init  {
             main::DYNAMIC_PART_START
         } else {
@@ -58,7 +59,7 @@ impl<'a> TypeView<'a> {
         let type_imports = ImportedTypePointer::create(data,module_imports.after(),data[main::NUM_TYPE_IMPORTS.start]);
         let constructors = CtrViewPointer::create(data,type_imports.after(),data[main::NUM_CONSTRUCTORS.start]);
 
-        if has_init {
+        if has_body {
             let Length(body_start) = Length::from_bytes(&data[main::HEADER_SIZE.start..])?;
             let Length(body_size) =  Length::from_bytes(&data[((body_start as usize) + body::BODY_SIZE.start)..])?;
 
@@ -121,7 +122,7 @@ impl<'a> TypeView<'a> {
 
     pub fn integrity_hash(&self) -> Result<Hash,ParsingError>{
         match self.integrity_hash_cache {
-            Some(ref c) => Hash::from_blake(c.borrow_with(||blake2b(HASH_SIZE, &[], &self.data[..]))),
+            Some(ref c) => Hash::from_blake(c.borrow_with(||blake2b(HASH_SIZE, &[], &self.data[main::IDENTITY_HEADER_END..]))),
             None => Err(ParsingError::MissingBody)
         }
     }
@@ -131,7 +132,7 @@ impl<'a> TypeView<'a> {
     }
 
     pub fn extract_data(&self) -> Vec<u8>{
-        let mut targ:Vec<u8> = Vec::with_capacity(self.data.len());
+        let mut targ:Vec<u8> = vec![0 as u8; self.data.len()];
         targ.copy_from_slice(self.data);
         targ
     }
@@ -152,7 +153,7 @@ impl<'a> HeaderTypeView<'a> {
 
 
     pub fn type_hash(&self) -> Result<Hash,ParsingError>{
-        Hash::from_blake(self.type_hash_cache.borrow_with(||blake2b(HASH_SIZE, &[], &self.data[0..main::IDENTITY_HEADER_END])))
+        Hash::from_blake(self.type_hash_cache.borrow_with(||blake2b(HASH_SIZE, &[], &self.data[..main::IDENTITY_HEADER_END])))
     }
 }
 

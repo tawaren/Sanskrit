@@ -16,12 +16,18 @@ impl ModuleBuilder {
         let mut base:Vec<u8> = Vec::new();
         add_ser_at(&mut base,main::MAGIC_NUMBER.start, main::MODULE_MAGIC_NUMBER);
         add_ser_at(&mut base,main::VERSION.start, 0 as u8);
+        add_ser_at(&mut base,main::META_TYPE.start, 0 as u8);
+        add_ser_at(&mut base,main::META.start, 0 as u8);
         add_ser_at(&mut base,main::NUM_TYPES.start, 0 as u8);
         add_ser_at(&mut base,main::NUM_FUNCTIONS.start, 0 as u8);
         add_ser_at(&mut base,main::NUM_CONSTANTS.start, 0 as u8);
         ModuleBuilder{ data:base }
     }
 
+    pub fn set_meta_info(&mut self, meta_type:Version, meta:Hash){
+        add_ser_at(&mut self.data,main::META_TYPE.start, meta_type);
+        add_ser_at(&mut self.data,main::META.start, meta);
+    }
 
     //repeatable
     pub fn add_type_import(&mut self, data:Hash){

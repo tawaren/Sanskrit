@@ -3,7 +3,7 @@ use compiler::common::parsing::*;
 use compiler::function::fields::imported::*;
 use test::inputgen::serializer::*;
 
-
+#[derive(Clone)]
 pub struct FunctionImportBuilder {
     data:Vec<u8>,
 }

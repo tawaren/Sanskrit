@@ -104,9 +104,19 @@ impl<'a> FunctionView<'a> {
 
     pub fn integrity_hash(&self) -> Result<Hash,ParsingError> {
         match self.integrity_hash_cache {
-            Some(ref c) => Hash::from_blake(c.borrow_with(|| blake2b(HASH_SIZE, &[], &self.data[..]))),
+            Some(ref c) => Hash::from_blake(c.borrow_with(|| blake2b(HASH_SIZE, &[], &self.data[main::IDENTITY_HEADER_END..]))),
             None => Err(ParsingError::MissingBody)
         }
+    }
+
+    pub fn borrow_data(&self) -> &'a [u8]{
+        self.data
+    }
+
+    pub fn extract_data(&self) -> Vec<u8>{
+        let mut targ:Vec<u8> = vec![0 as u8; self.data.len()];
+        targ.copy_from_slice(self.data);
+        targ
     }
 }
 

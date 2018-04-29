@@ -134,9 +134,10 @@ impl<'a> Deserializer<'a> for Control {
             0 => Result::Ok(Control::Ref),
             1 => Result::Ok(Control::Owned),
             2 => Result::Ok(Control::Borrowed),
-            3 => Result::Ok(Control::UnusedOwned),
-            4 => Result::Ok(Control::UnusedBorrowed),
-            x => Result::Err(ParsingError::WrongEnumEncoding {provided:x,max:4,enum_name:"Control"})
+            3 => Result::Ok(Control::UnusedRef),
+            4 => Result::Ok(Control::UnusedOwned),
+            5 => Result::Ok(Control::UnusedBorrowed),
+            x => Result::Err(ParsingError::WrongEnumEncoding {provided:x,max:5,enum_name:"Control"})
         }
     }
 
@@ -192,7 +193,6 @@ impl<'a> Deserializer<'a> for OptimizationDeclaration {
             0 => Result::Ok(OptimizationDeclaration::Empty),
             1 => Result::Ok(OptimizationDeclaration::Wrapper),
             2 => Result::Ok(OptimizationDeclaration::Normal),
-            3 => Result::Ok(OptimizationDeclaration::EmptyWrapper),
             x => Result::Err(ParsingError::WrongEnumEncoding {provided:x,max:2,enum_name:"OptimizationDeclaration"})
         }
     }

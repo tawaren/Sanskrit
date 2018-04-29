@@ -46,7 +46,8 @@ impl error::Error for CompilationError {
 }
 
 impl From<option::NoneError> for CompilationError {
-    fn from(_:option::NoneError) -> Self {
-        CompilationError::NoneError
+    fn from(_:option::NoneError) -> Self{
+        panic!();
+            CompilationError::NoneError
     }
 }

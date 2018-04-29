@@ -34,7 +34,7 @@ mod type_tests {
             optimisation_declaration: OptimizationDeclaration::Empty,
         });
 
-
+        builder.add_init_code( Hash::from_bytes(&PSEUDO_HASH_BYTES3).unwrap());
         builder
     }
 
@@ -65,7 +65,7 @@ mod type_tests {
         import.add_fix_header_data(TypeImportData{
             module_id: ModuleId(2),
             type_index: MemberIndex(1),
-            optimisation_declaration: OptimizationDeclaration::EmptyWrapper,
+            optimisation_declaration: OptimizationDeclaration::Normal,
             kind_declaration: TypeKind::View,
             privileges_declaration: Privileges::no_privileges()
                 .add_create_privilege()
@@ -244,6 +244,7 @@ mod type_tests {
     #[test] fn imports_without_body(){
         let mut builder = header_without_type_imports();
 
+
         builder.add_module_import( Hash::from_bytes(&PSEUDO_HASH_BYTES).unwrap());
         builder.add_module_import( Hash::from_bytes(&PSEUDO_HASH_BYTES2).unwrap());
 
@@ -260,6 +261,7 @@ mod type_tests {
                 .add_wrap_privilege(),
         });
 
+
         import.add_type_apply(TypeId(0));
         import.add_type_apply(TypeId(3));
         import.add_type_apply(TypeId(7));
@@ -273,6 +275,7 @@ mod type_tests {
         let view = TypeView::parse(&data,false).unwrap();
 
         fn my_catch(view:&TypeView) -> Result<(),CompilationError>{
+            assert_eq!(view.header.code_hash()?,Hash::from_bytes(&PSEUDO_HASH_BYTES3)?);
 
             assert_eq!(view.header.module_imports.len(),2);
             assert_eq!(view.header.module_imports.get(0)?,Hash::from_bytes(&PSEUDO_HASH_BYTES)?);
@@ -699,7 +702,7 @@ mod function_tests {
         import.add_fix_header_data(TypeImportData{
             module_id: ModuleId(2),
             type_index: MemberIndex(1),
-            optimisation_declaration: OptimizationDeclaration::EmptyWrapper,
+            optimisation_declaration: OptimizationDeclaration::Normal,
             kind_declaration: TypeKind::View,
             privileges_declaration: Privileges::no_privileges()
                 .add_create_privilege()

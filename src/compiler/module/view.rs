@@ -33,6 +33,8 @@ impl<'a> ModuleView<'a> {
 
     }
 
+    field_accessor!(META_TYPE,meta_type,Version,Version);
+    field_accessor!(META,meta,Hash,Hash);
     field_accessor!(VERSION,version,Version,Version);
 
     pub fn module_hash(&self) -> Result<Hash,ParsingError>{
@@ -44,8 +46,6 @@ impl<'a> ModuleView<'a> {
     }
 
     pub fn extract_data(&self) -> Vec<u8>{
-        let mut targ:Vec<u8> = Vec::with_capacity(self.data.len());
-        targ.copy_from_slice(self.data);
-        targ
+        self.data.to_vec()
     }
 }

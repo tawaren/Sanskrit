@@ -16,6 +16,16 @@ impl Privileges {
         Privileges(cur | other)
     }
 
+    pub fn is_valid(&self) -> bool {
+        if self.has_privilege(1 << 9) & !self.has_privilege(EXTRACT_PRIVILEGE) {return false}
+        if self.has_privilege(1 << 10) & !self.has_privilege(CREATE_PRIVILEGE) {return false}
+        if self.has_privilege(1 << 0) & !self.has_privilege(PERSIST_PRIVILEGE) {return false}
+        if self.has_privilege(1 << 1) & !self.has_privilege(PERSIST_PRIVILEGE) {return false}
+        if self.has_privilege(1 << 4) & !self.has_privilege(PERSIST_PRIVILEGE) {return false}
+        if self.has_privilege(1 << 5) & !self.has_privilege(PERSIST_PRIVILEGE) {return false}
+        return true;
+    }
+
     pub fn add_privilege(&self,privilege:u16) -> Self {
         let &Privileges(cur) = self;
         Privileges(cur | privilege)
@@ -28,7 +38,7 @@ impl Privileges {
     
     pub fn strip_non_recursive(&self) -> Self {
         let &Privileges(cur) = self;
-        Privileges(cur & !(WRITE_PRIVILEGE | LOAD_PRIVILEGE | ACCESS_PRIVILEGE | CREATE_PRIVILEGE | UNWRAP_PRIVILEGE | WRAP_PRIVILEGE))
+        Privileges(cur & !((WRITE_PRIVILEGE | LOAD_PRIVILEGE | ACCESS_PRIVILEGE | CREATE_PRIVILEGE | UNWRAP_PRIVILEGE | WRAP_PRIVILEGE) & !PERSIST_PRIVILEGE))
     }
 
     pub fn add_unwrap_privilege(&self) -> Self {
@@ -68,13 +78,6 @@ impl Privileges {
     }
 
     pub fn add_native_privilege(&self) -> Self {
-        self.add_access_privilege();
-        self.add_create_privilege();
-        self.add_load_privilege();
-        self.add_write_privilege();
-        self.add_discard_privilege();
-        self.add_copy_privilege();
-        self.add_persist_privilege();
         self.add_privilege(NATIVE_PRIVILEGE)
     }
 
@@ -84,6 +87,14 @@ impl Privileges {
 
     pub fn has_wrap_privilege(&self) -> bool {
         self.has_privilege(WRAP_PRIVILEGE)
+    }
+
+    pub fn has_extract_privilege(&self) -> bool {
+        self.has_privilege(EXTRACT_PRIVILEGE)
+    }
+
+    pub fn has_assemble_privilege(&self) -> bool {
+        self.has_privilege(ASSEMBLE_PRIVILEGE)
     }
 
     pub fn has_access_privilege(&self) -> bool {
@@ -120,7 +131,7 @@ impl Privileges {
 
     pub fn implies(&self, privileges:&Privileges) -> bool{
         let (&Privileges(me),&Privileges(other)) = (self, privileges);
-        (!me | other) == 255
+        !(!me | other) == 0
     }
 }
 

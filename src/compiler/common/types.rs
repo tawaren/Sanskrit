@@ -73,17 +73,20 @@ pub const AMOUNT_SIZE: usize = 1;
 pub struct Amount(pub u8);
 
 pub const PRIVILEGES_SIZE:usize = 2;
-pub const UNWRAP_PRIVILEGE:u16 = 1 << 0;
-pub const WRAP_PRIVILEGE:u16 = 1 << 1;
+pub const UNWRAP_PRIVILEGE:u16 = 1 << 0 | PERSIST_PRIVILEGE;
+pub const WRAP_PRIVILEGE:u16 = 1 << 1 | PERSIST_PRIVILEGE;
 pub const ACCESS_PRIVILEGE:u16 = 1 << 2;
 pub const CREATE_PRIVILEGE:u16 = 1 << 3;
-pub const LOAD_PRIVILEGE:u16 = 1 << 4;
-pub const WRITE_PRIVILEGE:u16 = 1 << 5;
+pub const LOAD_PRIVILEGE:u16 = 1 << 4 | PERSIST_PRIVILEGE;
+pub const WRITE_PRIVILEGE:u16 = 1 << 5 | PERSIST_PRIVILEGE;
 pub const DISCARD_PRIVILEGE:u16 = 1 << 6;
 pub const COPY_PRIVILEGE:u16 = 1 << 7;
 pub const PERSIST_PRIVILEGE:u16 = 1 << 8;
-pub const NATIVE_PRIVILEGE:u16 = 1 << 9 | ACCESS_PRIVILEGE | CREATE_PRIVILEGE | DISCARD_PRIVILEGE | COPY_PRIVILEGE | PERSIST_PRIVILEGE;
-pub const ALL_PRIVILEGES:u16 = NATIVE_PRIVILEGE | UNWRAP_PRIVILEGE | WRAP_PRIVILEGE | LOAD_PRIVILEGE | WRITE_PRIVILEGE;
+pub const EXTRACT_PRIVILEGE:u16 = 1 << 9 | ACCESS_PRIVILEGE;
+pub const ASSEMBLE_PRIVILEGE:u16 = 1 << 10 | CREATE_PRIVILEGE;
+pub const ALL_PRIVILEGES:u16 = (1 << 11) -1;
+
+pub const NATIVE_PRIVILEGE:u16 = ASSEMBLE_PRIVILEGE | EXTRACT_PRIVILEGE | DISCARD_PRIVILEGE | COPY_PRIVILEGE | PERSIST_PRIVILEGE;
 
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
 pub struct Privileges(pub u16);
@@ -96,11 +99,15 @@ pub enum Control {
     Ref,             //Overwrites behaviour act as Plain but no unpack, just inspect
     Owned,           //Follow the Behaviour
     Borrowed,        //Not allowed on  (inkl let & case of) or Adt: Overwrites behaviour (can not be stored in ADT) else like Plain
-    //These two have the role of an optimisation: if a param is never accessed a HHL can mark it unused, which then leads to near zero runtime overhead
+    //These three have the role of an optimisation: if a param is never accessed a HHL can mark it unused, which then leads to near zero runtime overhead
+    UnusedRef,      //Ref + No interaction that need actual data       (no load, no write, no eq, ...)
     UnusedOwned,    //Owned + No interaction that need actual data     (no inspect, no unpack, no eq, ...)
     UnusedBorrowed, //Borrowed + No interaction that need actual data  (no inspect, no unpack, no eq, ...)
 
 }
+//Todo: should controll has 2 fields?? 1 Use, Unused, & 1 Ref, Borrowed, Owned
+
+
 
 pub const BOUND_SIZE:usize = 1;
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
@@ -141,8 +148,13 @@ pub enum OptimizationDeclaration {
     Normal,
     Empty,       //Only for optimisation
     Wrapper,     //For Optimisation
-    EmptyWrapper,//Both a wrapper and empty
 }
 
 
+//OTPIM MEANING ADT:
+// EMPTY    => Optim: Value can be generated from type (only one value) -- (value has 0 bits)
+// WRAPPER  => Optim: Created instance has same runtime representation as its argument -- (X(a) == a @ runtime) -- (just type differs)
 
+//OTPIM MEANING Function:
+// EMPTY    => Optim: Result is Empty and has no sideeffects (result can be generated from type)
+// WRAPPER  => Optim: Result has same runtime representation as the functions argument and no sideeffects

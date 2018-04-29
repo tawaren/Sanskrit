@@ -261,8 +261,9 @@ impl Serializable for Control {
             Control::Ref => 0,
             Control::Owned => 1,
             Control::Borrowed => 2,
-            Control::UnusedOwned => 3,
-            Control::UnusedBorrowed => 4
+            Control::UnusedRef => 3,
+            Control::UnusedOwned => 4,
+            Control::UnusedBorrowed => 5
         }
     }
 
@@ -337,7 +338,6 @@ impl Serializable for OptimizationDeclaration {
             OptimizationDeclaration::Empty => 0,
             OptimizationDeclaration::Wrapper => 1,
             OptimizationDeclaration::Normal => 2,
-            OptimizationDeclaration::EmptyWrapper => 3,
         }
     }
 

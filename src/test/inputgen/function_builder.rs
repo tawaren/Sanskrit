@@ -8,16 +8,17 @@ use test::inputgen::import::function_import_builder::*;
 use test::inputgen::import::type_body_import_builder::*;
 
 
-pub struct FunctionBuilder{
-    data:Vec<u8>,
-    types:Vec<(usize,TypeImportBuilder)>,
-    functions:Vec<(usize,FunctionImportBuilder)>,
-    ctr_imports:Vec<(usize,ConstructorsImportBuilder)>,
-    init_imports:Vec<(usize,InitImportBuilder)>,
-    header_start:u16,
-    code_start:u16
+#[derive(Clone)]
+pub struct FunctionBuilder {
+    data: Vec<u8>,
+    types: Vec<(usize, TypeImportBuilder)>,
+    functions: Vec<(usize, FunctionImportBuilder)>,
+    ctr_imports: Vec<(usize, ConstructorsImportBuilder)>,
+    init_imports: Vec<(usize, InitImportBuilder)>,
+    header_start: u16,
+    code_start: u16,
 }
-
+#[derive(Clone)]
 pub struct HeaderData<'a> {
     pub module_hash:Hash<'a>,
     pub fun_index:MemberIndex,
@@ -75,6 +76,10 @@ impl FunctionBuilder {
         add_ser_at(&mut self.data,main::NUM_TYPE_IMPORTS.start, 0 as u8);
     }
 
+    pub fn adapt_module_hash(&mut self, module_hash:Hash){
+        add_ser_at(&mut self.data,main::MODULE_HASH.start, module_hash);
+    }
+
     //repeatable
     pub fn add_generic(&mut self, data:Privileges){
         self.data[main::NUM_GENERICS.start] += 1;
@@ -83,7 +88,7 @@ impl FunctionBuilder {
 
     //repeatable
     pub fn add_param(&mut self, data:Field){
-        self.data[main::NUM_GENERICS.start] += 1;
+        self.data[main::NUM_PARAMS.start] += 1;
         push_ser(&mut self.data, data)
     }
 
