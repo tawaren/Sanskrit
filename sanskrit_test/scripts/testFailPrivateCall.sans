@@ -1,0 +1,6 @@
+module TestFailPrivateCall {
+    private fun Test():(){
+        () = call TestSucFun.TestEmptyPriv[]();
+        return;
+    };
+}

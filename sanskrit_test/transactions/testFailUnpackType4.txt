@@ -1,0 +1,5 @@
+signed(A) transaction{
+   a = lit 1:$u8;
+   b = &pack SomeTypes.Dual[$u8]#Ctr1(a);
+   c = &unpack b:SomeTypes.Dual#Ctr2;
+};

@@ -1,0 +1,9 @@
+module TestFailAdtConstraintApply {
+    type <Embed> Inner[<Drop> A] {
+        Inner;
+    };
+
+    type Wrapper[A] {
+        Ctr(.Inner[A]);
+    };
+}

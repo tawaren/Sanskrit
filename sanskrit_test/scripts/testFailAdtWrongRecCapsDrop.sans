@@ -1,0 +1,9 @@
+module TestFailAdtWrongRecCapsDrop {
+    type <Embed> Inner {
+        Inner;
+    };
+
+    type <Drop> Wrapper {
+        Ctr(.Inner);
+    };
+}

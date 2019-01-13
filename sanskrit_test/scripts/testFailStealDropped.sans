@@ -1,0 +1,7 @@
+module TestFailStealDropped {
+    private fun Test[<Drop> A](consume a:A):(borrowed(a) c:A){
+       b = a;
+       c = &b;
+       return c;
+    };
+}

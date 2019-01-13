@@ -1,0 +1,6 @@
+module TestFailFunDoubleDrop {
+   fun TestFunApply[<Drop> A](consume a:A):() {
+       b = a;
+       discard (b,b);
+   };
+}

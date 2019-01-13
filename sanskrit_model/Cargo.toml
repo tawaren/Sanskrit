@@ -1,0 +1,16 @@
+[package]
+name = "sanskrit_core"
+version = "0.1.0"
+authors = ["tawaren <markus.knecht85@gmail.com>"]
+
+[features]
+default = ["std"]
+std = []
+
+[dependencies.sanskrit_common]
+path = "../sanskrit_common"
+version = "0.1.0"
+
+[dependencies.sanskrit_derive]
+path = "../sanskrit_derive"
+version = "0.1.0"

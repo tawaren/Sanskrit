@@ -1,0 +1,9 @@
+module TestFailAdtPhantomApply {
+    type <Embed> Inner[A] {
+        Inner;
+    };
+
+    type Wrapper[phantom A] {
+        Ctr(.Inner[A]);
+    };
+}

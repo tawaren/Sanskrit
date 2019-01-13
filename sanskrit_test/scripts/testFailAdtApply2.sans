@@ -1,0 +1,9 @@
+module TestFailAdtApply2 {
+    type <Embed> Inner[A,B] {
+        Inner;
+    };
+
+    type Wrapper[A,B,C] {
+        Ctr(.Inner[A,B,C]);
+    };
+}

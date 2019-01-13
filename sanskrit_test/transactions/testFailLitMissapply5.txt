@@ -1,0 +1,3 @@
+signed(A) transaction{
+   a = pack SomeTypes.NoArg[$alt2[$u8]]#Ctr();
+};

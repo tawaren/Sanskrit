@@ -1,0 +1,20 @@
+module TestFailBranchReturnType3 {
+    err X;
+
+    private fun Test[<Drop> A,B](consume a:A, consume b:B):(a3:A,b3:B){
+        (a3,b3) = try {
+            a2 = a;
+            b2 = b;
+            return (a2, b2);
+        } catch {
+            .X => {
+                a2 = a;
+                b2 = b;
+                discard (a2);
+                return b2;
+            };
+        };
+
+        return (a3,b3);
+    };
+}

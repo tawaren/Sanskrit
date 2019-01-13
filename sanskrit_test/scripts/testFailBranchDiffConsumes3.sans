@@ -1,0 +1,16 @@
+module TestFailBranchDiffConsumes3 {
+    err X;
+
+    private fun Test[<Drop> A,<Drop> B](consume a:A, consume b:B):(){
+        () = try {
+            drop a;
+            return;
+        } catch {
+            .X => {
+                return;
+            };
+        };
+
+        return;
+    };
+}

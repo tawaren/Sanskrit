@@ -1,0 +1,6 @@
+module TestFailCreate3 {
+    private fun Test():(b:$u8){
+       b = pack $u8#Val();
+       return b;
+    };
+}

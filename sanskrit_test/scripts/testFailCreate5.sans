@@ -1,0 +1,10 @@
+module TestFailCreate5 {
+    type X{
+        Ctr();
+    };
+
+    private fun Test():(b:.X){
+       b = &pack .X#Ctr();
+       return b;
+    };
+}

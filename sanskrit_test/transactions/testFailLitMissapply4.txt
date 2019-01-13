@@ -1,0 +1,3 @@
+signed(A) transaction{
+   a = pack SomeTypes.NoArg[$tuple2[$u8,$u8,$u8]]#Ctr();
+};

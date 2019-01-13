@@ -1,0 +1,10 @@
+module TestFailCopy2 {
+    type X {
+        X();
+    };
+
+    private fun Test(a:.X):(b:.X){
+        b = copy a;
+        return b;
+    };
+}

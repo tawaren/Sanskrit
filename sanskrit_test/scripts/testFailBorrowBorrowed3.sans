@@ -1,0 +1,12 @@
+module TestFailBorrowBorrowed3 {
+
+    type <Drop, Embed> X[<Embed> A]{
+        Ctr(A);
+    };
+
+    private fun Test[<Embed, Drop> A](a:.X[A]):(){
+       b = &unpack a:.X[A];
+       c = &a;
+       return;
+    };
+}

@@ -1,0 +1,8 @@
+module TestFailAdtWrongRecCapsDropInfer {
+
+    type <Embed, Persist, Copy, Consume, Inspect, Create> AllRecExceptDrop{ Ctr(); };
+
+    type Test{
+           CheckDrop(TestSucCaps.HasDrop[TestSucCaps.MayDrop[.AllRecExceptDrop]]);
+    };
+}

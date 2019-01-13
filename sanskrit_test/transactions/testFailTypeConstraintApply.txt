@@ -1,0 +1,3 @@
+signed(A) transaction{
+     a = pack SomeTypes.NeedsCopy[SomeTypes.NoCopy[$u8]]#Ctr();
+};

@@ -1,0 +1,7 @@
+module TestFailBorrowMoved {
+    private fun Test[<Drop> A](consume a:A):(b:A){
+       b = a;
+       c = &a;
+       return b;
+    };
+}

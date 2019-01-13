@@ -1,0 +1,6 @@
+module TestFailFree {
+    private fun Test[A](a:A):(){
+       free a;
+       return;
+    };
+}

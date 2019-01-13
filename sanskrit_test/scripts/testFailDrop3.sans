@@ -1,0 +1,10 @@
+module TestFailDrop3 {
+    type X {
+        X();
+    };
+
+    private fun Test(x:.X):(){
+       drop x;
+       return;
+    };
+}

@@ -1,0 +1,77 @@
+module CastOps {
+
+    public fun Extend(a:$u8):(c:$u128) {
+        c = call $Extend[$u8,$u128](a);
+        return c;
+    };
+
+    public fun Extend2(a:$i8):(c:$i128) {
+        c = call $Extend[$i8,$i128](a);
+        return c;
+    };
+
+    public risky<$NumericError> fun Cut(a:$u16):(c:$u8) {
+        c = call $Cut[$u16,$u8](a);
+        return c;
+    };
+
+    public risky<$NumericError> fun Cut2(a:$i16):(c:$i8) {
+        c = call $Cut[$i16,$i8](a);
+        return c;
+    };
+
+    public fun ErrorCut(a:$i16):(r:$bool) {
+        r = try {
+            c = call $Cut[$i16,$i8](a);
+            drop c;
+            r = pack $bool#false();
+            return r;
+        } catch {
+            $NumericError => {
+                r = pack $bool#true();
+                return r;
+            };
+        };
+        return r;
+    };
+
+    public risky<$NumericError> fun SignCast(a:$u8):(c:$i8) {
+        c = call $SignCast[$u8,$i8](a);
+        return c;
+    };
+
+    public risky<$NumericError> fun SignCast2(a:$i8):(c:$u8) {
+        c = call $SignCast[$i8,$u8](a);
+        return c;
+    };
+
+    public fun ErrorSignCast(a:$u8):(r:$bool) {
+        r = try {
+            c = call $SignCast[$u8,$i8](a);
+            drop c;
+            r = pack $bool#false();
+            return r;
+        } catch {
+            $NumericError => {
+                r = pack $bool#true();
+                return r;
+            };
+        };
+        return r;
+    };
+
+    public fun ErrorSignCast2(a:$i8):(r:$bool) {
+        r = try {
+            c = call $SignCast[$i8,$u8](a);
+            drop c;
+            r = pack $bool#false();
+            return r;
+        } catch {
+            $NumericError => {
+                r = pack $bool#true();
+                return r;
+            };
+        };
+        return r;
+    };
+}

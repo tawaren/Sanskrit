@@ -1,0 +1,12 @@
+module TestFailUnpackType8 {
+
+    type X[<Embed> A] {
+        X1(A);
+        X2(A);
+    };
+
+    private fun Test[<Embed> A](a:.X[A]):(borrowed(a) b:A){
+       b = &unpack a:.X[A];
+       return b;
+    };
+}

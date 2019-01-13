@@ -1,0 +1,13 @@
+module TestFailRiskyCall {
+
+    err X;
+
+    risky <.X> fun ThrowTest[A](a:A):(a:A){
+        throw .X;
+    };
+
+    fun ThrowTestCall[A](a:A):(b:A){
+        b = call .ThrowTest[A](a);
+        return b;
+    };
+}

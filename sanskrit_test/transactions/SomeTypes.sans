@@ -1,0 +1,101 @@
+module SomeTypes {
+
+   type <Consume, Inspect, Create, Copy, Drop, Embed, Persist> Empty{
+        Ctr();
+   };
+
+   type <Consume, Inspect, Create, Copy, Drop, Embed, Persist> NeedsCopy[<Copy> A]{
+           Ctr();
+   };
+
+   type <Consume, Inspect, Create, Copy, Drop, Embed, Persist> NoArg[A]{
+        Ctr();
+    };
+
+    type <Consume, Inspect, Create, Copy, Drop, Embed, Persist> FixU16{
+        Ctr($u16);
+    };
+
+    type <Consume, Inspect, Create, Copy, Drop, Embed, Persist> X[<Embed> A]{
+        Ctr(A);
+    };
+
+    type <Consume, Inspect, Create, Copy, Drop, Embed, Persist> Y[<Embed> A]{
+        Ctr(A);
+    };
+
+    type <Consume, Inspect, Create, Copy, Drop, Embed, Persist> Z[<Embed> A, phantom B]{
+        Ctr(A);
+    };
+
+    type <Consume, Inspect, Create, Copy, Drop, Embed, Persist> Dual[<Embed> A]{
+        Ctr1(A);
+        Ctr2(A);
+    };
+
+    type <Consume, Inspect, Create, Copy, Drop, Embed, Persist> DuoType[<Embed> A]{
+        Ctr(A,A);
+    };
+
+    type <Inspect, Create, Copy, Drop, Embed, Persist> NoConsume[<Embed> A]{
+        Ctr(A);
+    };
+
+    type <Create, Copy, Drop, Embed, Persist> NoInspect[<Embed> A]{
+        Ctr(A);
+    };
+
+    type <Consume, Inspect, Copy, Drop, Embed, Persist> NoCreate[<Embed> A]{
+            Ctr(A);
+    };
+
+    type <Consume, Inspect, Create, Drop, Embed, Persist> NoCopy[<Embed> A]{
+        Ctr(A);
+    };
+
+    type <Consume, Inspect, Create, Copy, Embed, Persist> NoDrop[<Embed> A]{
+        Ctr(A);
+    };
+
+    type <Consume, Inspect, Create, Copy, Drop, Persist> NoEmbed[<Embed> A]{
+        Ctr(A);
+    };
+
+    type <Consume, Inspect, Create, Copy, Drop, Embed> NoPersist[<Embed> A]{
+        Ctr(A);
+    };
+
+    type <Indexed, Persist, Consume, Inspect, Create, Copy, Drop, Embed> WitIndex[<Embed> A]{
+        Ctr($index,A);
+    };
+
+    public fun GenIndexed[<Embed> A](consume a:A):(d:.WitIndex[A]) {
+         b = lit 0x00112233445566778899AABBCCDDEEFF00112233:$data20;
+         c = call $GenIndex[$data20](b);
+         d = pack .WitIndex[A]#Ctr(c,a);
+         return d;
+    };
+
+    public fun GenIndexedAt[<Embed> A](b:$data20, consume a:A):(r:$ref, d:.WitIndex[A]) {
+         b2 = copy b;
+         c = call $GenIndex[$data20](b2);
+         r = call $ToRef[$index](c);
+         d = pack .WitIndex[A]#Ctr(c,a);
+         return (r,d);
+    };
+
+    type <Persist, Consume, Inspect, Create, Copy, Drop, Embed> NoIndexed[<Embed> A]{
+        Ctr($index,A);
+    };
+
+    public fun GenNoIndex[<Embed> A](consume a:A):(d:.NoIndexed[A]) {
+        b = lit 0x00112233445566778899AABBCCDDEEFF00112233:$data20;
+        c = call $GenIndex[$data20](b);
+        d = pack .NoIndexed[A]#Ctr(c,a);
+        return d;
+    };
+
+    type <Create, Drop> PhantomArg[phantom A]{
+        Ctr();
+    };
+}

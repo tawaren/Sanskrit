@@ -1,0 +1,34 @@
+signed(A) transaction{
+   a = lit 1:$u8;
+   b = pack SomeTypes.NoDrop[$u8]#Ctr(a);
+   d = lit 0x00112233445566778899AABBCCDDEEFF00112233:$data;
+   (r, s) = call SomeTypes.GenIndexedAt[SomeTypes.NoDrop[$u8]](d,b);
+   store s;
+};
+
+signed(A) transaction{
+   a = lit 0x00112233445566778899AABBCCDDEEFF00112233:$data;
+   r = call SomeFunctions.GenRef(a);
+   b = &load r;
+};
+
+
+signed(A) transaction{
+   a = lit 0x00112233445566778899AABBCCDDEEFF00112233:$data;
+   r = call SomeFunctions.GenRef(a);
+   b = load r;
+   c = load r;
+   (d0, i0) = unpack b:SomeTypes.WitIndex#Ctr;
+   (d1, i1) = unpack c:SomeTypes.WitIndex#Ctr;
+   d2 = unpack i0:SomeTypes.NoDrop#Ctr;
+   d3 = unpack i1:SomeTypes.NoDrop#Ctr;
+};
+
+signed(A) transaction{
+   a = lit 0x00112233445566778899AABBCCDDEEFF00112233:$data;
+   r = call SomeFunctions.GenRef(a);
+   b = load r;
+   c = &load r;
+   (d0, i0) = unpack b:SomeTypes.WitIndex#Ctr;
+   d1 = unpack i0:SomeTypes.NoDrop#Ctr;
+};

@@ -1,0 +1,7 @@
+signed(A) transaction{
+     D = new;
+     () = call SomeFunctions.PhantomFun[A]();
+     () = call SomeFunctions.PhantomFun[D]();
+     a = pack SomeTypes.PhantomArg[A]#Ctr();
+     b = pack SomeTypes.PhantomArg[D]#Ctr();
+};

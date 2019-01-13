@@ -1,0 +1,5 @@
+module TestFailFunReturn {
+   fun TestFunApply[A](consume a:A):(a:A) {
+       return a;
+   };
+}

@@ -1,0 +1,26 @@
+module TestFailBranchDiffConsumes7 {
+   type Enum {
+       Z;
+       A;
+       B;
+   };
+
+    private fun Test[<Drop> A,<Drop> B](consume a:A, consume b:B, consume e:.Enum):(){
+        () = switch e:.Enum {
+            Z() => {
+                return;
+            };
+
+            A() => {
+                return;
+            };
+
+            B() => {
+                drop b;
+                return;
+            };
+        };
+
+        return;
+    };
+}

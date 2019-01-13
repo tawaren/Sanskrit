@@ -1,0 +1,11 @@
+module TestFailPackType2 {
+
+    type <Embed> X{
+            Ctr($u8);
+    };
+
+    private fun Test[<Embed> A](consume a:A):(b:TestSucAdt.Wrapper[A]){
+       b = pack .X#Ctr(a);
+       return b;
+    };
+}

@@ -1,0 +1,6 @@
+module TestFailDrop {
+    private fun Test[A](a:A):(){
+       drop a;
+       return;
+    };
+}

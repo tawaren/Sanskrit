@@ -1,0 +1,20 @@
+module TestFailSwitchReturn2 {
+   type Option[<Embed> T] {
+       Some(T);
+       None;
+   };
+
+   fun TestFunApply[<Embed, Drop> A](consume a:.Option[A], a2:A):(a:A) {
+       b2 = a2;
+       b = switch a:.Option[A] {
+          Some(a) => {
+            drop a;
+            return b2;
+          };
+          None => {
+            return b2;
+          };
+       };
+       return b;
+   };
+}

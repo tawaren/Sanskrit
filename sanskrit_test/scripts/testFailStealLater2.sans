@@ -1,0 +1,12 @@
+module TestFailStealLater2 {
+
+    type <Drop, Embed> X[<Embed> A]{
+        Ctr(A);
+    };
+
+    private fun Test[<Embed, Drop> A](consume a:A):(c:.X[A], b:.X[A]){
+       b = pack .X[A]#Ctr(a);
+       c = &b;
+       return (c, b);
+    };
+}

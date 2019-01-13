@@ -1,0 +1,9 @@
+module TestFailAdtWrongCapsEmbed {
+    type Inner {
+        Inner;
+    };
+
+    type Wrapper {
+        Ctr(.Inner);
+    };
+}

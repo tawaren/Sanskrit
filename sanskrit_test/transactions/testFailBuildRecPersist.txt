@@ -1,0 +1,3 @@
+signed(A) transaction{
+     a = pack CapCheckTypes.PhantomDrop[CapCheckTypes.HasPersist[CapCheckTypes.MayPersist[CapCheckTypes.AllRecExceptPersist]]]#Ctr();
+};

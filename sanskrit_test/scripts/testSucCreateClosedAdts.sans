@@ -1,0 +1,127 @@
+module TestSucCreateClosedAdts {
+
+        type <Embed>  Wrapper[<Embed> X] {
+            Ctr(X);
+        };
+
+        type <Embed> Enum {
+            A;
+            B;
+            C;
+            D;
+            E;
+        };
+
+        type Option[<Embed> T] {
+            Some(T);
+            None;
+        };
+
+        type Alternative[<Embed> A,<Embed> B] {
+            A(A);
+            B(B);
+        };
+
+        public fun CreateEnumA():(res: .Enum) {
+            e = pack .Enum#A();
+            return e;
+        };
+
+        public fun CreateEnumB():(res: .Enum) {
+            e = pack .Enum#B();
+            return e;
+        };
+
+        public fun CreateWrapper[<Embed> T](consume t:T):(res: .Wrapper[T]) {
+            w = pack .Wrapper[T]#Ctr(t);
+            return w;
+        };
+
+        public fun CreateNone[<Embed> T]():(res: .Option[T]) {
+            none = pack .Option[T]#None();
+            return none;
+        };
+
+        public fun CreateSome[<Embed> T](consume t:T):(res: .Option[T]) {
+            some = pack .Option[T]#Some(t);
+            return some;
+        };
+
+        public fun CreateAltA[<Embed> A,<Embed> B](consume a:A):(res: .Alternative[A,B]) {
+            a = pack .Alternative[A,B]#A(a);
+            return a;
+        };
+
+        public fun CreateAltB[<Embed> A,<Embed> B](consume b:B):(res: .Alternative[A,B]) {
+            b = pack .Alternative[A,B]#B(b);
+            return b;
+        };
+
+        private fun DropEnum(consume enum:.Enum):() {
+            () = switch enum : .Enum {
+                A => {return;};
+                B => {return;};
+                C => {return;};
+                D => {return;};
+                E => {return;};
+            };
+            return;
+        };
+
+        private fun DropWrapper(consume wrap:.Wrapper[.Enum]):() {
+            enum = unpack wrap : .Wrapper[.Enum];
+            () = call .DropEnum(enum);
+            return;
+        };
+
+        fun CreateStuffConsume():() {
+           e = call .CreateEnumA();
+           e2 = call .CreateEnumA();
+           e3 = call .CreateEnumB();
+           w = call .CreateWrapper[.Enum](e);
+           w2 = call .CreateWrapper[.Enum](e3);
+           none = call .CreateNone[.Wrapper[.Enum]]();
+           some = call .CreateSome[.Wrapper[.Enum]](w);
+           a = call .CreateAltA[.Enum,.Wrapper[.Enum]](e2);
+           b = call .CreateAltB[.Enum,.Wrapper[.Enum]](w2);
+
+           () = switch none :  .Option[.Wrapper[.Enum]] {
+                None => {return;};
+                Some(wrap) => {
+                     () = call .DropWrapper(wrap);
+                     return;
+                };
+           };
+
+           () = switch some :  .Option[.Wrapper[.Enum]] {
+               None => {return;};
+               Some(wrap) => {
+                    () = call .DropWrapper(wrap);
+                    return;
+               };
+           };
+
+           () = switch a : .Alternative[.Enum,.Wrapper[.Enum]] {
+                A(enum) => {
+                   () = call .DropEnum(enum);
+                   return;
+                };
+                B(wrap) => {
+                     () = call .DropWrapper(wrap);
+                     return;
+                };
+           };
+
+           () = switch b : .Alternative[.Enum,.Wrapper[.Enum]] {
+                A(enum) => {
+                   () = call .DropEnum(enum);
+                   return;
+                };
+                B(wrap) => {
+                     () = call .DropWrapper(wrap);
+                     return;
+                };
+           };
+           return;
+        };
+}

@@ -1,0 +1,9 @@
+module TestFailAdtWrongRecCapsPersist {
+    type <Embed> Inner {
+        Inner;
+    };
+
+    type <Persist> Wrapper {
+        Ctr(.Inner);
+    };
+}

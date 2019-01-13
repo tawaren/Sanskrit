@@ -1,0 +1,5 @@
+signed(A) transaction{
+     a = pack CapCheckTypes.PhantomDrop[CapCheckTypes.HasCopy[CapCheckTypes.MayCopy[CapCheckTypes.IsCopy]]]#Ctr();
+     b = pack CapCheckTypes.PhantomDrop[CapCheckTypes.HasDrop[CapCheckTypes.MayDrop[CapCheckTypes.IsDrop]]]#Ctr();
+     c = pack CapCheckTypes.PhantomDrop[CapCheckTypes.HasPersist[CapCheckTypes.MayPersist[CapCheckTypes.IsPersist]]]#Ctr();
+};

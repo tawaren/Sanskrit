@@ -1,0 +1,13 @@
+signed(A) transaction{
+     () = call SomeFunctions.EmptyProt[A]();
+};
+
+
+signed(A, B) transaction{
+     () = call SomeFunctions.EmptyProt[B]();
+};
+
+signed(A) transaction{
+     C = new;
+     () = call SomeFunctions.EmptyProt[C]();
+};

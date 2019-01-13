@@ -1,0 +1,69 @@
+use model::*;
+
+grammar;
+
+pub Transactions:Vec<Transaction> = <transactions:Semi<Transaction>> => transactions;
+
+Transaction:Transaction = "signed" "(" <sigs:Comma<Id>> ")" "transaction" "{" <codes:Semi<ScriptCode>> "}" => Transaction{sigs,codes};
+
+ScriptCode:ScriptCode = {
+    <id:Id> "=" "lit" <lit:Lit> ":" <typ:Type> => ScriptCode::Lit(id, lit, typ),
+    <id:Id> "=" "ref_lit" "'" <val:Id> "'" => ScriptCode::RefGen(id,val),
+    <id:Id> "=" "copy" <var:Id> => ScriptCode::Copy(id,var),
+    <id:Id> "=" <var:Id> => ScriptCode::Fetch(id,var,false),
+    <id:Id> "=" "&" <var:Id> => ScriptCode::Fetch(id,var,true),
+    "drop" <id:Id> => ScriptCode::Drop(id),
+    "free" <id:Id> => ScriptCode::Free(id),
+    <assigs:Assigns> "unpack" <var:Id>  ":" <main:Ref>  "#" <ctr:Id> => ScriptCode::Unpack(assigs,var,main,ctr,false),
+    <assigs:Assigns> "&unpack" <var:Id> ":" <main:Ref>  "#" <ctr:Id>=> ScriptCode::Unpack(assigs,var,main,ctr,true),
+    <id:Id> "=" "pack" <typ:Type> "#" <ctr:Id> "(" <vars:Comma<Id>> ")" => ScriptCode::Pack(id,typ,ctr,vars,false),
+    <id:Id> "=" "&pack" <typ:Type> "#" <ctr:Id> "(" <vars:Comma<Id>> ")" => ScriptCode::Pack(id,typ,ctr,vars,true),
+    <assigs:Assigns> "call" <function:Ref> "[" <generics:Comma<Type>> "]" "(" <vars:Comma<Id>> ")" =>  ScriptCode::Call(assigs, function, generics, vars),
+    <assigs:Assigns> "call" <function:Ref> "(" <vars:Comma<Id>> ")" =>  ScriptCode::Call(assigs, function, vec![], vars),
+    <id:Id> "=" "new" => ScriptCode::NewType(id),
+    <id:Id> "=" "load" <var:Id> => ScriptCode::Load(id, var, false),
+    <id:Id> "=" "&load" <var:Id> => ScriptCode::Load(id, var, true),
+    "store" <id:Id> => ScriptCode::Store(id),
+}
+
+Type:Type = {
+    <main:Ref> "[" <applies:Comma<Type>> "]" => Type{main,applies},
+    <main:Ref> => Type{main,applies:vec![]},
+};
+
+Ref:Ref = {
+    <name:Id> => Ref::This(name),
+    <module:Id> "." <name:Id> => Ref::Module(module,name),
+    "native" "." <name:Id> => Ref::Native(name),
+    "$" <name:Id> => Ref::Native(name),
+    "!" <addr:Lit> => Ref::Account(addr),
+    "#" <txt:Lit> "." <num:Lit> => Ref::Txt(txt,num),
+};
+
+Assigns:Vec<Id> = {
+    <id:Id> "=" => vec![id],
+    "(" <ids:Comma<Id>> ")" "=" => ids,
+}
+
+
+Id:Id = <s:r"[_a-zA-Z][_a-zA-Z0-9]*"> => Id(s.into());
+
+Lit:Lit = {
+    <s:r"(-)?[0-9]+"> => Lit(s.into()),
+    <s:r"0x[0-9a-fA-F]+"> => Lit(s.into()),
+};
+
+Semi<T>: Vec<T> = {
+    <v:(<T> ";")+> => v
+};
+
+Comma<T>: Vec<T> = {
+    <v:(<T> ",")*> <e:T?> => match e {
+        None => v,
+        Some(e) => {
+            let mut v = v;
+            v.push(e);
+            v
+        }
+    }
+};

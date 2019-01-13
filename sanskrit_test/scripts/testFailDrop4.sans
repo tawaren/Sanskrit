@@ -1,0 +1,10 @@
+module TestFailDrop4 {
+    type X {
+        X();
+    };
+
+    private fun Test(consume x:.X):(){
+       drop x;
+       return;
+    };
+}

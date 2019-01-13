@@ -1,0 +1,117 @@
+module Math {
+
+    public risky<$NumericError> fun Add(a:$u8,b:$u8):(c:$u8) {
+        c = call $Add[$u8](a,b);
+        return c;
+    };
+
+    public risky<$NumericError> fun Add2(a:$i128,b:$i128):(c:$i128) {
+        c = call $Add[$i128](a,b);
+        return c;
+    };
+
+    public fun ErrorAdd(a:$u8,b:$u8):(r:$bool) {
+        r = try {
+            c = call $Add[$u8](a,b);
+            drop c;
+            r = pack $bool#false();
+            return r;
+        } catch {
+            $NumericError => {
+                r = pack $bool#true();
+                return r;
+            };
+        };
+        return r;
+    };
+
+    public risky<$NumericError> fun Sub(a:$u8,b:$u8):(c:$u8) {
+        c = call $Sub[$u8](a,b);
+        return c;
+    };
+
+    public risky<$NumericError> fun Sub2(a:$i128,b:$i128):(c:$i128) {
+        c = call $Sub[$i128](a,b);
+        return c;
+    };
+
+    public fun ErrorSub(a:$u8,b:$u8):(r:$bool) {
+        r = try {
+            c = call $Sub[$u8](a,b);
+            drop c;
+            r = pack $bool#false();
+            return r;
+        } catch {
+            $NumericError => {
+                r = pack $bool#true();
+                return r;
+            };
+        };
+        return r;
+    };
+
+    public risky<$NumericError> fun Mul(a:$u8,b:$u8):(c:$u8) {
+        c = call $Mul[$u8](a,b);
+        return c;
+    };
+
+    public risky<$NumericError> fun Mul2(a:$i128,b:$i128):(c:$i128) {
+        c = call $Mul[$i128](a,b);
+        return c;
+    };
+
+    public fun ErrorMul(a:$u8,b:$u8):(r:$bool) {
+        r = try {
+            c = call $Mul[$u8](a,b);
+            drop c;
+            r = pack $bool#false();
+            return r;
+        } catch {
+            $NumericError => {
+                r = pack $bool#true();
+                return r;
+            };
+        };
+        return r;
+    };
+
+    public risky<$NumericError> fun Div(a:$u8,b:$u8):(c:$u8) {
+        c = call $Div[$u8](a,b);
+        return c;
+    };
+
+    public risky<$NumericError> fun Div2(a:$i128,b:$i128):(c:$i128) {
+        c = call $Div[$i128](a,b);
+        return c;
+    };
+
+    public fun ErrorDiv(a:$u8,b:$u8):(r:$bool) {
+        r = try {
+            c = call $Div[$u8](a,b);
+            drop c;
+            r = pack $bool#false();
+            return r;
+        } catch {
+            $NumericError => {
+                r = pack $bool#true();
+                return r;
+            };
+        };
+        return r;
+    };
+
+    public fun ErrorDiv2(a:$i8,b:$i8):(r:$bool) {
+        r = try {
+            c = call $Div[$i8](a,b);
+            drop c;
+            r = pack $bool#false();
+            return r;
+        } catch {
+            $NumericError => {
+                r = pack $bool#true();
+                return r;
+            };
+        };
+        return r;
+    };
+}

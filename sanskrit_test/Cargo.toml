@@ -1,0 +1,35 @@
+[package]
+name = "sanskrit_test"
+version = "0.1.0"
+authors = ["tawaren <markus.knecht85@gmail.com>"]
+
+[build-dependencies]
+lalrpop = "0.16.2"
+
+[dependencies.sanskrit_common]
+path = "../sanskrit_common"
+version = "0.1.0"
+
+[dependencies.sanskrit_test_script_compiler]
+path = "../sanskrit_test_script_compiler"
+version = "0.1.0"
+
+[dependencies.sanskrit_memory_store]
+path = "../sanskrit_memory_store"
+version = "0.1.0"
+
+[dependencies.sanskrit_core]
+path = "../sanskrit_core"
+version = "0.1.0"
+
+[dependencies.sanskrit_deploy]
+path = "../sanskrit_deploy"
+version = "0.1.0"
+
+[dependencies.sanskrit_compile]
+path = "../sanskrit_compile"
+version = "0.1.0"
+
+[dependencies.sanskrit_runtime]
+path = "../sanskrit_runtime"
+version = "0.1.0"

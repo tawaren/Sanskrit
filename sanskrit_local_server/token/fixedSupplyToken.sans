@@ -1,0 +1,7 @@
+module FixedSupplyToken {
+    protected[T] fun mint[phantom T](amount:$u128, consume cap:$singleton[T]):(t:Token.Token[T]) {
+        t = call Token.mint[T](amount);
+        drop cap;
+        return t;
+    };
+}

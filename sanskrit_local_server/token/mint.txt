@@ -1,0 +1,9 @@
+signed(O) transaction {
+    C = new;
+    amount = lit 1000000000:$u128;
+    token = call FixedSupplyToken.mint[C](amount,C);
+    idxData = lit 0x00:$data;
+    index = call Helper.createIndex(idxData);
+    purse = pack Purse.Purse[O,C]#Purse(index,token);
+    store purse;
+};

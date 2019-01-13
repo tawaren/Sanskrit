@@ -1,0 +1,65 @@
+signed(A) transaction{
+   a = lit 5:$u8;
+   c = lit 5:$u128;
+   c2 = call CastOps.Extend(a);
+   () = call Helpers.AssertEqU128(c,c2);
+};
+
+signed(A) transaction{
+   a = lit -12:$i8;
+   c = lit -12:$i128;
+   c2 = call CastOps.Extend2(a);
+   () = call Helpers.AssertEqI128(c,c2);
+};
+
+signed(A) transaction{
+   a = lit 5:$u16;
+   c = lit 5:$u8;
+   c2 = call CastOps.Cut(a);
+   () = call Helpers.AssertEqU8(c,c2);
+};
+
+signed(A) transaction{
+   a = lit -12:$i16;
+   c = lit -12:$i8;
+   c2 = call CastOps.Cut2(a);
+   () = call Helpers.AssertEqI8(c,c2);
+};
+
+signed(A) transaction{
+   a = lit 256:$i16;
+   c = call CastOps.ErrorCut(a);
+   () = call Helpers.AssertTrue(c);
+};
+
+signed(A) transaction{
+   a = lit -256:$i16;
+   c = call CastOps.ErrorCut(a);
+   () = call Helpers.AssertTrue(c);
+};
+
+signed(A) transaction{
+   a = lit 12:$u8;
+   c = lit 12:$i8;
+   c2 = call CastOps.SignCast(a);
+   () = call Helpers.AssertEqI8(c,c2);
+};
+
+signed(A) transaction{
+   a = lit 12:$i8;
+   c = lit 12:$u8;
+   c2 = call CastOps.SignCast2(a);
+   () = call Helpers.AssertEqU8(c,c2);
+};
+
+signed(A) transaction{
+   a = lit 150:$u8;
+   c = call CastOps.ErrorSignCast(a);
+   () = call Helpers.AssertTrue(c);
+};
+
+signed(A) transaction{
+   a = lit -1:$i8;
+   c = call CastOps.ErrorSignCast2(a);
+   () = call Helpers.AssertTrue(c);
+};

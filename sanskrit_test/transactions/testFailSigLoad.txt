@@ -1,0 +1,16 @@
+signed(A) transaction{
+   a = lit 1:$u8;
+   b = pack SomeTypes.Z[$u8,A]#Ctr(a);
+   d = lit 0x00112233445566778899AABBCCDDEEFF00112233:$data;
+   (r, s) = call SomeTypes.GenIndexedAt[SomeTypes.Z[$u8,A]](d,b);
+   store s;
+};
+
+signed(B) transaction{
+   a = lit 0x00112233445566778899AABBCCDDEEFF00112233:$data;
+   r = call SomeFunctions.GenRef(a);
+   b = load r;
+   () = call Helpers.EnforceType[SomeTypes.WitIndex[SomeTypes.Z[$u8,B]]](b);
+   (d0, i0) = unpack b:SomeTypes.WitIndex#Ctr;
+   d1 = unpack i0:SomeTypes.Z#Ctr;
+};

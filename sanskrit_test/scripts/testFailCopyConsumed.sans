@@ -1,0 +1,7 @@
+module TestFailCopyConsumed {
+    private fun Test[<Copy, Drop> A](a:A):(b:A){
+       drop a;
+       b = copy a;
+       return b;
+    };
+}

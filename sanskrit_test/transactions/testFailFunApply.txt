@@ -1,0 +1,3 @@
+signed(A) transaction{
+     () = call SomeFunctions.TwoGenZeroArg[$u8]();
+};

@@ -1,0 +1,5 @@
+signed(A) transaction{
+     a = lit 1:$u8;
+     drop a;
+     b = copy a;
+};

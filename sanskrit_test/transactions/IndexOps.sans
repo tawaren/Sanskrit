@@ -1,0 +1,41 @@
+module IndexOps {
+    public fun ToUnique[phantom T](consume in:$singleton[T]):(out:$unique){
+        out = call $ToUnique[T](in);
+        return out;
+    };
+
+    public fun GenIndex(consume in:$unique):(out:$index) {
+        out = call $GenIndex[$unique](in);
+        return out;
+    };
+
+    public fun ToRef(a:$index):(b:$ref) {
+        b = call $ToRef[$index](a);
+        return b;
+    };
+
+    public fun ToRef2(a:$data20):(b:$ref) {
+        b = call $ToRef[$data20](a);
+        return b;
+    };
+
+    public fun ToData(a:$ref):(c:$data20) {
+        c = call $ToData[$ref,$data20](a);
+        return c;
+    };
+
+    public fun ToData2(a:$index):(c:$data20) {
+        c = call $ToData[$index,$data20](a);
+        return c;
+    };
+
+    public fun DeriveIndex(a:$index, b:$index):(c:$index) {
+        c = call $Derive[$index](a,b);
+        return c;
+    };
+
+    public fun DeriveRef(a:$ref, b:$ref):(c:$ref) {
+        c = call $Derive[$ref](a,b);
+        return c;
+    };
+}

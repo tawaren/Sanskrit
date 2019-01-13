@@ -1,0 +1,7 @@
+module TestFailFunReturnDrop {
+   fun TestFunApply[<Drop> A](consume a:A):(b:A) {
+       b = a;
+       discard (b);
+       return b;
+   };
+}

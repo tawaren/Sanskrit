@@ -1,0 +1,10 @@
+module TestFailFunApply2 {
+   public fun TestFun[A,B]():() {
+       return;
+   };
+
+   public fun TestFunApply[A,B,C]():() {
+       () = call .TestFun[A,B,C]();
+       return;
+   };
+}

@@ -1,0 +1,10 @@
+module TestFailFunConstraintApply {
+   public fun TestFun[<Copy> A]():() {
+       return;
+   };
+
+   public fun TestFunApply[A]():() {
+       () = call .TestFun[A]();
+       return;
+   };
+}

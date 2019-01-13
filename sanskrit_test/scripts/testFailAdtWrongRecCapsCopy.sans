@@ -1,0 +1,9 @@
+module TestFailAdtWrongRecCapsCopy {
+    type <Embed> Inner {
+        Inner;
+    };
+
+    type <Copy> Wrapper {
+        Ctr(.Inner);
+    };
+}

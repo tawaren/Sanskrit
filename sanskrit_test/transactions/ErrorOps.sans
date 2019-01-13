@@ -1,0 +1,83 @@
+module ErrorOps {
+    err Err1;
+    err Err2;
+    err Err3;
+
+    public fun CatchOne():(r:$bool) {
+        res = try {
+            throw .Err1;
+        } catch {
+            .Err1 => {
+                r = pack $bool#true();
+                return r;
+            };
+        };
+        return res;
+    };
+
+    type <Create, Copy, Drop> ErrSwitch {
+        One;
+        Two;
+        Three;
+    };
+
+     public fun CatchMany(a:.ErrSwitch):(r:$u8) {
+        res = try {
+            () = &switch a:.ErrSwitch {
+                One => {throw .Err1;};
+                Two => {throw .Err2;};
+                Three => {throw .Err3;};
+            };
+            r = lit 0:$u8;
+            return r;
+        } catch {
+            .Err1 => {
+                r = lit 1:$u8;
+                return r;
+            };
+            .Err2 => {
+                r = lit 2:$u8;
+                return r;
+            };
+            .Err3 => {
+                r = lit 3:$u8;
+                return r;
+            };
+        };
+        return res;
+    };
+
+    public fun CatchMany2(a:.ErrSwitch):(r:$u8) {
+        res = try {
+            res = try {
+               res = try {
+                   () = &switch a:.ErrSwitch {
+                       One => {throw .Err1;};
+                       Two => {throw .Err2;};
+                       Three => {throw .Err3;};
+                   };
+                   r = lit 0:$u8;
+                   return r;
+               } catch {
+                   .Err1 => {
+                       r = lit 1:$u8;
+                       return r;
+                   };
+               };
+               return res;
+            } catch {
+                .Err2 => {
+                    r = lit 2:$u8;
+                    return r;
+                };
+            };
+            return res;
+        } catch {
+            .Err3 => {
+                r = lit 3:$u8;
+                return r;
+            };
+        };
+        return res;
+    };
+}

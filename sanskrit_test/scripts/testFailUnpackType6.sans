@@ -1,0 +1,9 @@
+module TestFailUnpackType6 {
+
+    type X[<Embed> A];
+
+    private fun Test[<Embed> A](a:.X[A]):(){
+       () = &unpack a:.X[A];
+       return;
+    };
+}

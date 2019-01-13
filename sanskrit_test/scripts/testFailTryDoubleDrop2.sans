@@ -1,0 +1,16 @@
+module TestFailTryDoubleDrop2 {
+   err X;
+
+   fun TestFunApply[<Copy, Drop> A](consume a:A):() {
+       () = try {
+           b = a;
+           discard (b);
+       } catch {
+         .X => {
+           b = a;
+           discard (b,b);
+         };
+       };
+       return ();
+   };
+}

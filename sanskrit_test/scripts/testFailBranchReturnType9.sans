@@ -1,0 +1,32 @@
+module TestFailBranchReturnType9 {
+    type Enum {
+        Z;
+        A;
+        B;
+    };
+
+    private fun Test[<Drop> A,<Drop> B](consume a:A, consume b:B, consume e:.Enum):(a3:A){
+        a3 = switch e:.Enum {
+            Z() => {
+                  a2 = a;
+                  b2 = b;
+                  discard (b2);
+                  return a2;
+            };
+            A() => {
+                  a2 = a;
+                  b2 = b;
+                  discard (b2);
+                  return a2;
+            };
+            B() => {
+                a2 = a;
+                b2 = b;
+                discard (a2);
+                return b2;
+            };
+        };
+
+        return a3;
+    };
+}

@@ -1,0 +1,5 @@
+signed(A) transaction{
+   a = lit 1:$u8;
+   b = pack SomeTypes.NoInspect[$u8]#Ctr(a);
+   c = &unpack b:SomeTypes.NoInspect#Ctr;
+};

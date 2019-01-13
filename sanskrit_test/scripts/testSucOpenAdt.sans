@@ -1,0 +1,30 @@
+module TestSucOpenAdt {
+    type <Create, Consume, Inspect, Embed, Drop, Copy> Phantom;
+
+    type <Create, Consume, Inspect, Embed, Drop, Copy> Wrapper[<Embed> X] {
+        Ctr(X);
+    };
+
+    type <Create, Consume, Inspect, Embed, Drop, Copy> Enum {
+        A;
+        B;
+        C;
+        D;
+        E;
+    };
+
+    type <Create, Consume, Inspect, Embed, Drop, Copy> Option[<Embed> T] {
+        Some(T);
+        None;
+    };
+
+    type <Create, Consume, Inspect, Embed, Drop, Copy> Alternative[<Embed> A,<Embed> B] {
+        A(A);
+        B(B);
+    };
+
+    type Struct{
+        Ctr( .Wrapper[.Enum], .Enum, .Option[.Phantom], .Alternative[.Enum, .Phantom]);
+    };
+
+}

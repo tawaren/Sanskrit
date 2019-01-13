@@ -1,0 +1,110 @@
+module BitOps {
+    public fun And(a:$u8,b:$u8):(c:$u8) {
+        c = call $And[$u8](a,b);
+        return c;
+    };
+
+    public fun And2(a:$data8,b:$data8):(c:$data8) {
+        c = call $And[$data8](a,b);
+        return c;
+    };
+
+    public fun Or(a:$u8,b:$u8):(c:$u8) {
+        c = call $Or[$u8](a,b);
+        return c;
+    };
+
+    public fun Or2(a:$data8,b:$data8):(c:$data8) {
+        c = call $Or[$data8](a,b);
+        return c;
+    };
+
+    public fun Xor(a:$u8,b:$u8):(c:$u8) {
+        c = call $Xor[$u8](a,b);
+        return c;
+    };
+
+    public fun Xor2(a:$data8,b:$data8):(c:$data8) {
+        c = call $Xor[$data8](a,b);
+        return c;
+    };
+
+     public fun Not(a:$u8):(c:$u8) {
+        c = call $Not[$u8](a);
+        return c;
+    };
+
+    public fun Not2(a:$data8):(c:$data8) {
+        c = call $Not[$data8](a);
+        return c;
+    };
+
+    public risky<$IndexError> fun GetBit(a:$data8,b:$u8):(c:$bool) {
+        c = call $GetBit[$data8,$u8](a,b);
+        return c;
+    };
+
+    public fun ErrorGetBit(a:$data8,b:$u16):(r:$bool) {
+        r = try {
+            c = call $GetBit[$data8,$u16](a,b);
+            drop c;
+            r = pack $bool#false();
+            return r;
+        } catch {
+            $IndexError => {
+                r = pack $bool#true();
+                return r;
+            };
+        };
+        return r;
+    };
+
+    public risky<$IndexError> fun SetBit(a:$data8,b:$u8):(c:$data8) {
+        n = pack $bool#true();
+        c = call $SetBit[$data8,$u8](a,b,n);
+        drop n;
+        return c;
+    };
+
+
+    public fun ErrorSetBit(a:$data8,b:$u16):(r:$bool) {
+        r = try {
+            n = pack $bool#true();
+            c = call $SetBit[$data8,$u16](a,b,n);
+            drop c;
+            drop n;
+            r = pack $bool#false();
+            return r;
+        } catch {
+            $IndexError => {
+                r = pack $bool#true();
+                return r;
+            };
+        };
+        return r;
+    };
+
+    public risky<$IndexError> fun UnSetBit(a:$data8,b:$u8):(c:$data8) {
+        n = pack $bool#false();
+        c = call $SetBit[$data8,$u8](a,b,n);
+        drop n;
+        return c;
+    };
+
+    public fun ErrorUnSetBit(a:$data8,b:$u16):(r:$bool) {
+        r = try {
+            n = pack $bool#false();
+            c = call $SetBit[$data8,$u16](a,b,n);
+            drop c;
+            drop n;
+            r = pack $bool#false();
+            return r;
+        } catch {
+            $IndexError => {
+                r = pack $bool#true();
+                return r;
+            };
+        };
+        return r;
+    };
+}

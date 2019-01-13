@@ -1,0 +1,133 @@
+module TestSucValidate {
+    type <Consume, Inspect> TestType;
+
+    type <Embed> TestType2[A,B,C];
+    type <Embed> TestType3[A];
+    type Holder[A,B] {
+        A(.TestType2[B,A,$u8]);
+        B(.TestType3[A]);
+    };
+
+    type <Embed> TestType4[A,phantom B];
+    type Holder2[A,phantom B] {
+        A(.TestType4[A,B]);
+        B(.TestType4[$u8,$u16]);
+        C(.TestType4[A,A]);
+    };
+
+    type <Embed> TestType5[<Drop> A, <Drop,Copy> B, <Drop,Copy,Inspect> C, <Drop,Copy,Inspect,Consume> D];
+    type Holder3[<Drop> A, <Drop,Copy> B, <Drop,Copy,Inspect> C, <Drop,Copy,Inspect,Consume> D] {
+        A(.TestType5[D,D,D,D]);
+        B(.TestType5[C,C,C,D]);
+        C(.TestType5[B,B,C,D]);
+        D(.TestType5[A,B,C,D]);
+        P(.TestType5[$u8,$u16,C,D]);
+    };
+
+    type Holder4[<Embed> A,phantom B] {
+        A(A);
+    };
+
+    type <Drop, Copy, Persist, Embed> DropCopyPersist{
+        A();
+    };
+
+    type <Drop, Copy, Persist, Embed> DropCopyPersist2[<Embed> A] {
+        A(.DropCopyPersist, A);
+    };
+
+    type <Drop, Copy, Embed> DropCopy {
+        A(.DropCopyPersist, .DropCopyPersist2[.DropCopyPersist]);
+    };
+
+    type <Drop, Copy, Embed> DropCopy2[<Embed> A] {
+        A(.DropCopy, .DropCopyPersist, .DropCopyPersist2[.DropCopyPersist], A);
+    };
+
+    type <Drop, Embed> Drop1 {
+        A(.DropCopy, .DropCopy2[.DropCopy], .DropCopyPersist, .DropCopyPersist2[.DropCopyPersist]);
+    };
+
+    type <Drop, Embed> Drop2[<Embed> A] {
+        A(.Drop1, .DropCopy, .DropCopy2[.DropCopy], .DropCopyPersist, .DropCopyPersist2[.DropCopyPersist], A);
+    };
+
+    type <Embed> None {
+        A(.Drop1, .Drop2[.Drop1], .DropCopy, .DropCopy2[.DropCopy], .DropCopyPersist, .DropCopyPersist2[.DropCopyPersist]);
+    };
+
+    type <Embed> None2[<Embed> A] {
+        A(.None, .Drop1, .Drop2[.Drop1], .DropCopy, .DropCopy2[.DropCopy], .DropCopyPersist, .DropCopyPersist2[.DropCopyPersist], A);
+    };
+
+    fun TestFun[A]():(){
+        return;
+    };
+
+    fun TestFun2[A,B,C]():(){
+        return;
+    };
+
+    fun Caller[A,B]():() {
+        () = call .TestFun[A]();
+        () = call .TestFun2[B,A,$u8]();
+        return;
+    };
+
+    fun TestFun3[A,phantom B]():(){
+        return;
+    };
+
+    fun Caller2[A,phantom B]():() {
+        () = call .TestFun3[A,B]();
+        return;
+    };
+
+    fun Caller3[A]():() {
+        () = call .TestFun3[A,A]();
+        return;
+    };
+
+    fun Caller4():() {
+        () = call .TestFun3[$u8,$u8]();
+        return;
+    };
+
+    fun TestFun4[<Drop> A, <Drop,Copy> B, <Drop,Copy,Inspect> C, <Drop,Copy,Inspect,Consume> D]():(){
+        return;
+    };
+
+    fun Caller5[<Drop> A, <Drop,Copy> B, <Drop,Copy,Inspect> C, <Drop,Copy,Inspect,Consume> D]():() {
+        () = call .TestFun4[D,D,D,D]();
+        () = call .TestFun4[C,C,C,D]();
+        () = call .TestFun4[B,B,C,D]();
+        () = call .TestFun4[A,B,C,D]();
+        () = call .TestFun4[$u8,$u16,C,D]();
+        return;
+    };
+
+    protected[T] fun TestFun5[T]():() {
+        return;
+    };
+
+    fun Caller6():(){
+        () = call .TestFun5[.TestType]();
+        return;
+    };
+
+    public fun Caller7():(){
+        () = call .TestFun5[.TestType]();
+        return;
+    };
+
+    protected[T] fun Caller8[T]():(){
+        () = call .TestFun5[T]();
+        return;
+    };
+
+    fun TestFun6[A, phantom B](consume a:A):(b:A){
+        b = a;
+        return b;
+    };
+
+}

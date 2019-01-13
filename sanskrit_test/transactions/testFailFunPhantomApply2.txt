@@ -1,0 +1,4 @@
+signed(A) transaction{
+      b = new;
+     () = call SomeFunctions.OneGenZeroArg[b]();
+};

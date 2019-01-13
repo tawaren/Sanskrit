@@ -1,0 +1,4 @@
+signed(A) transaction{
+   a = lit 0x00112233445566778899AABBCCDDEEFF0011223344:$data;
+   b = load a;
+};

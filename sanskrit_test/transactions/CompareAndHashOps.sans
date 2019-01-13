@@ -1,0 +1,91 @@
+module CompareAndHashOps {
+    public fun EqU8(a:$u8, b:$u8):(c:$bool) {
+        c = call $Eq[$u8](a,b);
+        return c;
+    };
+
+    public fun EqI128(a:$i128, b:$i128):(c:$bool) {
+        c = call $Eq[$i128](a,b);
+        return c;
+    };
+
+    public fun EqObj(a:SomeTypes.X[$u8], b:SomeTypes.X[$u8]):(c:$bool) {
+        c = call $Eq[SomeTypes.X[$u8]](a,b);
+        return c;
+    };
+
+    public fun HashData20(a:$data20):(c:$data20) {
+        c = call $Hash[$data20](a);
+        return c;
+    };
+
+    public fun HashU8(a:$u8):(c:$data20) {
+        c = call $Hash[$u8](a);
+        return c;
+    };
+
+    public fun HashObj(a:SomeTypes.X[$u8]):(c:$data20) {
+        c = call $Hash[SomeTypes.X[$u8]](a);
+        return c;
+    };
+
+    public fun PlainHash(a:$data12):(c:$data20) {
+        c = call $PlainHash[$data12](a);
+        return c;
+    };
+
+    public fun ToData(a:$u8):(c:$data1) {
+        c = call $ToData[$u8,$data1](a);
+        return c;
+    };
+
+    public fun Concat(a:$data12,b:$data8):(c:$data20) {
+        c = call $Concat[$data12,$data8,$data20](a,b);
+        return c;
+    };
+
+    public fun ToData2(a:$u32):(c:$data4) {
+        c = call $ToData[$u32,$data4](a);
+        return c;
+    };
+
+    public fun Lt(a:$u8, b:$u8):(c:$bool) {
+        c = call $Lt[$u8](a,b);
+        return c;
+    };
+
+    public fun Lt2(a:$i128, b:$i128):(c:$bool) {
+        c = call $Lt[$i128](a,b);
+        return c;
+    };
+
+    public fun Gt(a:$u8, b:$u8):(c:$bool) {
+        c = call $Gt[$u8](a,b);
+        return c;
+    };
+
+    public fun Gt2(a:$i128, b:$i128):(c:$bool) {
+        c = call $Gt[$i128](a,b);
+        return c;
+    };
+
+    public fun Lte(a:$u8, b:$u8):(c:$bool) {
+        c = call $Lte[$u8](a,b);
+        return c;
+    };
+
+    public fun Lte2(a:$i128, b:$i128):(c:$bool) {
+        c = call $Lte[$i128](a,b);
+        return c;
+    };
+
+    public fun Gte(a:$u8, b:$u8):(c:$bool) {
+        c = call $Gte[$u8](a,b);
+        return c;
+    };
+
+    public fun Gte2(a:$i128, b:$i128):(c:$bool) {
+        c = call $Gte[$i128](a,b);
+        return c;
+    };
+}

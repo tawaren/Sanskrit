@@ -1,0 +1,129 @@
+module TestSucCreateOpenAdts {
+    public fun CreateEnumA():(res: TestSucOpenAdt.Enum) {
+        e = pack TestSucOpenAdt.Enum#A();
+        return e;
+    };
+
+    public fun CreateWrapper[<Embed> T](consume t:T):(res: TestSucOpenAdt.Wrapper[T]) {
+        w = pack TestSucOpenAdt.Wrapper[T]#Ctr(t);
+        return w;
+    };
+
+    public fun CreateNone[<Embed> T]():(res: TestSucOpenAdt.Option[T]) {
+        none = pack TestSucOpenAdt.Option[T]#None();
+        return none;
+    };
+
+    public fun CreateSome[<Embed> T](consume t:T):(res: TestSucOpenAdt.Option[T]) {
+        some = pack TestSucOpenAdt.Option[T]#Some(t);
+        return some;
+    };
+
+    public fun CreateAltA[<Embed> A,<Embed> B](consume a:A):(res: TestSucOpenAdt.Alternative[A,B]) {
+        a = pack TestSucOpenAdt.Alternative[A,B]#A(a);
+        return a;
+    };
+
+    public fun CreateAltB[<Embed> A,<Embed> B](consume b:B):(res: TestSucOpenAdt.Alternative[A,B]) {
+        b = pack TestSucOpenAdt.Alternative[A,B]#B(b);
+        return b;
+    };
+
+    fun CreateStuffDrop():() {
+       e = call .CreateEnumA();
+       e2 = copy e;
+       w = call .CreateWrapper[TestSucOpenAdt.Enum](e);
+       w2 = copy w;
+       none = call .CreateNone[TestSucOpenAdt.Wrapper[TestSucOpenAdt.Enum]]();
+       some = call .CreateSome[TestSucOpenAdt.Wrapper[TestSucOpenAdt.Enum]](w);
+       a = call .CreateAltA[TestSucOpenAdt.Enum,TestSucOpenAdt.Wrapper[TestSucOpenAdt.Enum]](e2);
+       b = call .CreateAltB[TestSucOpenAdt.Enum,TestSucOpenAdt.Wrapper[TestSucOpenAdt.Enum]](w2);
+       drop none;
+       drop some;
+       drop a;
+       drop b;
+       return;
+    };
+
+    fun CreateStuffDiscard():() {
+       e = call .CreateEnumA();
+       e2 = copy e;
+       w = call .CreateWrapper[TestSucOpenAdt.Enum](e);
+       w2 = copy w;
+       none = call .CreateNone[TestSucOpenAdt.Wrapper[TestSucOpenAdt.Enum]]();
+       some = call .CreateSome[TestSucOpenAdt.Wrapper[TestSucOpenAdt.Enum]](w);
+       a = call .CreateAltA[TestSucOpenAdt.Enum,TestSucOpenAdt.Wrapper[TestSucOpenAdt.Enum]](e2);
+       b = call .CreateAltB[TestSucOpenAdt.Enum,TestSucOpenAdt.Wrapper[TestSucOpenAdt.Enum]](w2);
+       discard (none, some, a, b);
+       return;
+    };
+
+    private fun DropEnum(consume enum:TestSucOpenAdt.Enum):() {
+        () = switch enum : TestSucOpenAdt.Enum {
+            A => {return;};
+            B => {return;};
+            C => {return;};
+            D => {return;};
+            E => {return;};
+        };
+        return;
+    };
+
+    private fun DropWrapper(consume wrap:TestSucOpenAdt.Wrapper[TestSucOpenAdt.Enum]):() {
+        enum = unpack wrap : TestSucOpenAdt.Wrapper[TestSucOpenAdt.Enum];
+        () = call .DropEnum(enum);
+        return;
+    };
+
+    fun CreateStuffConsume():() {
+       e = call .CreateEnumA();
+       e2 = copy e;
+       w = call .CreateWrapper[TestSucOpenAdt.Enum](e);
+       w2 = copy w;
+       none = call .CreateNone[TestSucOpenAdt.Wrapper[TestSucOpenAdt.Enum]]();
+       some = call .CreateSome[TestSucOpenAdt.Wrapper[TestSucOpenAdt.Enum]](w);
+       a = call .CreateAltA[TestSucOpenAdt.Enum,TestSucOpenAdt.Wrapper[TestSucOpenAdt.Enum]](e2);
+       b = call .CreateAltB[TestSucOpenAdt.Enum,TestSucOpenAdt.Wrapper[TestSucOpenAdt.Enum]](w2);
+
+       () = switch none :  TestSucOpenAdt.Option[TestSucOpenAdt.Wrapper[TestSucOpenAdt.Enum]] {
+            None => {return;};
+            Some(wrap) => {
+                 () = call .DropWrapper(wrap);
+                 return;
+            };
+       };
+
+       () = switch some :  TestSucOpenAdt.Option[TestSucOpenAdt.Wrapper[TestSucOpenAdt.Enum]] {
+           None => {return;};
+           Some(wrap) => {
+                () = call .DropWrapper(wrap);
+                return;
+           };
+       };
+
+       () = switch a : TestSucOpenAdt.Alternative[TestSucOpenAdt.Enum,TestSucOpenAdt.Wrapper[TestSucOpenAdt.Enum]] {
+            A(enum) => {
+               () = call .DropEnum(enum);
+               return;
+            };
+            B(wrap) => {
+                 () = call .DropWrapper(wrap);
+                 return;
+            };
+       };
+
+       () = switch b : TestSucOpenAdt.Alternative[TestSucOpenAdt.Enum,TestSucOpenAdt.Wrapper[TestSucOpenAdt.Enum]] {
+            A(enum) => {
+               () = call .DropEnum(enum);
+               return;
+            };
+            B(wrap) => {
+                 () = call .DropWrapper(wrap);
+                 return;
+            };
+       };
+       return;
+    };
+
+
+}

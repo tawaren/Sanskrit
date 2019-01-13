@@ -1,0 +1,15 @@
+module TestFailUnpackType {
+
+    type X[<Embed> A] {
+        X(A);
+    };
+
+    type Y[<Embed> A] {
+        Y(A);
+    };
+
+    private fun Test[<Embed> A](a:.X[A]):(b:A){
+       b = unpack a:.Y[A];
+       return b;
+    };
+}

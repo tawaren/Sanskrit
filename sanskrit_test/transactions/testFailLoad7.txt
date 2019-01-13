@@ -1,0 +1,19 @@
+signed(A) transaction{
+   a = lit 1:$u8;
+   b = pack SomeTypes.NoCopy[$u8]#Ctr(a);
+   d = lit 0x00112233445566778899AABBCCDDEEFF00112233:$data;
+   (r, s) = call SomeTypes.GenIndexedAt[SomeTypes.NoCopy[$u8]](d,b);
+   store s;
+};
+
+signed(A) transaction{
+   a = lit 0x00112233445566778899AABBCCDDEEFF00112233:$data;
+   r = call SomeFunctions.GenRef(a);
+   b = load r;
+};
+
+signed(A) transaction{
+   a = lit 0x00112233445566778899AABBCCDDEEFF00112233:$data;
+   r = call SomeFunctions.GenRef(a);
+   b = &load r;
+};

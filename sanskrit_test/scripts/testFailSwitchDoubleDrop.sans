@@ -1,0 +1,19 @@
+module TestFailSwitchDoubleDrop {
+   type Option[<Embed> T] {
+       Some(T);
+       None;
+   };
+
+   fun TestFunApply[<Embed, Drop, Copy> A](consume a:.Option[A], a2:A):() {
+       () = switch a:.Option[A] {
+          Some(a) => {
+            discard (a);
+          };
+          None => {
+            b2 = a2;
+            discard (b2,b2);
+          };
+       };
+       return;
+   };
+}

@@ -1,0 +1,5 @@
+module TestFailAdtWrongRecCapsCopyRemote {
+    type <Copy> Wrapper {
+        Ctr(TestSucAdt.Phantom);
+    };
+}

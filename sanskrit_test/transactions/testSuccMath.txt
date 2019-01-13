@@ -1,0 +1,98 @@
+signed(A) transaction{
+   a = lit 1:$u8;
+   b = lit 2:$u8;
+   c = lit 3:$u8;
+   c2 = call Math.Add(a,b);
+   () = call Helpers.AssertEqU8(c,c2);
+};
+
+signed(A) transaction{
+   a = lit 1:$i128;
+   b = lit -2:$i128;
+   c = lit -1:$i128;
+   c2 = call Math.Add2(a,b);
+   () = call Helpers.AssertEqI128(c,c2);
+};
+
+signed(A) transaction{
+   a = lit 255:$u8;
+   b = lit 2:$u8;
+   c = call Math.ErrorAdd(a,b);
+   () = call Helpers.AssertTrue(c);
+};
+
+signed(A) transaction{
+   a = lit 3:$u8;
+   b = lit 2:$u8;
+   c = lit 1:$u8;
+   c2 = call Math.Sub(a,b);
+   () = call Helpers.AssertEqU8(c,c2);
+};
+
+signed(A) transaction{
+   a = lit -3:$i128;
+   b = lit 2:$i128;
+   c = lit -5:$i128;
+   c2 = call Math.Sub2(a,b);
+   () = call Helpers.AssertEqI128(c,c2);
+};
+
+signed(A) transaction{
+   a = lit 1:$u8;
+   b = lit 2:$u8;
+   c = call Math.ErrorSub(a,b);
+   () = call Helpers.AssertTrue(c);
+};
+
+signed(A) transaction{
+   a = lit 3:$u8;
+   b = lit 2:$u8;
+   c = lit 6:$u8;
+   c2 = call Math.Mul(a,b);
+   () = call Helpers.AssertEqU8(c,c2);
+};
+
+signed(A) transaction{
+   a = lit -3:$i128;
+   b = lit 2:$i128;
+   c = lit -6:$i128;
+   c2 = call Math.Mul2(a,b);
+   () = call Helpers.AssertEqI128(c,c2);
+};
+
+signed(A) transaction{
+   a = lit 3:$u8;
+   b = lit 100:$u8;
+   c = call Math.ErrorMul(a,b);
+   () = call Helpers.AssertTrue(c);
+};
+
+signed(A) transaction{
+   a = lit 6:$u8;
+   b = lit 2:$u8;
+   c = lit 3:$u8;
+   c2 = call Math.Div(a,b);
+   () = call Helpers.AssertEqU8(c,c2);
+};
+
+signed(A) transaction{
+   a = lit -6:$i128;
+   b = lit 2:$i128;
+   c = lit -3:$i128;
+   c2 = call Math.Div2(a,b);
+   () = call Helpers.AssertEqI128(c,c2);
+};
+
+signed(A) transaction{
+   a = lit 6:$u8;
+   b = lit 0:$u8;
+   c = call Math.ErrorDiv(a,b);
+   () = call Helpers.AssertTrue(c);
+};
+
+signed(A) transaction{
+   a = lit -128:$i8;
+   b = lit -1:$i8;
+   c = call Math.ErrorDiv2(a,b);
+   () = call Helpers.AssertTrue(c);
+};

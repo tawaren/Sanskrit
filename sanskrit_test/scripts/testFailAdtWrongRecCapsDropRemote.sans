@@ -1,0 +1,6 @@
+module TestFailAdtWrongRecCapsDropRemote {
+
+    type <Drop> Wrapper {
+        Ctr(TestSucAdt.Phantom);
+    };
+}

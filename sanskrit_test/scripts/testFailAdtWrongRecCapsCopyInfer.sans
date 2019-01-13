@@ -1,0 +1,8 @@
+module TestFailAdtWrongRecCapsCopyInfer {
+
+    type <Embed, Persist, Drop, Consume, Inspect, Create> AllRecExceptCopy{ Ctr(); };
+
+    type Test{
+           CheckCopy(TestSucCaps.HasCopy[TestSucCaps.MayCopy[.AllRecExceptCopy]]);
+    };
+}

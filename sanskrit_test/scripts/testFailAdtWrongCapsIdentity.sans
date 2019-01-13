@@ -1,0 +1,9 @@
+module TestFailAdtWrongCapsIdentity {
+    type <Persist> Inner {
+        Inner;
+    };
+
+    type <Indexed, Persist> Wrapper {
+        Ctr(.Inner);
+    };
+}

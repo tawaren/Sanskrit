@@ -1,0 +1,6 @@
+module TestFailProtectedCall3 {
+    public fun Test[A]():(){
+        () = call TestSucFun.TestEmptyProt[A]();
+        return;
+    };
+}

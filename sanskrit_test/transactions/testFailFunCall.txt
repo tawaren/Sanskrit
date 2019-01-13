@@ -1,0 +1,3 @@
+signed(A) transaction{
+     a = call SomeFunctions.Identity[$u8]();
+};

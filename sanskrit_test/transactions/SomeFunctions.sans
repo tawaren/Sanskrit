@@ -1,0 +1,41 @@
+module SomeFunctions {
+    public fun Dual[A](a:A, b:A):(){
+        return;
+    };
+
+    public fun TwoGenZeroArg[A,B]():(){
+        return;
+    };
+
+    public fun OneGenZeroArg[A]():(){
+        return;
+    };
+
+    public fun Identity[A](consume a:A):(a:A){
+       b = a;
+       return b;
+    };
+
+    public fun NeedsCopy[<Copy> A]():(){
+       return;
+    };
+
+    private fun EmptyPriv():(){
+        return;
+    };
+
+    protected[A] fun EmptyProt[phantom A]():(){
+       return;
+    };
+
+    public fun GenRef(b:$data20):(r:$ref) {
+         b2 = copy b;
+         r = call $ToRef[$data20](b2);
+         drop b2;
+         return r;
+    };
+
+    public fun PhantomFun[phantom A]():(){
+        return;
+    };
+}

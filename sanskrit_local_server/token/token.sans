@@ -1,0 +1,38 @@
+module Token {
+    type <Drop, Embed, Persist> Token[phantom C] {
+        Token($u128);
+    };
+
+    public risky<$NumericError> fun merge[phantom T](consume a:.Token[T], consume b:.Token[T]):(c:.Token[T]) {
+        amountA = unpack a:.Token[T];
+        amountB = unpack b:.Token[T];
+        amountC = call $Add[$u128](amountA, amountB);
+        c = pack .Token[T]#Token(amountC);
+        discard(amountA, amountB);
+        return c;
+    };
+
+    public risky<$NumericError> fun split[phantom T](consume a:.Token[T], amount:$u128):(split:.Token[T], rem:.Token[T]) {
+        amountA = unpack a:.Token[T];
+        amountR = call $Sub[$u128](amountA, amount);
+        amountS = copy amount;
+        split = pack .Token[T]#Token(amountS);
+        rem = pack .Token[T]#Token(amountR);
+        discard (amountA);
+        return (split,rem);
+    };
+
+    protected[T] fun mint[phantom T](amount:$u128):(t:.Token[T]) {
+        amountT = copy amount;
+        t = pack .Token[T]#Token(amountT);
+        return t;
+    };
+
+    public fun empty[phantom T]():(t:.Token[T]) {
+        amountT = lit 0:$u128;
+        t = pack .Token[T]#Token(amountT);
+        return t;
+    };
+
+
+}

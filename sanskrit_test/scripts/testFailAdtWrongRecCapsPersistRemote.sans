@@ -1,0 +1,5 @@
+module TestFailAdtWrongRecCapsPersistRemote {
+    type <Persist> Wrapper {
+        Ctr(TestSucAdt.Phantom);
+    };
+}

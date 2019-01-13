@@ -1,0 +1,21 @@
+module TestFailSwitchType4 {
+
+    type X[<Embed> A] {
+        X1(A);
+        X2(A);
+        X3(A);
+    };
+
+
+    private fun Test[<Embed> A](a:.X[A]):( b:A){
+       b = switch a:.X[A] {
+            X1(a) => {
+                return a;
+            };
+            X2(a) => {
+                return a;
+            };
+       };
+       return b;
+    };
+}

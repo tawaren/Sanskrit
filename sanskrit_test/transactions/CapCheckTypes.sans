@@ -1,0 +1,19 @@
+module CapCheckTypes {
+    type <Drop, Create> PhantomDrop[phantom A]{ Ctr(); };
+
+    type <Embed, Create, Drop> HasCopy[<Copy> A] { Ctr(); };
+    type <Embed, Create, Drop> HasDrop[<Drop> A] { Ctr(); };
+    type <Embed, Create, Drop> HasPersist[<Persist> A] { Ctr(); };
+
+    type <Copy, Embed, Create> IsCopy { Ctr(); };
+    type <Drop, Embed, Create> IsDrop { Ctr(); };
+    type <Persist, Embed, Create> IsPersist { Ctr(); };
+
+    type <Embed, Persist, Drop, Consume, Inspect, Create> AllRecExceptCopy{ Ctr(); };
+    type <Embed, Persist, Copy, Consume, Inspect, Create> AllRecExceptDrop{ Ctr(); };
+    type <Embed, Copy, Drop, Consume, Inspect, Create> AllRecExceptPersist{ Ctr(); };
+
+    type <Copy, Create> MayCopy[<Embed> A]{ Ctr(A); };
+    type <Drop, Create> MayDrop[<Embed> A]{ Ctr(A); };
+    type <Persist, Create> MayPersist[<Embed> A]{ Ctr(A); };
+}

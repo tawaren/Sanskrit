@@ -1,0 +1,28 @@
+module TestSucCaps {
+    type <Embed> HasCopy[<Copy> A] { Ctr(); };
+    type <Embed> HasDrop[<Drop> A] { Ctr(); };
+    type <Embed> HasPersist[<Persist> A] { Ctr(); };
+
+    type <Copy, Embed> IsCopy { Ctr(); };
+    type <Drop, Embed> IsDrop { Ctr(); };
+    type <Persist, Embed> IsPersist { Ctr(); };
+
+    type <Copy> MayCopy[<Embed> A]{
+        Ctr(A);
+    };
+
+    type <Drop> MayDrop[<Embed> A]{
+        Ctr(A);
+    };
+
+    type <Persist> MayPersist[<Embed> A]{
+        Ctr(A);
+    };
+
+    type Test{
+           CheckCopy(.HasCopy[.MayCopy[.IsCopy]]);
+           CheckDrop(.HasDrop[.MayDrop[.IsDrop]]);
+           CheckPersist(.HasPersist[.MayPersist[.IsPersist]]);
+    };
+
+}

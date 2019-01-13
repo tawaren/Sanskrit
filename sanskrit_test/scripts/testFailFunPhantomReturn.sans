@@ -1,0 +1,7 @@
+module TestFailFunPhantomReturn {
+   err X;
+
+   risky <.X> fun TestFunApply[phantom A]():(a:A) {
+      throw .X;
+   };
+}

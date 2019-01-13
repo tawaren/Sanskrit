@@ -1,0 +1,10 @@
+module TestFailLetReturnDrop {
+   fun TestFunApply[<Drop> A](consume a:A):(c:A) {
+       c = let {
+          b = a;
+          discard (b);
+          return b;
+       };
+       return c;
+   };
+}
