@@ -10,6 +10,7 @@ std = []
 [dependencies.sanskrit_common]
 path = "../sanskrit_common"
 version = "0.1.0"
+default-features = false
 
 [dependencies.sanskrit_core]
 path = "../sanskrit_core"

@@ -4,7 +4,6 @@ use sanskrit_common::capabilities::CapSet;
 use model::*;
 use sanskrit_common::model::Ptr;
 use sanskrit_common::arena::*;
-use sanskrit_common::encoding::ParserAllocator;
 
 impl<'a> RuntimeType<'a> {
     pub fn get_caps(&self) -> CapSet {

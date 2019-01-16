@@ -75,24 +75,6 @@ impl Heap {
         })
     }
 
-    pub fn new_stack<T:Copy+Sized>(&self, size: usize) -> Result<HeapStack<T>> {
-        let size =  size * mem::size_of::<T>();
-        let ptr = unsafe { self.buffer.borrow().as_ptr().offset(self.pos.get() as isize) };
-        let align_offset = align_address(ptr,  mem::align_of::<T>());
-        let start = self.pos.get();
-        let end = start + size + align_offset;
-        if self.buffer.borrow().capacity() < end {
-            panic!("{:?}",end - self.buffer.borrow().capacity());
-            return size_limit_exceeded_error()
-        }
-        let slice = unsafe { from_raw_parts_mut(ptr as *mut T, size) };
-        self.pos.set(end);
-        Ok(HeapStack{
-            slice,
-            pos: 0
-        })
-    }
-
     pub fn reuse(self) -> Self  {
         Heap {
             buffer: self.buffer,
@@ -101,55 +83,6 @@ impl Heap {
         }
     }
 }
-
-
-pub struct HeapStack<'h, T> {
-    slice: &'h mut [T],
-    pos: usize
-}
-
-impl<'h, T:Copy + Sized> HeapStack<'h, T>{
-
-    pub fn push(&mut self, val:T) -> Result<()> {
-        if self.pos == self.slice.len() {
-            return size_limit_exceeded_error()
-        }
-        self.slice[self.pos] = val;
-        self.pos += 1;
-        Ok(())
-    }
-
-    pub fn pop(&mut self) -> Option<T> {
-        if self.pos == 0 { return None; }
-        self.pos -= 1;
-        Some(unsafe {mem::replace(&mut self.slice[self.pos], mem::uninitialized()) })
-    }
-
-    pub fn len(&self) -> usize {
-        self.pos
-    }
-
-    pub fn get(&self, pos:usize) -> Result<&T> {
-        if pos > self.pos {return out_of_range_stack_addressing()}
-        Ok(&self.slice[pos])
-    }
-
-    pub fn get_mut(&mut self, pos:usize) -> Result<&mut T> {
-        if pos > self.pos {return out_of_range_stack_addressing()}
-        Ok(&mut self.slice[pos])
-    }
-
-    pub fn rewind_to(&mut self, pos:usize) -> Result<()> {
-        if pos > self.pos {return out_of_range_stack_addressing()}
-        self.pos = pos;
-        Ok(())
-    }
-
-    pub fn as_slice(&self) -> &[T] {
-        &self.slice[..self.pos]
-    }
-}
-
 
 pub struct HeapArena<'h> {
     buffer: &'h RefCell<Vec<u8>>,
@@ -216,13 +149,20 @@ impl<'h> HeapArena<'h> {
         }
     }
 
-    pub fn repeated_slice<T: Sized + Copy>(&self, val: T, len:usize) -> Result<SlicePtr<T>> {
+    pub fn repeated_mut_slice<T:Copy+Sized>(&self, val:T, len: usize) -> Result<MutSlicePtr<T>> {
         let mut slice = unsafe {self.alloc_raw_slice(len)?};
         for i in 0..len {
             slice[i] = val;
         }
-        SlicePtr::new(slice)
+        MutSlicePtr::new(slice)
     }
+
+
+    pub fn repeated_slice<T: Sized + Copy>(&self, val: T, len:usize) -> Result<SlicePtr<T>> {
+        Ok(self.repeated_mut_slice(val,len)?.freeze())
+    }
+
+
 
     pub fn iter_alloc_slice<T: Sized + Copy>(&self, vals: impl ExactSizeIterator<Item = T>) -> Result<SlicePtr<T>> {
         let mut slice = unsafe {self.alloc_raw_slice(vals.len())?};
@@ -283,6 +223,13 @@ impl<'h> HeapArena<'h> {
         }
     }
 
+    pub fn merge_alloc_slice<T: Sized + Copy + VirtualSize>(&self, vals1: &[T], vals2: &[T]) -> Result<SlicePtr<T>> {
+        let slice = unsafe {self.alloc_raw_slice(vals1.len() + vals2.len())?};
+        slice[..vals1.len()].copy_from_slice(vals1);
+        slice[vals1.len()..].copy_from_slice(vals2);
+        SlicePtr::new(slice)
+    }
+
     pub fn copy_alloc_slice<T: Sized + Copy>(&self, vals: &[T]) -> Result<SlicePtr<T>> {
         let slice = unsafe {self.alloc_raw_slice(vals.len())?};
         slice.copy_from_slice(vals);
@@ -296,6 +243,17 @@ impl<'h> HeapArena<'h> {
             Ok(SliceBuilder::new(unsafe {self.alloc_raw_slice(len)?}, 0))
         }
     }
+
+    pub fn alloc_stack<T:Copy+Sized>(&self, size: usize) -> Result<HeapStack<T>> {
+        let mut slice = unsafe {self.alloc_raw_slice(size)?};
+        Ok(HeapStack{
+            slice,
+            pos: 0
+        })
+    }
+
+
+
 }
 
 impl<'o> ParserAllocator for HeapArena<'o>  {
@@ -369,6 +327,11 @@ impl<'o> VirtualHeapArena<'o> {
         })
     }
 
+    pub fn merge_alloc_slice<T: Sized + Copy + VirtualSize>(&self, vals1: &[T], vals2: &[T]) -> Result<SlicePtr<T>> {
+        self.ensure_virt_space(T::SIZE*(vals1.len()+vals2.len()))?;
+        self.uncounted.merge_alloc_slice(vals1, vals2)
+    }
+
     pub fn alloc<T: Sized + Copy + VirtualSize>(&self, val: T) -> Result<Ptr<T>> {
         self.ensure_virt_space(T::SIZE)?;
         self.uncounted.alloc(val)
@@ -384,6 +347,55 @@ impl<'o> VirtualHeapArena<'o> {
         self.uncounted.slice_builder(len)
     }
 }
+
+
+pub struct HeapStack<'a, T> {
+    slice: &'a mut [T],
+    pos: usize
+}
+
+impl<'a, T:Copy + Sized> HeapStack<'a, T>{
+
+    pub fn push(&mut self, val:T) -> Result<()> {
+        if self.pos == self.slice.len() {
+            return size_limit_exceeded_error()
+        }
+        self.slice[self.pos] = val;
+        self.pos += 1;
+        Ok(())
+    }
+
+    pub fn pop(&mut self) -> Option<T> {
+        if self.pos == 0 { return None; }
+        self.pos -= 1;
+        Some(unsafe {mem::replace(&mut self.slice[self.pos], mem::uninitialized()) })
+    }
+
+    pub fn len(&self) -> usize {
+        self.pos
+    }
+
+    pub fn get(&self, pos:usize) -> Result<&T> {
+        if pos > self.pos {return out_of_range_stack_addressing()}
+        Ok(&self.slice[pos])
+    }
+
+    pub fn get_mut(&mut self, pos:usize) -> Result<&mut T> {
+        if pos > self.pos {return out_of_range_stack_addressing()}
+        Ok(&mut self.slice[pos])
+    }
+
+    pub fn rewind_to(&mut self, pos:usize) -> Result<()> {
+        if pos > self.pos {return out_of_range_stack_addressing()}
+        self.pos = pos;
+        Ok(())
+    }
+
+    pub fn as_slice(&self) -> &[T] {
+        &self.slice[..self.pos]
+    }
+}
+
 
 impl<'o> ArenaUnlock for VirtualHeapArena<'o> {
     fn set_lock(&self, val: bool) {
@@ -414,7 +426,7 @@ impl<'a,T> Deref for Ptr<'a, T> {
 }
 
 impl<'a,T> SlicePtr<'a,T>{
-    pub fn new(slice:&'a [T]) -> Result<Self>{
+    fn new(slice:&'a [T]) -> Result<Self>{
         if slice.len() <= u16::max_value() as usize {
             Ok(SlicePtr(slice))
         } else {
@@ -435,6 +447,38 @@ impl<'a,T> Deref for SlicePtr<'a, T> {
     type Target = [T];
 
     fn deref(&self) -> &[T]{
+        self.0
+    }
+}
+
+impl<'a,T> MutSlicePtr<'a,T>{
+    fn new(slice:&'a mut [T]) -> Result<Self>{
+        if slice.len() <= u16::max_value() as usize {
+            Ok(MutSlicePtr(slice))
+        } else {
+            size_limit_exceeded_error()
+        }
+    }
+
+    pub fn wrap(val:&'a mut [T]) -> Self {
+        MutSlicePtr(val)
+    }
+
+    pub fn freeze(self) -> SlicePtr<'a, T> {
+        SlicePtr(self.0)
+    }
+}
+
+impl<'a,T> Deref for MutSlicePtr<'a, T> {
+    type Target = [T];
+
+    fn deref(&self) -> &[T]{
+        self.0
+    }
+}
+
+impl<'a,T> DerefMut for MutSlicePtr<'a, T> {
+    fn deref_mut(&mut self) -> &mut [T]{
         self.0
     }
 }
@@ -460,6 +504,10 @@ impl<'a, T> SliceBuilder<'a, T>{
 
     pub fn finish(self) -> SlicePtr<'a,T> {
         SlicePtr::new(&self.slice[..self.pos]).unwrap()
+    }
+
+    pub fn finish_mut(self) -> MutSlicePtr<'a,T> {
+        MutSlicePtr::new(&mut self.slice[..self.pos]).unwrap()
     }
 }
 

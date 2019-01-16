@@ -1,4 +1,3 @@
-use alloc::prelude::*;
 use sanskrit_common::model::*;
 use sanskrit_common::errors::*;
 use model::*;
@@ -10,26 +9,37 @@ use script_interpreter::unique_hash;
 use script_interpreter::UniqueDomain;
 use ContextEnvironment;
 use sanskrit_common::arena::*;
-use sanskrit_common::encoding::ParserAllocator;
 
 //enum to indicate if a block had a result or an error as return
 #[derive(Copy, Clone, Debug)]
-pub enum BlockEnd{
-    Ok,
-    Error(Error),
+pub enum Continuation<'code> {
+    Next,
+    Throw(Error),
+    Cont(&'code Exp<'code>, usize),
+    Try(&'code Exp<'code>, &'code [(Error, Ptr<'code,Exp<'code>>)], usize)
+
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum Frame<'code> {
+    Exp{exp:&'code Exp<'code>, pos:usize, stack_height:usize},
+    Catch{catches:&'code [(Error, Ptr<'code,Exp<'code>>)], stack_height:usize},
+    Throw(Error),
 }
 
 //the context in which the code is interpreted / executed
-pub struct ExecutionContext<'a,'b, 'c, 'h> {
-    env:ContextEnvironment,                             //Environment with txt and block infos
-    functions: &'b [Ptr<'b,Exp<'b>>],                   // all the code
-    work_bench: Vec<Ptr<'a ,Object<'a>>>,               // helper to spare allocations, todo: use temporary
-    stack: &'c mut HeapStack<'h,Ptr<'a ,Object<'a>>>,   //The current stack
-    alloc: &'a VirtualHeapArena<'h>
+pub struct ExecutionContext<'script,'code, 'interpreter, 'execution, 'heap> {
+    env:ContextEnvironment,                                             //Environment with txt and block infos
+    functions: &'code [Ptr<'code,Exp<'code>>],                          // all the code
+    frames: &'execution mut HeapStack<'interpreter,Frame<'code>>,
+    stack: &'execution mut HeapStack<'interpreter,Ptr<'script ,Object<'script>>>,       //The current stack
+    alloc: &'script VirtualHeapArena<'heap>,
+    temporary_values: &'interpreter HeapArena<'heap>,                   // helper to spare allocations, todo: use temporary
+
 }
 
 //creates a new literal
-pub fn create_lit_object<'a, 'h>(data:&[u8], typ:LitDesc, alloc:&'a VirtualHeapArena<'h>) -> Result<Ptr<'a,Object<'a>>> {
+pub fn create_lit_object<'script, 'heap>(data:&[u8], typ:LitDesc, alloc:&'script VirtualHeapArena<'heap>) -> Result<Ptr<'script,Object<'script>>> {
     //find out which literal to create
     alloc.alloc(match typ {
         LitDesc::Ref | LitDesc::Data => Object::Data(alloc.copy_alloc_slice(data)?),
@@ -129,73 +139,128 @@ fn object_hash(obj:&Object, context: &mut Blake2b) {
     };
 }
 
-impl<'a,'b,'c,'h> ExecutionContext<'a,'b,'c,'h> {
+impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code,'interpreter, 'execution,'heap> {
     //Creates a new Empty context
-    pub fn new(env:ContextEnvironment, functions: &'b [Ptr<'b,Exp<'b>>], stack: &'c mut HeapStack<'h,Ptr<'a, Object<'a>>>, alloc:&'a VirtualHeapArena<'h>) -> Self {
+    pub fn interpret(env:ContextEnvironment, functions: &'code [Ptr<'code,Exp<'code>>], stack:&'execution mut HeapStack<'interpreter,Ptr<'script, Object<'script>>>, frames:&'execution mut HeapStack<'interpreter,Frame<'code>>, alloc:&'script VirtualHeapArena<'heap>, temporary_values:&'interpreter HeapArena<'heap>) -> Result<()>{
         //Define some reused types and capabilities
-        ExecutionContext {
+        let context = ExecutionContext {
             env,
             functions,
-            work_bench: Vec::with_capacity(255),
+            frames,
             stack,
             alloc,
-        }
+            temporary_values
+        };
+        context.execute_function(0)
     }
 
-
     //TExecutes a function in the current context
-    pub fn execute_function(mut self, fun_idx: u16) -> Result<()> {
+    fn execute_function(mut self, fun_idx: u16) -> Result<()> {
         //Cost: constant
         //assert params are on Stack for now
         let code = &self.functions[fun_idx as usize];
-        match (&mut self).execute_exp(code, 0)? {
-            BlockEnd::Ok => Ok(()),
-            BlockEnd::Error(_) => interpreter_error(),
+        self.frames.push(Frame::Exp {
+            exp: &code,
+            pos: 0,
+            stack_height: 0
+        })?;
+
+        if self.execute_exp()? {
+            Ok(())
+        } else {
+            interpreter_error()
         }
     }
 
     //Type checks an expression in the current context
-    fn execute_exp(&mut self, exp: &'b Exp, start_height: usize) -> Result<BlockEnd> {
-        //Find out if the expression returns a result or a failure
-        match *exp {
-            //If a return process the blocks opcode
-            Exp::Ret(ref op_seq, vals) => {
-                //Cost: relative to vals.len() |opCode will measure seperately| -- sub stack push will be accounted on push
-                //process each opcode
-                for op in op_seq.iter() {
-                    match self.execute_op_code(op)? {
-                        BlockEnd::Ok => {},
-                        //if it is an error propagate it
-                        BlockEnd::Error(err) => return Ok(BlockEnd::Error(err)),
+    fn execute_exp(&mut self) -> Result<bool> {
+        'outer: loop {
+            match self.frames.pop() {
+                None => return Ok(true),
+                Some(Frame::Catch {..}) => { },
+                Some(Frame::Exp { exp, pos, stack_height }) => {
+                    //Find out if the expression returns a result or a failure
+                    match *exp {
+                        //If a return process the blocks opcode
+                        Exp::Ret(ref op_seq, vals) => {
+                            //Cost: relative to vals.len() |opCode will measure seperately| -- sub stack push will be accounted on push
+                            //process each opcode
+                            let mut pos = pos;
+                            while op_seq.len() > pos {
+                                pos+=1;
+                                match self.execute_op_code(&op_seq[pos-1])? {
+                                    Continuation::Next => {},
+                                    //if it is an error propagate it
+                                    Continuation::Cont(n_exp,n_stack_hight) => {
+                                        self.frames.push(Frame::Exp { exp, pos, stack_height })?;
+                                        self.frames.push(Frame::Exp { exp:n_exp, pos:0, stack_height:n_stack_hight })?;
+                                        continue 'outer;
+                                    }
+
+                                    Continuation::Try(n_exp,catches,n_stack_hight) => {
+                                        self.frames.push(Frame::Exp { exp, pos, stack_height })?;
+                                        self.frames.push(Frame::Catch { catches, stack_height:n_stack_hight })?;
+                                        self.frames.push(Frame::Exp { exp:n_exp, pos:0, stack_height:n_stack_hight })?;
+                                        continue 'outer;
+                                    }
+                                    Continuation::Throw(error) => {
+                                        self.frames.push(Frame::Throw(error))?;
+                                        continue 'outer;
+                                    },
+                                }
+                            }
+
+                            let tmp = self.temporary_values.temp_arena()?;
+                            //capture each return
+                            let workbench = tmp.iter_result_alloc_slice( vals.iter().map(|ValueRef(idx)|self.get(*idx)))?;
+                            //reset the stack
+                            self.stack.rewind_to(stack_height)?;
+
+                            //push the captured elems (empties workbench)
+                            for w in workbench.iter() {
+                                self.stack.push(*w)?;
+                            }
+                        },
+
+                        //If a throw check that it is declared
+                        Exp::Throw(error) => self.frames.push(Frame::Throw(error))?
+                    }
+                },
+                Some(Frame::Throw(error))  => {
+                    loop {
+                        match self.frames.pop() {
+                            None => return Ok(false),
+                            Some(Frame::Catch {catches, stack_height}) => {
+                                match self.catch(catches,error,stack_height)? {
+                                    Continuation::Next => {},
+                                    //if it is an error propagate it
+                                    Continuation::Cont(n_exp,n_stack_height) => {
+                                        self.frames.push(Frame::Exp { exp:n_exp, pos:0, stack_height:n_stack_height })?;
+                                        continue 'outer;
+                                    }
+
+                                    Continuation::Try(n_exp,catches,n_stack_height) => {
+                                        self.frames.push(Frame::Catch { catches, stack_height:n_stack_height })?;
+                                        self.frames.push(Frame::Exp { exp:n_exp, pos:0, stack_height:n_stack_height })?;
+                                        continue 'outer;
+                                    },
+
+                                    Continuation::Throw(error) => {
+                                        self.frames.push(Frame::Throw(error))?;
+                                        continue 'outer;
+                                    },
+                                }
+                            },
+                            Some(_) => {}
+                        }
                     }
                 }
-
-                self.work_bench.clear();
-                //capture each return
-                for ValueRef(idx) in vals.iter() {
-                    let elem = self.get(*idx)?;
-                    //rescue it
-                    self.work_bench.push(elem);
-                }
-
-                //reset the stack
-                self.stack.rewind_to(start_height)?;
-
-                //push the captured elems (empties workbench)
-                for w in &self.work_bench {
-                    self.stack.push(*w)?;
-                }
-
-                Ok(BlockEnd::Ok)
-            },
-
-            //If a throw check that it is declared
-            Exp::Throw(error) => Ok(BlockEnd::Error(error))
+            }
         }
     }
 
     //The heavy lifter that type checks op code
-    fn execute_op_code(&mut self, code: &'b OpCode) -> Result<BlockEnd> {
+    fn execute_op_code(&mut self, code: &'code OpCode) -> Result<Continuation<'code>> {
         //Branch on the opcode type and check it
         match *code {
             OpCode::Lit(data, typ) => self.lit(&data, typ),
@@ -211,27 +276,27 @@ impl<'a,'b,'c,'h> ExecutionContext<'a,'b,'c,'h> {
 
 
     //creates a literal
-    fn lit(&mut self, data: &[u8], typ: LitDesc) -> Result<BlockEnd> {
+    fn lit(&mut self, data: &[u8], typ: LitDesc) -> Result<Continuation<'code>> {
         //Cost: relative to: data.0.len(), + 1 push
         //create the literal
         let obj = create_lit_object(data, typ, self.alloc)?;
         //push it onto the stack
         self.stack.push(obj)?;
-        Ok(BlockEnd::Ok)
+        Ok(Continuation::Next)
     }
 
     //_ as let is keyword
     // process an EXp isolated
-    fn let_(&mut self, bind: &'b Exp) -> Result<BlockEnd> {
+    fn let_(&mut self, bind: &'code Exp) -> Result<Continuation<'code>> {
         //Cost: constant
         //fetch the height
         let stack_height = self.stack.len();
         //execute the block
-        self.execute_exp(bind, stack_height)
+        Ok(Continuation::Cont(bind, stack_height))
     }
 
     //helper to get stack elems
-    fn get(&self, idx: u16) -> Result<Ptr<'a,Object<'a>>> {
+    fn get(&self, idx: u16) -> Result<Ptr<'script,Object<'script>>> {
         //calc the pos
         let pos = self.stack.len() - idx as usize - 1;
         //get the elem
@@ -239,7 +304,7 @@ impl<'a,'b,'c,'h> ExecutionContext<'a,'b,'c,'h> {
     }
 
     //unpacks an adt
-    fn unpack(&mut self, ValueRef(idx): ValueRef) -> Result<BlockEnd> {
+    fn unpack(&mut self, ValueRef(idx): ValueRef) -> Result<Continuation<'code>> {
         //Cost: relative to: elems.len()
         //get the input
         let elem = self.get(idx)?;
@@ -249,12 +314,12 @@ impl<'a,'b,'c,'h> ExecutionContext<'a,'b,'c,'h> {
             for e in elems.iter() {
                 self.stack.push(*e)?;
             }
-            Ok(BlockEnd::Ok)
+            Ok(Continuation::Next)
         } else { unreachable!() }
     }
 
     //gets a single field from an adt
-    fn get_field(&mut self, ValueRef(idx): ValueRef, field:u8) -> Result<BlockEnd> {
+    fn get_field(&mut self, ValueRef(idx): ValueRef, field:u8) -> Result<Continuation<'code>> {
         //Cost: constant
         //get the input
         let elem = self.get(idx)?;
@@ -262,12 +327,12 @@ impl<'a,'b,'c,'h> ExecutionContext<'a,'b,'c,'h> {
         if let Object::Adt(_, elems) = &*elem {
             //push the correct field
             self.stack.push(elems[field as usize].clone())?;
-            Ok(BlockEnd::Ok)
+            Ok(Continuation::Next)
         } else { unreachable!() }
     }
 
     //branch based on constructor
-    fn switch(&mut self, ValueRef(idx): ValueRef, cases: &'b [Ptr<'b,Exp<'b>>]) -> Result<BlockEnd> {
+    fn switch(&mut self, ValueRef(idx): ValueRef, cases: &'code [Ptr<'code,Exp<'code>>]) -> Result<Continuation<'code>> {
         //Cost: relative to: elems.len()
         //get the input
         let elem = self.get(idx)?;
@@ -280,12 +345,12 @@ impl<'a,'b,'c,'h> ExecutionContext<'a,'b,'c,'h> {
                 self.stack.push(e.clone())?;
             }
             //execute the right branch
-            self.execute_exp(&cases[tag as usize], stack_height)
+            Ok(Continuation::Cont(&cases[tag as usize], stack_height))
         } else { unreachable!() }
     }
 
     //packs an adt
-    fn pack(&mut self, Tag(tag): Tag, values: &[ValueRef]) -> Result<BlockEnd> {
+    fn pack(&mut self, Tag(tag): Tag, values: &[ValueRef]) -> Result<Continuation<'code>> {
         //Cost: relative to: values.len()
         //fetch the inputs
         let mut fields = self.alloc.slice_builder(values.len())?;
@@ -295,37 +360,32 @@ impl<'a,'b,'c,'h> ExecutionContext<'a,'b,'c,'h> {
         }
         //produce an adt with the fields as args
         self.stack.push(self.alloc.alloc(Object::Adt(tag, fields.finish()))?)?;
-        Ok(BlockEnd::Ok)
+        Ok(Continuation::Next)
     }
 
     //create a try block
-    fn try(&mut self, try: &'b Exp<'b>, catches: &'b [(Error, Ptr<'b,Exp<'b>>)]) -> Result<BlockEnd> {
+    fn try(&mut self, try: &'code Exp<'code>, catches: &'code [(Error, Ptr<'code,Exp<'code>>)]) -> Result<Continuation<'code>> {
         //fetch the hight
-        let stack_high = self.stack.len();
+        let stack_height = self.stack.len();
         //execute the code
-        let block_end = self.execute_exp(try, stack_high)?;
-        return match block_end {
-            BlockEnd::Ok => Ok(BlockEnd::Ok), //Cost: constant
-            //if their is an error check if it is catched
-            BlockEnd::Error(err) => self.catch(catches,err,stack_high)
-        }
+        Ok(Continuation::Try(try, catches, stack_height))
     }
 
     //executes the catch on the way back
-    fn catch(&mut self, catches: &'b [(Error, Ptr<'b,Exp<'b>>)], err:Error, start_height:usize) -> Result<BlockEnd>{
+    fn catch(&mut self, catches: &'code [(Error, Ptr<'code,Exp<'code>>)], err:Error, start_height:usize) -> Result<Continuation<'code>>{
         //Cost: relative to: catches.len()
         for (e, exp) in catches {
             //if this branche catches it execute it
             if *e == err {
                 self.stack.rewind_to(start_height)?;
-                return self.execute_exp(exp, start_height);
+                return Ok(Continuation::Cont(exp, start_height));
             }
         }
-        Ok(BlockEnd::Error(err))
+        Ok(Continuation::Next)
     }
 
     //call a function
-    fn invoke(&mut self, func: FunDesc, values: &[ValueRef]) -> Result<BlockEnd> {
+    fn invoke(&mut self, func: FunDesc, values: &[ValueRef]) -> Result<Continuation<'code>> {
         match func {
             //Cost: constant
             //execute it if native
@@ -344,13 +404,13 @@ impl<'a,'b,'c,'h> ExecutionContext<'a,'b,'c,'h> {
                     self.stack.push(elem)?;
                 }
                 //Execute the function
-                self.execute_exp(fun_code, stack_height)
+                Ok(Continuation::Cont(fun_code, stack_height))
             },
         }
     }
 
     //execute a native function
-    fn execute_native(&mut self, op: Operand, values: &[ValueRef]) -> Result<BlockEnd> {
+    fn execute_native(&mut self, op: Operand, values: &[ValueRef]) -> Result<Continuation<'code>> {
         //get the return (multi returns handle one inline)
         //A none means an error that must be thrown
         let res = match op {
@@ -360,27 +420,27 @@ impl<'a,'b,'c,'h> ExecutionContext<'a,'b,'c,'h> {
             Operand::Xor => self.xor(values)?,
             Operand::Not => self.not(values)?,
             Operand::ToU(n_size) => match self.to_u(n_size, values)? {
-                None => return Ok(BlockEnd::Error(Error::Native(NativeError::NumericError))),
+                None => return Ok(Continuation::Throw(Error::Native(NativeError::NumericError))),
                 Some(obj) => obj,
             },
             Operand::ToI(n_size) => match self.to_i(n_size, values)? {
-                None => return Ok(BlockEnd::Error(Error::Native(NativeError::NumericError))),
+                None => return Ok(Continuation::Throw(Error::Native(NativeError::NumericError))),
                 Some(obj) => obj,
             },
             Operand::Add => match self.add(values)? {
-                None => return Ok(BlockEnd::Error(Error::Native(NativeError::NumericError))),
+                None => return Ok(Continuation::Throw(Error::Native(NativeError::NumericError))),
                 Some(obj) => obj,
             },
             Operand::Sub => match self.sub(values)? {
-                None => return Ok(BlockEnd::Error(Error::Native(NativeError::NumericError))),
+                None => return Ok(Continuation::Throw(Error::Native(NativeError::NumericError))),
                 Some(obj) => obj,
             },
             Operand::Mul => match self.mul(values)? {
-                None => return Ok(BlockEnd::Error(Error::Native(NativeError::NumericError))),
+                None => return Ok(Continuation::Throw(Error::Native(NativeError::NumericError))),
                 Some(obj) => obj,
             },
             Operand::Div => match self.div(values)? {
-                None => return Ok(BlockEnd::Error(Error::Native(NativeError::NumericError))),
+                None => return Ok(Continuation::Throw(Error::Native(NativeError::NumericError))),
                 Some(obj) => obj,
             },
             Operand::Eq => self.eq(values)?,
@@ -393,11 +453,11 @@ impl<'a,'b,'c,'h> ExecutionContext<'a,'b,'c,'h> {
             Operand::Lte => self.lte(values)?,
             Operand::Gte => self.gte(values)?,
             Operand::SetBit => match self.set_bit(values)? {
-                None => return Ok(BlockEnd::Error(Error::Native(NativeError::IndexError))),
+                None => return Ok(Continuation::Throw(Error::Native(NativeError::IndexError))),
                 Some(obj) => obj,
             },
             Operand::GetBit => match self.get_bit(values)? {
-                None => return Ok(BlockEnd::Error(Error::Native(NativeError::IndexError))),
+                None => return Ok(Continuation::Throw(Error::Native(NativeError::IndexError))),
                 Some(obj) => obj,
             },
             Operand::GenUnique => match self.gen_unique(values)? {
@@ -417,10 +477,10 @@ impl<'a,'b,'c,'h> ExecutionContext<'a,'b,'c,'h> {
         };
         let elem = self.alloc.alloc(res)?;
         self.stack.push(elem)?;
-        Ok(BlockEnd::Ok)
+        Ok(Continuation::Next)
     }
 
-    fn and(&self, values: &[ValueRef]) -> Result<Object<'a>> {
+    fn and(&self, values: &[ValueRef]) -> Result<Object<'script>> {
         //cost: relative to: Object size
         //get the arguments and use & on them
         Ok(match (&*self.get(values[0].0)?, &*self.get(values[1].0)?) {
@@ -444,7 +504,7 @@ impl<'a,'b,'c,'h> ExecutionContext<'a,'b,'c,'h> {
         })
     }
 
-    fn or(&self, values: &[ValueRef]) -> Result<Object<'a>> {
+    fn or(&self, values: &[ValueRef]) -> Result<Object<'script>> {
         //cost: relative to: Object size
         //get the arguments and use | on them
         Ok(match (&*self.get(values[0].0)?, &*self.get(values[1].0)?) {
@@ -468,7 +528,7 @@ impl<'a,'b,'c,'h> ExecutionContext<'a,'b,'c,'h> {
         })
     }
 
-    fn xor(&self, values: &[ValueRef]) -> Result<Object<'a>> {
+    fn xor(&self, values: &[ValueRef]) -> Result<Object<'script>> {
         //cost: relative to: Object size
         //get the arguments and use ^ on them
         Ok(match (&*self.get(values[0].0)?, &*self.get(values[1].0)?) {
@@ -492,7 +552,7 @@ impl<'a,'b,'c,'h> ExecutionContext<'a,'b,'c,'h> {
         })
     }
 
-    fn not(&self, values: &[ValueRef]) -> Result<Object<'a>> {
+    fn not(&self, values: &[ValueRef]) -> Result<Object<'script>> {
         //cost: relative to: Object size
         //get the argument and use ! on them
         Ok(match &*self.get(values[0].0)? {
@@ -515,8 +575,8 @@ impl<'a,'b,'c,'h> ExecutionContext<'a,'b,'c,'h> {
     }
 
     //converts the input to a unsigned int with a width on n_size bytes
-    fn to_u(&self, n_size: u8, values: &[ValueRef]) -> Result<Option<Object<'a>>> {
-        fn to_u<'a,T: ToPrimitive>(prim: &T, n_size: u8) -> Option<Object<'a>> {
+    fn to_u(&self, n_size: u8, values: &[ValueRef]) -> Result<Option<Object<'script>>> {
+        fn to_u<'script,T: ToPrimitive>(prim: &T, n_size: u8) -> Option<Object<'script>> {
             //cost: relative to: Object size
             //use to a method from another trait to do the conversion
             match n_size {
@@ -546,8 +606,8 @@ impl<'a,'b,'c,'h> ExecutionContext<'a,'b,'c,'h> {
     }
 
     //converts the input to a signed int with a width on n_size bytes
-    fn to_i(&self, n_size: u8, values: &[ValueRef]) -> Result<Option<Object<'a>>> {
-        fn to_i<'a,T: ToPrimitive>(prim: &T, n_size: u8) -> Option<Object<'a>> {
+    fn to_i(&self, n_size: u8, values: &[ValueRef]) -> Result<Option<Object<'script>>> {
+        fn to_i<'script,T: ToPrimitive>(prim: &T, n_size: u8) -> Option<Object<'script>> {
             //cost: relative to: Object size
             //use to a method from another trait to do the conversion
             match n_size {
@@ -576,7 +636,7 @@ impl<'a,'b,'c,'h> ExecutionContext<'a,'b,'c,'h> {
     }
 
     //does an addition (a checked one, returns None in case of Over/under flow)
-    fn add(&self, values: &[ValueRef]) -> Result<Option<Object<'a>>> {
+    fn add(&self, values: &[ValueRef]) -> Result<Option<Object<'script>>> {
         //cost: relative to: Object size
         Ok(match (&*self.get(values[0].0)?, &*self.get(values[1].0)?) {
             (Object::I8(op1), Object::I8(op2)) => op1.checked_add(*op2).map(Object::I8),
@@ -594,7 +654,7 @@ impl<'a,'b,'c,'h> ExecutionContext<'a,'b,'c,'h> {
     }
 
     //does a substraction (a checked one, returns None in case of Over/under flow)
-    fn sub(&self, values: &[ValueRef]) -> Result<Option<Object<'a>>> {
+    fn sub(&self, values: &[ValueRef]) -> Result<Option<Object<'script>>> {
         //cost: relative to: Object size
         Ok(match (&*self.get(values[0].0)?, &*self.get(values[1].0)?) {
             (Object::I8(op1), Object::I8(op2)) => op1.checked_sub(*op2).map(Object::I8),
@@ -612,7 +672,7 @@ impl<'a,'b,'c,'h> ExecutionContext<'a,'b,'c,'h> {
     }
 
     //does a multiplication (a checked one, returns None in case of Over/under flow)
-    fn mul(&self, values: &[ValueRef]) -> Result<Option<Object<'a>>> {
+    fn mul(&self, values: &[ValueRef]) -> Result<Option<Object<'script>>> {
         //cost: relative to: Object size
         Ok(match (&*self.get(values[0].0)?, &*self.get(values[1].0)?) {
             (Object::I8(op1), Object::I8(op2)) => op1.checked_mul(*op2).map(Object::I8),
@@ -630,7 +690,7 @@ impl<'a,'b,'c,'h> ExecutionContext<'a,'b,'c,'h> {
     }
 
     //does a division (a checked one, returns None in case of Over/under flow or division by 0)
-    fn div(&self, values: &[ValueRef]) -> Result<Option<Object<'a>>> {
+    fn div(&self, values: &[ValueRef]) -> Result<Option<Object<'script>>> {
         //cost: relative to: Object size
         Ok(match (&*self.get(values[0].0)?, &*self.get(values[1].0)?) {
             (Object::I8(op1), Object::I8(op2)) => op1.checked_div(*op2).map(Object::I8),
@@ -648,14 +708,14 @@ impl<'a,'b,'c,'h> ExecutionContext<'a,'b,'c,'h> {
     }
 
     //compares the inputs for equality
-    fn eq(&self, values: &[ValueRef]) -> Result<Object<'a>> {
+    fn eq(&self, values: &[ValueRef]) -> Result<Object<'script>> {
         //cost: relative to: Object size
         //Note: cost calc is hard without a custom Eq impl as we do not have appropriate info -- make eq similar to hash
         Ok(Object::Adt(if self.get(values[0].0)? == self.get(values[1].0)? { 1 } else { 0 }, SlicePtr::empty()))
     }
 
     //hashes the input recursively
-    fn hash(&self, values: &[ValueRef], domain:u8) -> Result<Object<'a>>  {
+    fn hash(&self, values: &[ValueRef], domain:u8) -> Result<Object<'script>>  {
         //cost: constant |relative Part in object_hash|
         let top = self.get(values[0].0)?;
         //Make a 20 byte digest hascher
@@ -673,7 +733,7 @@ impl<'a,'b,'c,'h> ExecutionContext<'a,'b,'c,'h> {
     }
 
     //a non recursive, non-structural variant that just hashes the data input
-    fn plain_hash(&self, values: &[ValueRef]) -> Result<Object<'a>> {
+    fn plain_hash(&self, values: &[ValueRef]) -> Result<Object<'script>> {
         let val = self.get(values[0].0)?;
         let data = match *val {
             Object::Data(ref data) => data,
@@ -691,22 +751,19 @@ impl<'a,'b,'c,'h> ExecutionContext<'a,'b,'c,'h> {
     }
 
     //concats the data inputs
-    fn concat(&self,values:&[ValueRef]) -> Result<Object<'a>> {
+    fn concat(&self,values:&[ValueRef]) -> Result<Object<'script>> {
         //get the args
         Ok(match (&*self.get(values[0].0)?, &*self.get(values[1].0)?) {
             (Object::Data(ref op1), Object::Data(ref op2)) => {
                 //build a new data vector from the inputs
-                let mut conc = Vec::with_capacity(op1.len()+op2.len());
-                conc.extend(op1.iter());
-                conc.extend(op2.iter());
-                Object::Data(self.alloc.copy_alloc_slice(&conc)?)
+                Object::Data(self.alloc.merge_alloc_slice(op1, op2)?)
             },
             _ => unreachable!()
         })
     }
 
     //compares the inputs for less than
-    fn lt(&self, values: &[ValueRef]) -> Result<Object<'a>> {
+    fn lt(&self, values: &[ValueRef]) -> Result<Object<'script>> {
         //cost: relative to: Object size
         Ok(match (&*self.get(values[0].0)?, &*self.get(values[1].0)?) {
             (Object::I8(op1), Object::I8(op2)) => Object::Adt(if op1 < op2 { 1 } else { 0 }, SlicePtr::empty()),
@@ -724,7 +781,7 @@ impl<'a,'b,'c,'h> ExecutionContext<'a,'b,'c,'h> {
     }
 
     //compares the inputs for greater than
-    fn gt(&self, values: &[ValueRef]) -> Result<Object<'a>> {
+    fn gt(&self, values: &[ValueRef]) -> Result<Object<'script>> {
         //cost: relative to: Object size
         Ok(match (&*self.get(values[0].0)?, &*self.get(values[1].0)?) {
             (Object::I8(op1), Object::I8(op2)) => Object::Adt(if op1 > op2 { 1 } else { 0 }, SlicePtr::empty()),
@@ -742,7 +799,7 @@ impl<'a,'b,'c,'h> ExecutionContext<'a,'b,'c,'h> {
     }
 
     //compares the inputs for less than or equal
-    fn lte(&self, values: &[ValueRef]) -> Result<Object<'a>> {
+    fn lte(&self, values: &[ValueRef]) -> Result<Object<'script>> {
         //cost: relative to: Object size
         Ok(match (&*self.get(values[0].0)?, &*self.get(values[1].0)?) {
             (Object::I8(op1), Object::I8(op2)) => Object::Adt(if op1 <= op2 { 1 } else { 0 }, SlicePtr::empty()),
@@ -760,7 +817,7 @@ impl<'a,'b,'c,'h> ExecutionContext<'a,'b,'c,'h> {
     }
 
     //compares the inputs for greater than or equal
-    fn gte(&self, values: &[ValueRef]) -> Result<Object<'a>> {
+    fn gte(&self, values: &[ValueRef]) -> Result<Object<'script>> {
         //cost: relative to: Object size
         Ok(match (&*self.get(values[0].0)?, &*self.get(values[1].0)?) {
             (Object::I8(op1), Object::I8(op2)) => Object::Adt(if op1 >= op2 { 1 } else { 0 }, SlicePtr::empty()),
@@ -780,48 +837,48 @@ impl<'a,'b,'c,'h> ExecutionContext<'a,'b,'c,'h> {
     //converts numeric input to data
     //uses byteorder crate for conversion where not trivial
     // conversion is little endian
-    fn to_data(&self, values: &[ValueRef]) -> Result<Object<'a>> {
+    fn to_data(&self, values: &[ValueRef]) -> Result<Object<'script>> {
         //cost: relative to: Object size
         Ok(match &*self.get(values[0].0)? {
             Object::I8(data) => Object::Data(self.alloc.copy_alloc_slice(&[*data as u8])?),
             Object::U8(data) => Object::Data(self.alloc.copy_alloc_slice(&[*data])?),
             Object::I16(data) => {
-                let mut input = vec![0; 2];
+                let mut input = [0; 2];
                 LittleEndian::write_i16(&mut input, *data);
                 Object::Data(self.alloc.copy_alloc_slice(&input)?)
             },
             Object::U16(data) => {
-                let mut input = vec![0; 2];
+                let mut input = [0; 2];
                 LittleEndian::write_u16(&mut input, *data);
                 Object::Data(self.alloc.copy_alloc_slice(&input)?)
             },
             Object::I32(data) => {
-                let mut input = vec![0; 4];
+                let mut input = [0; 4];
                 LittleEndian::write_i32(&mut input, *data);
                 Object::Data(self.alloc.copy_alloc_slice(&input)?)
             },
             Object::U32(data) => {
-                let mut input = vec![0; 4];
+                let mut input = [0; 4];
                 LittleEndian::write_u32(&mut input, *data);
                 Object::Data(self.alloc.copy_alloc_slice(&input)?)
             },
             Object::I64(data) => {
-                let mut input = vec![0; 8];
+                let mut input = [0; 8];
                 LittleEndian::write_i64(&mut input, *data);
                 Object::Data(self.alloc.copy_alloc_slice(&input)?)
             },
             Object::U64(data) => {
-                let mut input = vec![0; 8];
+                let mut input = [0; 8];
                 LittleEndian::write_u64(&mut input, *data);
                 Object::Data(self.alloc.copy_alloc_slice(&input)?)
             },
             Object::I128(data) => {
-                let mut input = vec![0; 16];
+                let mut input = [0; 16];
                 LittleEndian::write_i128(&mut input, *data);
                 Object::Data(self.alloc.copy_alloc_slice(&input)?)
             },
             Object::U128(data) => {
-                let mut input = vec![0; 16];
+                let mut input = [0; 16];
                 LittleEndian::write_u128(&mut input, *data);
                 Object::Data(self.alloc.copy_alloc_slice(&input)?)
             },
@@ -830,9 +887,9 @@ impl<'a,'b,'c,'h> ExecutionContext<'a,'b,'c,'h> {
     }
 
     //gets a bit in a data value (as boolean)
-    fn get_bit(&self, values: &[ValueRef]) -> Result<Option<Object<'a>>> {
+    fn get_bit(&self, values: &[ValueRef]) -> Result<Option<Object<'script>>> {
         //helper that gets a bit in a vector
-        fn get_inner_bit<'a>(v: &[u8], idx: u16) -> Option<Object<'a>> {
+        fn get_inner_bit<'script>(v: &[u8], idx: u16) -> Option<Object<'script>> {
             //reverse the index (todo: is this really necessary??)
             let rev_index = (idx / 8) as usize;
             // check if it is in range
@@ -860,9 +917,9 @@ impl<'a,'b,'c,'h> ExecutionContext<'a,'b,'c,'h> {
     }
 
     //sets a bit in a data value (as boolean)
-    fn set_bit(&self, values: &[ValueRef]) -> Result<Option<Object<'a>>> {
+    fn set_bit(&self, values: &[ValueRef]) -> Result<Option<Object<'script>>> {
         //helper that sets a bit in a vector
-        fn set_inner_bit<'a,'h>(v: &[u8], idx: u16, val: bool, alloc:&'a VirtualHeapArena<'h>) -> Result<Option<Object<'a>>> {
+        fn set_inner_bit<'script,'heap>(v: &[u8], idx: u16, val: bool, alloc:&'script VirtualHeapArena<'heap>) -> Result<Option<Object<'script>>> {
             //reverse the index (todo: is this really necessary??)
             let rev_index = (idx / 8) as usize;
             // check if it is in range
@@ -894,7 +951,7 @@ impl<'a,'b,'c,'h> ExecutionContext<'a,'b,'c,'h> {
 
 
     //sreate a unique data value from the context
-    fn gen_unique(&self, values: &[ValueRef]) -> Result<(Object<'a>, Object<'a>)> {
+    fn gen_unique(&self, values: &[ValueRef]) -> Result<(Object<'script>, Object<'script>)> {
         //cost: constant
         Ok(match &*self.get(values[0].0)? {
             Object::Context(num) => (

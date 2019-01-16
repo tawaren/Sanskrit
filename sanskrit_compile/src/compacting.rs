@@ -28,13 +28,30 @@ use core::mem;
 use sanskrit_common::arena::*;
 use sanskrit_common::encoding::ParserAllocator;
 
-pub struct Compactor<'b,'h> {
+struct State {
+    //number of active frames at runtime
+    frames:usize,
+    //maximal number of active frames
+    max_frames:usize,
     //number of elements on the stack at runtime
     manifested_stack:usize,
+    //maximal number of elements on the stack at runtime
+    max_manifest_stack:usize,
     //elements on the stack at compiletime and where to find them on the runtime stack
     stack:Vec<usize>,
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub struct CallResources {
+    max_manifest_stack: usize,
+    max_frames: usize,
+}
+
+pub struct Compactor<'b,'h> {
+    //state
+    state:State,
     //all the embedded functions and where to find them at runtime
-    fun_mapping:BTreeMap<(Hash,u8),(u16,u8)>,
+    fun_mapping:BTreeMap<(Hash,u8),(u16,u8,CallResources)>,
     //all the embeded errors
     err_mapping:BTreeMap<(Rc<ModuleLink>,u8),Error>,
     //the code of all the embedded function
@@ -43,18 +60,87 @@ pub struct Compactor<'b,'h> {
     alloc:&'b HeapArena<'h>
 }
 
+type ReturnPoint = (usize,usize);
+
+//todo: Comment
+impl State {
+    fn new() -> Self {
+        State {
+            frames: 0,
+            max_frames: 0,
+            manifested_stack: 0,
+            max_manifest_stack: 0,
+            stack: Vec::new(),
+        }
+    }
+
+    fn push_real(&mut self) {
+        let pos = self.manifested_stack;
+        self.stack.push(pos);
+        self.manifested_stack+=1;
+        if self.manifested_stack > self.max_manifest_stack {
+            self.max_manifest_stack = self.manifested_stack;
+        }
+    }
+
+    fn push_alias(&mut self, alias:usize) {
+        self.stack.push(alias);
+    }
+
+    fn add_frame(&mut self) {
+        self.frames += 1;
+        if self.frames > self.max_frames {
+            self.max_frames = self.frames
+        }
+    }
+
+    fn drop_frame(&mut self) {
+        self.frames -= 1;
+    }
+
+    fn peek_frames(&mut self, frames:usize) {
+        if self.frames + frames > self.max_frames {
+            self.max_frames = self.frames + frames
+        }
+    }
+
+    fn extract_call_resources(self) -> CallResources {
+        CallResources {
+            max_manifest_stack: self.max_manifest_stack,
+            max_frames: self.max_frames,
+        }
+    }
+
+    fn include_call_resources(&mut self, res:CallResources) {
+        self.max_manifest_stack = self.max_manifest_stack.max(self.manifested_stack + res.max_manifest_stack);
+        self.max_frames = self.max_frames.max(self.frames + res.max_frames)
+
+    }
+
+    fn return_point(&self) -> ReturnPoint{
+        (self.manifested_stack, self.stack.len())
+    }
+
+    fn rewind(&mut self, (manifested_stack, stack_size):ReturnPoint){
+        self.manifested_stack = manifested_stack;
+        while stack_size < self.stack.len() {
+            self.stack.pop();
+        }
+    }
+}
+
 impl<'b,'h> Compactor<'b,'h> {
     //Start a new compactor
     pub fn new(alloc:&'b HeapArena<'h>) -> Self {
         Compactor {
-            manifested_stack: 0,
-            stack: Vec::new(),
+            state:State::new(),
             fun_mapping: BTreeMap::new(),
             err_mapping: BTreeMap::new(),
             functions: Vec::new(),
             alloc
         }
     }
+
 
     //Strip a error from the Module Hash and assign it a number
     pub fn convert_err(&mut self, err:Rc<ResolvedErr>) -> Result<Error> {
@@ -86,21 +172,23 @@ impl<'b,'h> Compactor<'b,'h> {
 
     //Strip a function from the Module Hash and assign it a number
     // Additionally does compact the function and stores it in the transaction (needed to strip it from Hash)
-    pub fn emit_func<S:Store>(&mut self, fun:&FunctionComponent, module:&Hash, offset:u8, context:&Context<S>) -> Result<(u16,u8)> {
+    pub fn emit_func<S:Store>(&mut self, fun:&FunctionComponent, module:&Hash, offset:u8, context:&Context<S>) -> Result<(u16,u8,CallResources)> {
         match self.fun_mapping.get(&(module.clone(),offset)) {
             None => {
                 //find the next free number
                 let next_idx = self.functions.len();
                 //ensure we do not go over the limit
                 if next_idx > u16::max_value() as usize {return size_limit_exceeded_error()}
-                //get the infos needed during compaction (number, number of returns)
-                let res = (next_idx as u16,fun.returns.len() as u8);
-                //remember the info
-                self.fun_mapping.insert((module.clone(),offset), res);
                 //reserve the Slot in the function code array (it is res.0)
                 self.functions.push(None);
                 //compact the function
-                let processed = self.process_func(fun, context)?;
+                let (processed, resources) = self.process_func(fun, context)?;
+                //get the infos needed during compaction (number, number of returns)
+                let res = (next_idx as u16,fun.returns.len() as u8, resources);
+                //remember the info
+                let old = self.fun_mapping.insert((module.clone(),offset), res);
+                //  for the case that someone gets the idea to allow recursion
+                assert_eq!(old,None);
                 //fill the slot with the compacted function
                 self.functions[next_idx] = Some(processed);
                 Ok(res)
@@ -111,32 +199,31 @@ impl<'b,'h> Compactor<'b,'h> {
     }
 
     //compacts a function
-    fn process_func<S:Store>(&mut self, fun:&FunctionComponent, context:&Context<S>) -> Result<Ptr<'b,RExp<'b>>> {
+    fn process_func<S:Store>(&mut self, fun:&FunctionComponent, context:&Context<S>) -> Result<(Ptr<'b,RExp<'b>>,CallResources)> {
         //Prepare a new Stack (Save old one)
-        let old_manifest = self.manifested_stack;
-        let mut old_stack = Vec::new();
-        mem::swap(&mut self.stack, &mut old_stack);
-        self.manifested_stack = 0;
+        let mut state = State::new();
+        mem::swap(&mut self.state, &mut state);
+        //ret point
+        let ret_point = self.state.return_point();
         //push initial params to the runtime and compiletime stack
         for _ in 0..fun.params.len() {
-            let pos = self.manifested_stack;
-            self.stack.push(pos);
-            self.manifested_stack+=1;
+            self.state.push_real();
         }
         //compact body
-        let body = self.process_exp(&fun.code, 0, 0, context);
+        let body = self.process_exp(&fun.code, ret_point, context)?;
         //restore old Stack
-        mem::swap(&mut old_stack, &mut self.stack);
-        self.manifested_stack = old_manifest;
-        //return body
-        body
+        mem::swap(&mut state, &mut &mut self.state);
+        //return body & Ressource infos
+        Ok((body, state.extract_call_resources()))
     }
 
     //compacts an expression (block)
-    fn process_exp<S:Store>(&mut self, exp:&Exp, start_stack:usize, start_manifest:usize, context:&Context<S>) -> Result<Ptr<'b,RExp<'b>>>{
+    fn process_exp<S:Store>(&mut self, exp:&Exp, ret_point:ReturnPoint, context:&Context<S>) -> Result<Ptr<'b,RExp<'b>>>{
         //differentiate between Return and Throw
         self.alloc.alloc(match *exp {
             Exp::Ret(ref opcodes, ref returns, ref _drops) => {
+                // add the frame
+                self.state.add_frame();
                 //in case of a return we need to find out which opcodes we can eliminate
                 let mut new_opcodes = self.alloc.slice_builder(opcodes.0.len())?;
                 for code in &opcodes.0 {
@@ -149,21 +236,19 @@ impl<'b,'h> Compactor<'b,'h> {
                 //find the runtime positions of the blocks result
                 let adapted = self.alloc.iter_alloc_slice(returns.iter().map(|val|self.translate_ref(*val)))?;
                 //Unwind the runtime and compiletime stack
-                self.manifested_stack = start_manifest;
-                while start_stack < self.stack.len() { self.stack.pop(); }
+                self.state.rewind(ret_point);
                 //push the results on both stacks
                 for _ in 0..returns.len() {
-                    let pos = self.manifested_stack;
-                    self.stack.push(pos);
-                    self.manifested_stack+=1;
+                    self.state.push_real();
                 }
+                // drop the frame
+                self.state.drop_frame();
                 //Generate and return the optimized Expression
                 RExp::Ret(new_opcodes.finish(),adapted)
             },
             Exp::Throw(err) => {
                 //Unwind the runtime and compiletime stack (todo: still necessary???)
-                self.manifested_stack = start_manifest;
-                while start_stack < self.stack.len() { self.stack.pop(); }
+                self.state.rewind(ret_point);
                 //Generate and return the optimized Throw
                 RExp::Throw(self.convert_err(err.fetch(context)?)?)
             },
@@ -198,8 +283,8 @@ impl<'b,'h> Compactor<'b,'h> {
 
     //helper to get a value from compiletime stack over a ValueRef
     fn get(&self, ValueRef(val):ValueRef) -> usize {
-        let pos = self.stack.len() - val as usize -1;
-        self.stack[pos]
+        let pos = self.state.stack.len() - val as usize -1;
+        self.state.stack[pos]
     }
 
     //Takes a compiletime value ref and makes a new runtime value ref
@@ -207,7 +292,7 @@ impl<'b,'h> Compactor<'b,'h> {
         //the pos on the runtime stack
         let pos = self.get(val);
         //the distance from the top of the stack
-        let n_index = self.manifested_stack - pos -1;
+        let n_index = self.state.manifested_stack - pos -1;
         //assert we are not to far away
         assert!(n_index <= u16::max_value() as usize);
         //generate the result
@@ -232,20 +317,16 @@ impl<'b,'h> Compactor<'b,'h> {
         };
 
         //push the lit on both stacks
-        let pos = self.manifested_stack;
-        self.stack.push(pos);
-        self.manifested_stack+=1;
-
+        self.state.push_real();
         //create the runtime op
         Ok(Some(ROpCode::Lit(self.alloc.copy_alloc_slice(&data.0)?,lit_desc)))
     }
 
     fn let_<S:Store>(&mut self, exp:&Exp, context:&Context<S>) -> Result<Option<ROpCode<'b>>> {
         //capture current stack positions
-        let stack_depth = self.stack.len();
-        let manifest_depth = self.manifested_stack;
+        let ret_point = self.state.return_point();
         //process the nested expression
-        let n_exp = self.process_exp(exp, stack_depth, manifest_depth, context)?;
+        let n_exp = self.process_exp(exp, ret_point, context)?;
         //generate the let
         Ok(Some(ROpCode::Let(n_exp)))
     }
@@ -253,7 +334,7 @@ impl<'b,'h> Compactor<'b,'h> {
     fn copy(&mut self, val:ValueRef) -> Result<Option<ROpCode<'b>>> {
         //just push the compile time stack as the elem already is on the runtime stack
         let pos = self.get(val);
-        self.stack.push(pos);
+        self.state.push_alias(pos);
         //copy can be eliminated
         Ok(None)
     }
@@ -265,7 +346,7 @@ impl<'b,'h> Compactor<'b,'h> {
         if r_ctr.len() == 1 && r_ctr[0].len() == 1 {
             //if a wrapper just push the compile time stack as the elem already is on the runtime stack
             let pos = self.get(val);
-            self.stack.push(pos);
+            self.state.push_alias(pos);
             //eliminate the unpack
             Ok(None)
         } else {
@@ -279,9 +360,7 @@ impl<'b,'h> Compactor<'b,'h> {
 
             //push all fields from the ctr to both stacks
             for _ in 0..r_ctr[tag as usize].len(){
-                let pos = self.manifested_stack;
-                self.stack.push(pos);
-                self.manifested_stack+=1;
+                self.state.push_real()
             }
             //generate the runtime code
             Ok(Some(ROpCode::Unpack(new_ref)))
@@ -296,16 +375,14 @@ impl<'b,'h> Compactor<'b,'h> {
         if ctrs.len() == 1 && ctrs[0].len() == 1 {
             //if a wrapper just push the compile time stack as the elem already is on the runtime stack
             let pos = self.get(val);
-            self.stack.push(pos);
+            self.state.push_alias(pos);
             //eliminate the unpack
             Ok(None)
         } else {
             //find the runtime pos
             let new_ref = self.translate_ref(val);
             //push the field onto the stack
-            let pos = self.manifested_stack;
-            self.stack.push(pos);
-            self.manifested_stack+=1;
+            self.state.push_real();
             //generate the runtime code
             Ok(Some(ROpCode::Get(new_ref, field)))
         }
@@ -318,16 +395,14 @@ impl<'b,'h> Compactor<'b,'h> {
         if ctrs.len() == 1 && ctrs[0].len() == 1 {
             //if a wrapper just push the compile time stack as the elem already is on the runtime stack
             let pos = self.get(vals[0]);
-            self.stack.push(pos);
+            self.state.push_alias(pos);
             //eliminate the unpack
             Ok(None)
         } else {
             //find the input fields position at runtime
             let adapted = self.alloc.iter_alloc_slice(vals.iter().map(|val|self.translate_ref(*val)))?;
             //push the packed element ot both stacks
-            let pos = self.manifested_stack;
-            self.stack.push(pos );
-            self.manifested_stack+=1;
+            self.state.push_real();
             //generate the runtime code
             Ok(Some(ROpCode::Pack(tag,adapted)))
         }
@@ -337,20 +412,17 @@ impl<'b,'h> Compactor<'b,'h> {
         //find the inputs runtime position
         let new_ref = self.translate_ref(val);
         //capture the stack
-        let stack_depth = self.stack.len();
-        let manifest_depth = self.manifested_stack;
-
+        let ret_point = self.state.return_point();
         //process the branches
         let mut new_exps = self.alloc.slice_builder(exps.len())?;
         for (tag,exp) in exps.iter().enumerate() {
             //eliminate the stack effects of the previous branch
-            self.manifested_stack = manifest_depth;
-            while stack_depth < self.stack.len() { self.stack.pop(); }
+            self.state.rewind(ret_point);
             assert!(tag <= u8::max_value() as usize);
             //a branch body is a unpack followed by the branch code (reuse the existing function)
             let _ignore = self.unpack(val, typ, Some(Tag(tag as u8)), context)?;
             //process the branch body
-            new_exps.push(self.process_exp(exp, stack_depth, manifest_depth, context)?);
+            new_exps.push(self.process_exp(exp, ret_point, context)?);
         }
         //generate the runtime code
         Ok(Some(ROpCode::Switch(new_ref,new_exps.finish())))
@@ -358,18 +430,16 @@ impl<'b,'h> Compactor<'b,'h> {
 
     fn try<S:Store>(&mut self, try:&Exp, catches:&[(ErrorRef, Exp)], context:&Context<S>) -> Result<Option<ROpCode<'b>>> {
         //capture the stack
-        let stack_depth = self.stack.len();
-        let manifest_depth = self.manifested_stack;
+        let ret_point = self.state.return_point();
         //process the try block body
-        let new_try = self.process_exp(try, stack_depth, manifest_depth, context)?;
+        let new_try = self.process_exp(try, ret_point, context)?;
         //process the catches
         let mut new_catches = self.alloc.slice_builder(catches.len())?;
         for (err,exp) in catches {
             //eliminate the stack effects of the previous branch
-            self.manifested_stack = manifest_depth;
-            while stack_depth < self.stack.len() { self.stack.pop();}
+            self.state.rewind(ret_point);
             //process the catch block
-            let new_catch = self.process_exp(exp, stack_depth, manifest_depth, context)?;
+            let new_catch = self.process_exp(exp, ret_point, context)?;
             //convert the error to a runtime error
             let new_err = self.convert_err(err.fetch(context)?)?;
             //record the mapping
@@ -396,7 +466,12 @@ impl<'b,'h> Compactor<'b,'h> {
                 let new_ctx = Context::from_store_func(fun_comp, hash, &context.store)?;
                 //produce it
                 match self.emit_func(fun_comp, &hash,offset,&new_ctx)? {
-                    (index,rets) => (FunDesc::Custom(index),rets) //return the essential info
+                    (index,rets,resources) => {
+                        //account for the ressources
+                        self.state.include_call_resources(resources);
+                        //return the essential info
+                        (FunDesc::Custom(index),rets)
+                    }
                 }
             },
             //if it is a native do a case by case transformation (most just map 1 to 1)
@@ -416,8 +491,16 @@ impl<'b,'h> Compactor<'b,'h> {
                 NativeFunc::Sub => (FunDesc::Native(Operand::Sub),1),
                 NativeFunc::Mul => (FunDesc::Native(Operand::Mul),1),
                 NativeFunc::Div => (FunDesc::Native(Operand::Div),1),
-                NativeFunc::Eq => (FunDesc::Native(Operand::Eq),1),
-                NativeFunc::Hash => (FunDesc::Native(Operand::Hash), 1),
+                NativeFunc::Eq => {
+                    //Todo: find out how many frames are needed by Eq, Hash & apply them
+                    self.state.peek_frames(0);
+                    (FunDesc::Native(Operand::Eq),1)
+                },
+                NativeFunc::Hash => {
+                    //Todo: find out how many frames are needed by Eq, Hash & apply them
+                    self.state.peek_frames(0);
+                    (FunDesc::Native(Operand::Hash), 1)
+                },
                 NativeFunc::PlainHash => (FunDesc::Native(Operand::PlainHash),1),
                 NativeFunc::Lt => (FunDesc::Native(Operand::Lt),1),
                 NativeFunc::Gt => (FunDesc::Native(Operand::Gt),1),
@@ -433,7 +516,7 @@ impl<'b,'h> Compactor<'b,'h> {
                         //is a NoOp, as Unique & Singleton have same repr: Data(20) & are unique (prevails uniqueness)
                         //push the compiletime stack
                         let pos = self.get(vals[0]);
-                        self.stack.push(pos);
+                        self.state.push_alias(pos);
                         //return eliminated indicator
                         return Ok(None)
                     }
@@ -445,7 +528,7 @@ impl<'b,'h> Compactor<'b,'h> {
                 NativeFunc::ToUnique => {
                     //push the compiletime stack
                     let pos = self.get(vals[0]);
-                    self.stack.push(pos);
+                    self.state.push_alias(pos);
                     //return eliminated indicator
                     return Ok(None)
                 }
@@ -464,7 +547,7 @@ impl<'b,'h> Compactor<'b,'h> {
                     | ResolvedType::Native {  typ: NativeType::Index, .. } => {
                         //push the compiletime stack
                         let pos = self.get(vals[0]);
-                        self.stack.push(pos);
+                        self.state.push_alias(pos);
                         //return eliminated indicator
                         return Ok(None)
                     }
@@ -479,9 +562,7 @@ impl<'b,'h> Compactor<'b,'h> {
 
         //push all the results to both stacks
         for _ in 0..rets{
-            let pos = self.manifested_stack;
-            self.stack.push(pos);
-            self.manifested_stack+=1;
+            self.state.push_real();
         }
         //generate the runtime code
         Ok(Some(ROpCode::Invoke(f_desc,adapted)))

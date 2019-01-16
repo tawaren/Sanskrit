@@ -115,3 +115,6 @@ pub struct Ptr<'a, T>(pub &'a T);
 
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
 pub struct SlicePtr<'a, T>(pub &'a [T]);
+
+#[derive(Ord, PartialOrd, Eq, PartialEq, Debug)]
+pub struct MutSlicePtr<'a, T>(pub &'a mut [T]);

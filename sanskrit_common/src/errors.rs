@@ -2,7 +2,7 @@ use core::result::Result as OResult;
 use alloc::prelude::String;
 
 
-//The error in case we need something to interprete (in tests)
+//The error in case we need something to interpret (in tests)
 #[cfg(not(feature = "string_errors"))]
 pub type Result<T> = OResult<T,u8>;
 

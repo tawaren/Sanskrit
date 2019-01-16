@@ -25,7 +25,7 @@ mod tests {
             let res = deploy_module(&s, r)?;
             compile_module(&s, res)?;
         }
-        let mut heap = Heap::new(100000,0,1.0);
+        let mut heap = Heap::new(150000,0,2.0);
         for txt in comp_res.txts {
            execute(&s, &txt, 0, &heap)?;
             heap = heap.reuse();

@@ -5,7 +5,6 @@ use sanskrit_common::model::*;
 use sanskrit_common::linear_stack::*;
 use sanskrit_common::store::*;
 use sanskrit_common::encoding::*;
-use alloc::prelude::*;
 use model::*;
 use native::*;
 use blake2_rfc::blake2b::{Blake2b};
@@ -13,6 +12,7 @@ use byteorder::{LittleEndian, ByteOrder};
 use elem_store::ElemStore;
 use ContextEnvironment;
 use sanskrit_common::arena::*;
+use alloc::vec::Vec;
 
 //The state of the script execution
 pub struct Executor<'a, 'h, S:Store>{
@@ -23,7 +23,7 @@ pub struct Executor<'a, 'h, S:Store>{
     pub store:ElemStore<'a,S>,
     pub alloc:&'a VirtualHeapArena<'h>,
     pub code_alloc:&'a VirtualHeapArena<'h>,
-    pub interpreter_stack: HeapStack<'h, Ptr<'a,Object<'a>>>
+    pub stack_alloc: &'a HeapArena<'h>
 }
 
 //Hashing Domains to ensure there are no collisions
@@ -68,7 +68,7 @@ fn extract_key(entry:&StackEntry) -> Result<Hash> {
 
     //fetch the value
     Ok(match &*entry.val {
-        Object::Data(key) => array_ref!(key,0,20).to_owned(),
+        Object::Data(key) => *array_ref!(key,0,20),
         _ => unreachable!()
     })
 }
@@ -189,8 +189,7 @@ impl<'a, 'h, S:Store> Executor<'a,'h,S> {
             FuncRef::Dynamic(val) => self.extract_desc(val, StorageClass::FunDesc, &code_alloc)?,
             FuncRef::Ref(ref hash) => self.store.backend.parsed_get::<FunctionDescriptor, VirtualHeapArena>(StorageClass::FunDesc, hash, &code_alloc)?,
         };
-
-        desc.apply(&types, &vals, &mut self.stack, self.env, self.alloc, &mut self.interpreter_stack, &tmp)?;
+        desc.apply(&types, &vals, &mut self.stack, self.env, self.alloc, &self.stack_alloc, &tmp)?;
         Ok(())
     }
 

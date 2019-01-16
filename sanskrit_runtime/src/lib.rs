@@ -3,7 +3,6 @@
 #![feature(nll)]
 
 extern crate blake2_rfc;
-#[macro_use]
 extern crate alloc;
 #[macro_use]
 extern crate arrayref;
@@ -30,13 +29,14 @@ use elem_store::ElemStore;
 use script_stack::LinearScriptStack;
 use script_interpreter::Executor;
 use sanskrit_common::arena::*;
-use sanskrit_common::encoding::ParserAllocator;
-use alloc::prelude::Vec;
 use script_stack::StackEntry;
 use sanskrit_common::model::SlicePtr;
 use sanskrit_common::linear_stack::Elem;
 use sanskrit_common::model::Ptr;
 use model::Object;
+use interpreter::Frame;
+use elem_store::*;
+use alloc::vec::Vec;
 
 
 pub mod native;
@@ -66,8 +66,11 @@ pub fn execute<S:Store>(store:&S, txt_data:&[u8], block_no:u64, heap:&Heap) -> R
     //size of real mesured part
     let size_txt_alloc = Heap::words(500);
     let size_temp_alloc = Heap::words(4*3*255);
+    let size_slot_map = Heap::elems::<Option<(Hash, CacheEntry)>>((8.0/0.75) as usize);
     let size_script_stack = Heap::elems::<Elem<StackEntry,SlicePtr<usize>>>(1000);
     let size_interpreter_stack = Heap::elems::<Ptr<Object>>(1000);
+    let size_frame_stack = Heap::elems::<Frame>(1000);
+
     //sizes of virtual measured part
     let size_code_alloc = Heap::words(500);
     let size_alloc = Heap::words(500);
@@ -84,8 +87,9 @@ pub fn execute<S:Store>(store:&S, txt_data:&[u8], block_no:u64, heap:&Heap) -> R
     //create heaps: based on txt input
     let alloc = heap.new_virtual_arena(size_code_alloc)?; //todo: will be dynamic later
     let code_alloc = heap.new_virtual_arena(size_alloc)?; //todo: will be dynamic
-    let script_stack = heap.new_stack(1000)?; //todo: will be dynamic
-    let interpreter_stack = heap.new_stack(1000)?;
+    let structural_arena = heap.new_arena(size_slot_map+size_script_stack+size_interpreter_stack+size_frame_stack)?;
+    let slot_map = CacheSlotMap::new(&structural_arena, 8,(0,0,0))?; //todo: will be dynamic & random
+    let script_stack = structural_arena.alloc_stack(1000)?; //todo: will be dynamic
 
     //check that there are enough signatures on it
     if txt.signers.len() != txt.signatures.len() {
@@ -146,10 +150,10 @@ pub fn execute<S:Store>(store:&S, txt_data:&[u8], block_no:u64, heap:&Heap) -> R
             txt_hash,
             code_hash
         },
-        store:ElemStore::new(store),
+        store:ElemStore::new(store, slot_map),
         alloc: &alloc,
         code_alloc: &code_alloc,
-        interpreter_stack,
+        stack_alloc: &structural_arena,
     };
 
     //execute the transaction

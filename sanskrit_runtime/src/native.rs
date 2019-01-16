@@ -4,7 +4,6 @@ use sanskrit_common::capabilities::CapSet;
 use model::NativeAdtType;
 use model::*;
 use sanskrit_common::arena::*;
-use sanskrit_common::encoding::ParserAllocator;
 
 //lit types do not have generics
 fn resolve_runtime_leaf_type<'a,'h>(typ: NativeType, applies:SlicePtr<'a,Ptr<'a,RuntimeType<'a>>>, alloc:&'a VirtualHeapArena<'h>) ->  Result<Ptr<'a,RuntimeType<'a>>>{

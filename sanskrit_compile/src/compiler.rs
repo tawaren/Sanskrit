@@ -129,9 +129,10 @@ fn generate_function_descriptor<'b,'h, S:Store>(fun:&FunctionComponent, module:&
     //Prepare the compactor to optimize the body
     let mut compactor = Compactor::new(alloc);
     //start the compaction process
-    let (pos,args) = compactor.emit_func(fun,module,offset,ctx)?;
+    let (pos,args,ressources) = compactor.emit_func(fun,module,offset,ctx)?;
     assert_eq!(args as usize, returns.len());
     assert_eq!(pos, 0);
+    //todo: Write resource info into descriptor
 
     //get all the compiled functions
     let functions = compactor.extract_functions()?;
@@ -141,6 +142,7 @@ fn generate_function_descriptor<'b,'h, S:Store>(fun:&FunctionComponent, module:&
 
     //pack it all together in an adt descriptor
     Ok(FunctionDescriptor{
+        //todo: max_stack, max_frame, max_gas, max_mem
         generics,
         params,
         returns,

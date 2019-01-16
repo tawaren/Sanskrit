@@ -7,8 +7,6 @@ use model::*;
 use elem_store::ElemStore;
 use sanskrit_common::store::Store;
 use sanskrit_common::arena::*;
-use sanskrit_common::encoding::*;
-
 
 #[derive(Clone, Copy, Debug)]
 pub struct StackEntry<'a> {

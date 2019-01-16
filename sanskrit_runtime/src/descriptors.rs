@@ -7,7 +7,6 @@ use sanskrit_common::capabilities::CapSet;
 use model::*;
 use ContextEnvironment;
 use sanskrit_common::arena::*;
-use sanskrit_common::encoding::*;
 
 impl<'b> AdtDescriptor<'b> {
 
@@ -218,7 +217,9 @@ impl<'b> AdtDescriptor<'b> {
 impl<'b> FunctionDescriptor<'b> {
 
     //Executes a function
-    pub fn apply<'a, 'h>(&self, applies:&[(bool, Ptr<'a,RuntimeType<'a>>)], params:&[ValueRef], stack:&mut LinearScriptStack<'a,'h>, env:ContextEnvironment, alloc:&'a VirtualHeapArena<'h>, interpreter_stack:&mut HeapStack<'h,Ptr<'a,Object<'a>>>, temporary_values:&HeapArena<'h>) -> Result<()> {
+    pub fn apply<'a, 'h>(&self, applies:&[(bool, Ptr<'a,RuntimeType<'a>>)], params:&[ValueRef], stack:&mut LinearScriptStack<'a,'h>, env:ContextEnvironment, alloc:&'a VirtualHeapArena<'h>, stack_alloc:&'a HeapArena<'h>, temporary_values:&HeapArena<'h>) -> Result<()> {
+
+
         //chekc that the right amount of type parameters are applied
         if applies.len() != self.generics.len() {
             return num_applied_generics_error()
@@ -255,8 +256,14 @@ impl<'b> FunctionDescriptor<'b> {
             return num_param_mismatch()
         }
 
+        //prepare the stacks needed for interpretation
+
+        let tmp_stack_alloc = stack_alloc.temp_arena()?;
+        let mut value_stack = tmp_stack_alloc.alloc_stack(1000)?;
+        let mut frame_stack = tmp_stack_alloc.alloc_stack(1000)?;
+
         //extract the information needed to execute the function on the stack
-        assert_eq!(interpreter_stack.len(), 0);
+        assert_eq!(value_stack.len(), 0);
         let mut param_types = tmp.slice_builder(params.len())?;
         for (Param(is_consume,builder), index) in self.params.iter().zip(params.iter()) {
             let StackEntry{ref typ,ref val, ..} = stack.value_of(*index)?;
@@ -267,28 +274,26 @@ impl<'b> FunctionDescriptor<'b> {
                 return type_mismatch()
             }
             //capture values needed
-            interpreter_stack.push(*val)?;
+            value_stack.push(*val)?;
             param_types.push((*index,*is_consume))
         }
         //let param_vals = param_vals.finish();
         let param_types = param_types.finish();
+        //Execute the function (
+        ExecutionContext::interpret(env,self.functions.0, &mut value_stack, &mut frame_stack, alloc, &tmp)?;
 
-        //Prepare the Context
-        let context = ExecutionContext::new(env,self.functions.0, interpreter_stack, alloc);
-        //Execute the main function (the first one is always the entry)
-        context.execute_function(0)?;
-        assert_eq!(interpreter_stack.len(), self.returns.len() );
+        assert_eq!(value_stack.len(), self.returns.len() );
 
         //Extract the return values & types
         let mut ret_elems = tmp.slice_builder(self.returns.len())?;
-        for (Return(builder,borrows), val) in self.returns.iter().zip(interpreter_stack.as_slice().iter()) {
+        for (Return(builder,borrows), val) in self.returns.iter().zip(value_stack.as_slice().iter()) {
             //build the return type
             let typ = builder.execute(&plain_applies, alloc)?;
             //create the stack entry
             ret_elems.push((StackEntry::new(*val, typ), &borrows[..]));
         }
-        interpreter_stack.rewind_to(0)?;
-        assert_eq!(interpreter_stack.len(), 0);
+        value_stack.rewind_to(0)?;
+        assert_eq!(value_stack.len(), 0);
         //Make the necessary stack transformation
         stack.apply(&param_types,&ret_elems.finish())
     }

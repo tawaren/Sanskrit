@@ -1,25 +1,103 @@
 use sanskrit_common::store::*;
-use alloc::collections::BTreeMap;
 use sanskrit_common::model::*;
 use script_stack::StackEntry;
 use sanskrit_common::errors::*;
 use model::*;
-use sanskrit_common::encoding::*;
-use core::mem;
 use sanskrit_common::arena::*;
+use byteorder::{LittleEndian, ByteOrder};
 
 //a struct to hold a Slot
 #[derive(Copy, Clone, Debug)]
-struct CacheEntry<'a> {
+pub struct CacheEntry<'a> {
     pub real_store: Option<StoreElem<'a>>,         //the value of the backing store: None means we expect none (but it has to be checked)
     pub txt_store: Option<(StoreElem<'a>, bool)>,  //the value the store has during txt: None means not stored, bool tells if borrowed
 }
 
-//Holding all the slots
-pub struct ElemStore<'a, S:Store> {
-    cache: BTreeMap<Hash,CacheEntry<'a>>,   //the cache holding the interacted entries
-    pub backend:&'a S                       //the store holding all the entry
+pub struct CacheSlotMap<'a> {
+    salt:(usize,u32,u16), //against collision attacks
+    size:u16,
+    cap:u16,
+    slots:MutSlicePtr<'a,Option<(Hash, CacheEntry<'a>)>>
 }
+
+enum SlotResult{
+    Full(usize),
+    Empty(usize)
+}
+
+impl<'a> CacheSlotMap<'a> {
+    pub fn new<'h>(arena:&'a HeapArena<'h>, size:u16, salt:(u8,u8,u16)) -> Result<Self> {
+        let lf = 0.75;
+        Ok(CacheSlotMap {
+            salt:((salt.0 % 19) as usize, (salt.1 % 16) as u32, salt.2 % (size-1)),
+            size:0,
+            cap: size,
+            slots: arena.repeated_mut_slice(None,((size as f64)/lf) as usize)?
+        })
+    }
+
+    //could be improved by stealing slots robin hood style
+    fn find_slot(&self, key:&Hash) -> SlotResult {
+        //rot and try is for security
+        let mut try = self.salt.0;
+        let mut rot = self.salt.1;
+        //offset is to be exhaustive (theoretically safe as every slot is eventually probed)
+        let mut offset = self.salt.2;
+        //could be improved by incorperating more bits when offseting
+        loop {
+            let val = ((LittleEndian::read_u16(&key[try..]).rotate_right(rot) + offset) % self.slots.len() as u16) as usize;
+            match &self.slots[val] {
+                None => return SlotResult::Empty(val),
+                Some((k,_)) if k == key => return SlotResult::Full(val),
+                _ => {}
+            }
+            try = (try+1) % 19;
+            if try == self.salt.0 {
+                rot = (rot+1) % 16;
+                if rot == self.salt.1 {
+                    offset += 1;
+                }
+            }
+        }
+    }
+
+    pub fn insert(&mut self, key:Hash, val:CacheEntry<'a>) -> Result<()>{
+        if self.size >= self.cap {return size_limit_exceeded_error()}
+        match self.find_slot(&key) {
+            SlotResult::Full(_) => return item_already_exists(),
+            SlotResult::Empty(slot) => self.slots[slot] = Some((key,val)),
+        }
+        self.size+=1;
+        Ok(())
+    }
+
+    pub fn get_mut(&mut self, key:&Hash) -> Option<&mut CacheEntry<'a>>{
+        match self.find_slot(key) {
+            SlotResult::Full(slot) => Some(match self.slots[slot] {
+                None => {unreachable!()},
+                Some(ref mut entry) => &mut entry.1,
+            }),
+            SlotResult::Empty(_) => None,
+        }
+    }
+
+    pub fn contains(&mut self, key:&Hash) -> bool{
+        match self.find_slot(key) {
+            SlotResult::Full(_) => true,
+            SlotResult::Empty(slot) => false,
+        }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item=&(Hash,CacheEntry<'a>)> {
+        (&self.slots).iter().flat_map(|slot|slot)
+    }
+
+    pub fn len(&self) -> usize {
+        self.size as usize
+    }
+
+}
+
 
 impl<'a> Object<'a> {
     //A helper to extract the storage index / slot from an object
@@ -34,6 +112,12 @@ impl<'a> Object<'a> {
     }
 }
 
+//Holding all the slots
+pub struct ElemStore<'a, S:Store> {
+    cache: CacheSlotMap<'a>,              //the cache holding the interacted entries
+    pub backend:&'a S                     //the store holding all the entry
+}
+
 //a helper to delay store modifications until we are sure there are no storage failures
 // this allowa a transactional behaviour where everithing or nothing is changed
 #[derive(Copy, Clone, Debug)]
@@ -46,9 +130,9 @@ enum StorageCommand<'a> {
 
 impl<'a,S:Store> ElemStore<'a,S> {
     //Creates a new store instance for this transaction
-    pub fn new(store:&'a S) -> Self {
+    pub fn new(store:&'a S, cache: CacheSlotMap<'a>) -> Self {
         ElemStore {
-            cache: BTreeMap::new(),
+            cache,
             backend: store
         }
     }
@@ -87,7 +171,7 @@ impl<'a,S:Store> ElemStore<'a,S> {
                 self.cache.insert(key, CacheEntry{
                     real_store: Some(res),      //Remember the original Slot
                     txt_store,                  //Remeber the current slot
-                });
+                })?;
                 ret
             },
         })
@@ -118,7 +202,7 @@ impl<'a,S:Store> ElemStore<'a,S> {
                 self.cache.insert(key, CacheEntry{
                     real_store: Some(res.clone()),      //Mark the original as existent
                     txt_store: Some((res,true)),        //Mark the current as borrowed
-                });
+                })?;
                 ret
             },
         })
@@ -164,7 +248,7 @@ impl<'a,S:Store> ElemStore<'a,S> {
                         val: elem.val.clone(),
                         typ: elem.typ.clone(),
                     }, false))
-                });
+                })?;
             },
         }
         Ok(())
@@ -190,28 +274,22 @@ impl<'a,S:Store> ElemStore<'a,S> {
 
     //writes the changes in the cache back to the store
     pub fn finish<'h>(&mut self, alloc:&VirtualHeapArena<'h>, temporary_values:&HeapArena<'h>) -> Result<()>{
-        //exchange the cache with an empty one (and capture the current)
-        let cache = mem::replace(
-            &mut self.cache,
-            BTreeMap::new()
-        );
-
         let tmp = temporary_values.temp_arena()?;
         //collect all the necessary changes and check if they are valid
-        let mut commands = tmp.slice_builder(cache.len())?;
+        let mut commands = tmp.slice_builder(self.cache.len())?;
         //go through all entries and check that they are ok
-        for (key, entry) in cache {
+        for (key, entry) in self.cache.iter() {
             //match the state
             match (entry.real_store, entry.txt_store) {
                 //everithing should be returned
                 (_, Some((_,true))) => unreachable!(), //just to be safe
                 //should be empty will be empty
-                (None, None) => if self.backend.contains(StorageClass::Elem, &key){
+                (None, None) => if self.backend.contains(StorageClass::Elem, key){
                     //ups was full, check if the slot can be dropped to make it empty
                     let elem:StoreElem = self.backend.parsed_get::<StoreElem, VirtualHeapArena>(StorageClass::Elem, &key, alloc)?;
                     if elem.typ.get_caps().contains(NativeCap::Drop) {
                         //Drop it later
-                        commands.push(StorageCommand::Delete(key))
+                        commands.push(StorageCommand::Delete(*key))
                     } else {
                         //ups was full
                         return item_already_exists()
@@ -219,26 +297,26 @@ impl<'a,S:Store> ElemStore<'a,S> {
                 },
 
                 //Should be empty will be full
-                (None, Some((val,false))) => if self.backend.contains(StorageClass::Elem, &key){
+                (None, Some((val,false))) => if self.backend.contains(StorageClass::Elem, key){
                     //ups was full, check if the slot can be dropped to make it empty
                     let elem:StoreElem = self.backend.parsed_get::<StoreElem, VirtualHeapArena>(StorageClass::Elem, &key, alloc)?;
                     if elem.typ.get_caps().contains(NativeCap::Drop) {
                         //Overwrite it later
-                        commands.push(StorageCommand::Replace(key, val))
+                        commands.push(StorageCommand::Replace(*key, val))
                     } else {
                         //ups was full
                         return item_already_exists()
                     }
                 } else {
                     //Was empty fill it later
-                    commands.push(StorageCommand::Store(key, val))
+                    commands.push(StorageCommand::Store(*key, val))
                 },
 
                 //Was full will be empty (So delete it later)
-                (Some(_),None) => commands.push(StorageCommand::Delete(key)),
+                (Some(_),None) => commands.push(StorageCommand::Delete(*key)),
                 //Was full will be full so overwrite it
                 (Some(a),Some((b,false))) => if a != b {
-                    commands.push(StorageCommand::Replace(key, b))
+                    commands.push(StorageCommand::Replace(*key, b))
                 },
             }
         }
