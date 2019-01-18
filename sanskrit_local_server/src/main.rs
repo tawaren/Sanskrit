@@ -84,7 +84,7 @@ impl<'a> State<'a> {
         self.transaction.compile_transactions_with_accounts(accounts).unwrap();
         let CompiledTransactions{modules,txts} = self.transaction.extract_results();
         self.deploy_modules(modules.into_iter());
-        let mut heap = Heap::new(100000,0,1.0);
+        let mut heap = Heap::new(100000,2.0);
         for txt in txts {
             let hash = execute(&self.store,&txt,0, &heap).unwrap();
             println!("executed txt with hash 0x{:?}", encode(&hash));
@@ -170,7 +170,7 @@ pub fn main() {
                             let mods = state.store.list(StorageClass::Module);
                             let res:Vec<(Hash,String)> = mods.iter().map(|(hash,data)|(
                                 hash.clone(),
-                                String::from_utf8(Parser::parse_fully::<Module>(&*data,&mut NoCustomAlloc()).unwrap().meta.0).unwrap()
+                                String::from_utf8(ParserState::parse_fully::<Module>(&*data, &mut NoCustomAlloc()).unwrap().meta.0).unwrap()
                             )).collect();
 
                             for (hash,id) in res {
@@ -179,7 +179,7 @@ pub fn main() {
                         },
                         "elems" =>  {
                             let mods = state.store.list(StorageClass::Elem);
-                            let res:Vec<StoreElem> = mods.iter().map(|(_,data)|Parser::parse_fully::<StoreElem>(&*data,&mut NoCustomAlloc()).unwrap()).collect();
+                            let res:Vec<StoreElem> = mods.iter().map(|(_,data)| ParserState::parse_fully::<StoreElem>(&*data, &mut NoCustomAlloc()).unwrap()).collect();
 
                             for elem in res {
                                 println!("elem:{:?}", elem);

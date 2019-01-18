@@ -24,11 +24,18 @@ use sanskrit_runtime::model::Error;
 use sanskrit_runtime::model::LitDesc;
 use sanskrit_runtime::model::FunDesc;
 use sanskrit_runtime::model::Operand;
+use sanskrit_runtime::model::Object;
 use core::mem;
 use sanskrit_common::arena::*;
 use sanskrit_common::encoding::ParserAllocator;
+use sanskrit_common::encoding::VirtualSize;
+use gas_table::gas;
 
 struct State {
+    //the gas used in this trace
+    gas:usize,
+    //the maximal number of gas used
+    max_gas:usize,
     //number of active frames at runtime
     frames:usize,
     //maximal number of active frames
@@ -43,8 +50,9 @@ struct State {
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub struct CallResources {
-    max_manifest_stack: usize,
-    max_frames: usize,
+    pub max_gas:usize,
+    pub max_manifest_stack: usize,
+    pub max_frames: usize,
 }
 
 pub struct Compactor<'b,'h> {
@@ -60,12 +68,15 @@ pub struct Compactor<'b,'h> {
     alloc:&'b HeapArena<'h>
 }
 
+type BranchPoint = (usize,usize);
 type ReturnPoint = (usize,usize);
 
 //todo: Comment
 impl State {
     fn new() -> Self {
         State {
+            gas: 0,
+            max_gas: 0,
             frames: 0,
             max_frames: 0,
             manifested_stack: 0,
@@ -94,27 +105,51 @@ impl State {
         }
     }
 
+    //todo: can we do the drop over ret pointers???
     fn drop_frame(&mut self) {
         self.frames -= 1;
     }
 
-    fn peek_frames(&mut self, frames:usize) {
-        if self.frames + frames > self.max_frames {
-            self.max_frames = self.frames + frames
+    fn use_gas(&mut self, gas:usize) {
+        self.gas += gas;
+        if self.gas > self.max_gas {
+            self.max_gas = self.gas
         }
     }
 
     fn extract_call_resources(self) -> CallResources {
         CallResources {
+            max_gas: self.max_gas,
             max_manifest_stack: self.max_manifest_stack,
             max_frames: self.max_frames,
         }
     }
 
     fn include_call_resources(&mut self, res:CallResources) {
+        self.use_gas(res.max_gas);
         self.max_manifest_stack = self.max_manifest_stack.max(self.manifested_stack + res.max_manifest_stack);
         self.max_frames = self.max_frames.max(self.frames + res.max_frames)
+    }
 
+    //todo: how to do for gas and mem, it is not that easy as it must be reapplied
+    // idea: basically make a new one like fun call - then at the end: apply the max back into the original
+    // needs something like return point but setting original to 0 & then on reapply reverses the role and applies the current to the captured and make the combined the new one
+    // is done for catches and switches but not over the let & try
+
+    fn start_branching(&mut self) -> BranchPoint {
+        let res = (self.gas, self.max_gas);
+        self.gas = 0;
+        self.max_gas = 0;
+        res
+    }
+
+    fn next_branch(&mut self) {
+        self.gas = 0;
+    }
+
+    fn end_branching(&mut self, (gas, max_gas):BranchPoint) {
+        self.gas = (gas + self.max_gas);
+        self.max_gas = self.gas.max(max_gas);
     }
 
     fn return_point(&self) -> ReturnPoint{
@@ -219,8 +254,10 @@ impl<'b,'h> Compactor<'b,'h> {
 
     //compacts an expression (block)
     fn process_exp<S:Store>(&mut self, exp:&Exp, ret_point:ReturnPoint, context:&Context<S>) -> Result<Ptr<'b,RExp<'b>>>{
+        //account for the frame
+        self.state.use_gas(gas::frame_process());
         //differentiate between Return and Throw
-        self.alloc.alloc(match *exp {
+        Ok(self.alloc.alloc(match *exp {
             Exp::Ret(ref opcodes, ref returns, ref _drops) => {
                 // add the frame
                 self.state.add_frame();
@@ -230,7 +267,10 @@ impl<'b,'h> Compactor<'b,'h> {
                     //process the opcode
                     match self.process_opcode(code, context)? {
                         None => {}, //can be eliminated
-                        Some(n_code) => new_opcodes.push(n_code),   //still needed but some things are stripped Aaway
+                        Some(n_code) => {
+                            self.state.use_gas(gas::op_process());
+                            new_opcodes.push(n_code)  //still needed but some things are stripped Aaway
+                        },
                     }
                 }
                 //find the runtime positions of the blocks result
@@ -252,7 +292,7 @@ impl<'b,'h> Compactor<'b,'h> {
                 //Generate and return the optimized Throw
                 RExp::Throw(self.convert_err(err.fetch(context)?)?)
             },
-        })
+        }))
     }
 
     //compact or even eliminate an opcode
@@ -301,7 +341,8 @@ impl<'b,'h> Compactor<'b,'h> {
 
     fn lit<S:Store>(&mut self, data:&LargeVec<u8>, typ:TypeRef, context:&Context<S>) -> Result<Option<ROpCode<'b>>> {
         //Extract the kind of lit. This increase runtime rep but speeds up arithmetic
-        let lit_desc = match *typ.fetch(context)? {
+        let r_typ = typ.fetch(context)?;
+        let lit_desc = match *r_typ {
             ResolvedType::Native { typ:NativeType::Data(_), .. } => LitDesc::Data,
             ResolvedType::Native { typ:NativeType::SInt(1), .. } => LitDesc::I8,
             ResolvedType::Native { typ:NativeType::UInt(1), .. } => LitDesc::U8,
@@ -316,6 +357,8 @@ impl<'b,'h> Compactor<'b,'h> {
             _ => unreachable!()
         };
 
+        //process the lit
+        self.state.use_gas(gas::lit(r_typ));
         //push the lit on both stacks
         self.state.push_real();
         //create the runtime op
@@ -323,6 +366,7 @@ impl<'b,'h> Compactor<'b,'h> {
     }
 
     fn let_<S:Store>(&mut self, exp:&Exp, context:&Context<S>) -> Result<Option<ROpCode<'b>>> {
+        //All cost for let are in process_exp/op_process
         //capture current stack positions
         let ret_point = self.state.return_point();
         //process the nested expression
@@ -357,7 +401,8 @@ impl<'b,'h> Compactor<'b,'h> {
                 None => 0 as u8,        //todo: maybe have a special struct for these later that spare the tag
                 Some(Tag(t)) => t,
             };
-
+            //account for the gas
+            self.state.use_gas(gas::unpack(r_ctr[tag as usize].len()));
             //push all fields from the ctr to both stacks
             for _ in 0..r_ctr[tag as usize].len(){
                 self.state.push_real()
@@ -379,6 +424,8 @@ impl<'b,'h> Compactor<'b,'h> {
             //eliminate the unpack
             Ok(None)
         } else {
+            //account for the gas
+            self.state.use_gas(gas::field());
             //find the runtime pos
             let new_ref = self.translate_ref(val);
             //push the field onto the stack
@@ -399,6 +446,8 @@ impl<'b,'h> Compactor<'b,'h> {
             //eliminate the unpack
             Ok(None)
         } else {
+            //account for the gas
+            self.state.use_gas(gas::pack(vals.len()));
             //find the input fields position at runtime
             let adapted = self.alloc.iter_alloc_slice(vals.iter().map(|val|self.translate_ref(*val)))?;
             //push the packed element ot both stacks
@@ -409,11 +458,14 @@ impl<'b,'h> Compactor<'b,'h> {
     }
 
     fn switch<S:Store>(&mut self, val:ValueRef, typ:TypeRef, exps:&[Exp], context:&Context<S>) -> Result<Option<ROpCode<'b>>> {
+        //account for the gas
+        self.state.use_gas(gas::switch());
         //find the inputs runtime position
         let new_ref = self.translate_ref(val);
         //capture the stack
         let ret_point = self.state.return_point();
         //process the branches
+        let branch_point = self.state.start_branching();
         let mut new_exps = self.alloc.slice_builder(exps.len())?;
         for (tag,exp) in exps.iter().enumerate() {
             //eliminate the stack effects of the previous branch
@@ -423,17 +475,28 @@ impl<'b,'h> Compactor<'b,'h> {
             let _ignore = self.unpack(val, typ, Some(Tag(tag as u8)), context)?;
             //process the branch body
             new_exps.push(self.process_exp(exp, ret_point, context)?);
+            //ready for the next branch if their is one or not is irrelevant
+            self.state.next_branch();
         }
+        //finish branching
+        self.state.end_branching(branch_point);
         //generate the runtime code
         Ok(Some(ROpCode::Switch(new_ref,new_exps.finish())))
     }
 
     fn try<S:Store>(&mut self, try:&Exp, catches:&[(ErrorRef, Exp)], context:&Context<S>) -> Result<Option<ROpCode<'b>>> {
+        //account for the gas
+        self.state.use_gas(gas::try(catches.len()));
+        //tries need a extra frame at runtime to keep track of the catch block
+        self.state.add_frame();
         //capture the stack
         let ret_point = self.state.return_point();
         //process the try block body
         let new_try = self.process_exp(try, ret_point, context)?;
+        //the extra frame is only needed for the catch part
+        self.state.drop_frame();
         //process the catches
+        let branch_point = self.state.start_branching();
         let mut new_catches = self.alloc.slice_builder(catches.len())?;
         for (err,exp) in catches {
             //eliminate the stack effects of the previous branch
@@ -443,16 +506,20 @@ impl<'b,'h> Compactor<'b,'h> {
             //convert the error to a runtime error
             let new_err = self.convert_err(err.fetch(context)?)?;
             //record the mapping
-            new_catches.push((new_err,new_catch))
+            new_catches.push((new_err,new_catch));
+            //ready for the next branch if their is one or not is irrelevant
+            self.state.next_branch();
         }
+        //finish branching
+        self.state.end_branching(branch_point);
         //generate the runtime code
         Ok(Some(ROpCode::Try(new_try, new_catches.finish())))
     }
 
     fn invoke<S:Store>(&mut self, fun:FuncRef, vals:&[ValueRef], context:&Context<S>) -> Result<Option<ROpCode<'b>>> {
         //diferentiate between native and Custom
-        let (f_desc, rets) = match *fun.fetch(context)? {
-            ResolvedFunction::Import { ref module, offset, .. } =>{
+        let (f_desc, rets, cost) = match *fun.fetch(context)? {
+            ResolvedFunction::Import { ref module, offset, .. } => {
                 //load the called function from the store
                 let fun_cache = context.store.get_func(&*module, offset)?;
                 let fun_comp = fun_cache.retrieve();
@@ -470,47 +537,39 @@ impl<'b,'h> Compactor<'b,'h> {
                         //account for the ressources
                         self.state.include_call_resources(resources);
                         //return the essential info
-                        (FunDesc::Custom(index),rets)
+                        (FunDesc::Custom(index),rets,gas::call(fun_comp.params.len())) //gas is already accounted for -- Maybe call cost???
                     }
                 }
             },
             //if it is a native do a case by case transformation (most just map 1 to 1)
             ResolvedFunction::Native { typ, ref applies } => match typ {
-                NativeFunc::And => (FunDesc::Native(Operand::And),1),
-                NativeFunc::Or => (FunDesc::Native(Operand::Or),1),
-                NativeFunc::Xor => (FunDesc::Native(Operand::Xor),1),
-                NativeFunc::Not => (FunDesc::Native(Operand::Not),1),
+                NativeFunc::And => (FunDesc::Native(Operand::And),1, gas::and(applies)),
+                NativeFunc::Or => (FunDesc::Native(Operand::Or),1, gas::or(applies)),
+                NativeFunc::Xor => (FunDesc::Native(Operand::Xor),1, gas::xor(applies)),
+                NativeFunc::Not => (FunDesc::Native(Operand::Not),1, gas::not(applies)),
                 //The casts are represented differently at runtime, the compiletime rep was choosen to have Extend not throwing an error
                 NativeFunc::SignCast  | NativeFunc::Cut  | NativeFunc::Extend => match *applies[1] { //the type 1 is the target type
                     //runtime is split into signed & unsigned conversions
-                    ResolvedType::Native {  typ: NativeType::SInt(size), .. } => (FunDesc::Native(Operand::ToI(size)),1),
-                    ResolvedType::Native {  typ: NativeType::UInt(size), .. } => (FunDesc::Native(Operand::ToU(size)),1),
+                    ResolvedType::Native {  typ: NativeType::SInt(size), .. } => (FunDesc::Native(Operand::ToI(size)),1, gas::convert()),
+                    ResolvedType::Native {  typ: NativeType::UInt(size), .. } => (FunDesc::Native(Operand::ToU(size)),1, gas::convert()),
                     _ => unreachable!()
                 },
-                NativeFunc::Add => (FunDesc::Native(Operand::Add),1),
-                NativeFunc::Sub => (FunDesc::Native(Operand::Sub),1),
-                NativeFunc::Mul => (FunDesc::Native(Operand::Mul),1),
-                NativeFunc::Div => (FunDesc::Native(Operand::Div),1),
-                NativeFunc::Eq => {
-                    //Todo: find out how many frames are needed by Eq, Hash & apply them
-                    self.state.peek_frames(0);
-                    (FunDesc::Native(Operand::Eq),1)
-                },
-                NativeFunc::Hash => {
-                    //Todo: find out how many frames are needed by Eq, Hash & apply them
-                    self.state.peek_frames(0);
-                    (FunDesc::Native(Operand::Hash), 1)
-                },
-                NativeFunc::PlainHash => (FunDesc::Native(Operand::PlainHash),1),
-                NativeFunc::Lt => (FunDesc::Native(Operand::Lt),1),
-                NativeFunc::Gt => (FunDesc::Native(Operand::Gt),1),
-                NativeFunc::Lte => (FunDesc::Native(Operand::Lte),1),
-                NativeFunc::Gte => (FunDesc::Native(Operand::Gte),1),
+                NativeFunc::Add => (FunDesc::Native(Operand::Add),1, gas::add()),
+                NativeFunc::Sub => (FunDesc::Native(Operand::Sub),1, gas::sub()),
+                NativeFunc::Mul => (FunDesc::Native(Operand::Mul),1, gas::mul()),
+                NativeFunc::Div => (FunDesc::Native(Operand::Div),1, gas::div()),
+                NativeFunc::Eq => (FunDesc::Native(Operand::Eq),1, gas::eq(applies, context)?),
+                NativeFunc::Hash => (FunDesc::Native(Operand::Hash),1, gas::hash(applies, context)?),
+                NativeFunc::PlainHash => (FunDesc::Native(Operand::PlainHash),1,gas::hash_plain(applies)),
+                NativeFunc::Lt => (FunDesc::Native(Operand::Lt),1, gas::cmp()),
+                NativeFunc::Gt => (FunDesc::Native(Operand::Gt),1, gas::cmp()),
+                NativeFunc::Lte => (FunDesc::Native(Operand::Lte),1, gas::cmp()),
+                NativeFunc::Gte => (FunDesc::Native(Operand::Gte),1, gas::cmp()),
                 //to Data can be a no op depending on the types
                 NativeFunc::ToData =>  match *applies[0] {
                     //For ints it is needed
                     ResolvedType::Native {  typ: NativeType::UInt(_), .. }
-                    | ResolvedType::Native {  typ: NativeType::SInt(_), .. } => (FunDesc::Native(Operand::ToData),1),
+                    | ResolvedType::Native {  typ: NativeType::SInt(_), .. } => (FunDesc::Native(Operand::ToData),1,  gas::to_data(applies)),
                     //the rest are no ops --  same bit representation --
                     _  => {
                         //is a NoOp, as Unique & Singleton have same repr: Data(20) & are unique (prevails uniqueness)
@@ -521,9 +580,9 @@ impl<'b,'h> Compactor<'b,'h> {
                         return Ok(None)
                     }
                 },
-                NativeFunc::Concat => (FunDesc::Native(Operand::Concat),1),
-                NativeFunc::GetBit => (FunDesc::Native(Operand::GetBit),1),
-                NativeFunc::SetBit => (FunDesc::Native(Operand::SetBit),1),
+                NativeFunc::Concat => (FunDesc::Native(Operand::Concat),1, gas::concat(applies)),
+                NativeFunc::GetBit => (FunDesc::Native(Operand::GetBit),1, gas::get_bit(applies)),
+                NativeFunc::SetBit => (FunDesc::Native(Operand::SetBit),1, gas::set_bit(applies)),
                 //is a NoOp, as Unique & Singleton & Manifest & Index & Ref have same repr: Data(20)
                 NativeFunc::ToUnique => {
                     //push the compiletime stack
@@ -531,16 +590,17 @@ impl<'b,'h> Compactor<'b,'h> {
                     self.state.push_alias(pos);
                     //return eliminated indicator
                     return Ok(None)
-                }
-                NativeFunc::GenUnique => (FunDesc::Native(Operand::GenUnique),2),
-                NativeFunc::FullHash => (FunDesc::Native(Operand::FullHash),1),
-                NativeFunc::TxTHash => (FunDesc::Native(Operand::TxTHash),1),
-                NativeFunc::CodeHash => (FunDesc::Native(Operand::CodeHash),1),
-                NativeFunc::BlockNo => (FunDesc::Native(Operand::BlockNo),1),
+                },
+                //todo: Data alloc mem use
+                NativeFunc::GenUnique => (FunDesc::Native(Operand::GenUnique),2,gas::gen_unique()),
+                NativeFunc::FullHash => (FunDesc::Native(Operand::FullHash),1,gas::fetch_env_hash()),
+                NativeFunc::TxTHash => (FunDesc::Native(Operand::TxTHash),1,gas::fetch_env_hash()),
+                NativeFunc::CodeHash => (FunDesc::Native(Operand::CodeHash),1,gas::fetch_env_hash()),
+                NativeFunc::BlockNo => (FunDesc::Native(Operand::BlockNo),1,gas::fetch_env_val()),
                 //Index and Ref have the same runtime behaviour and representation, the difference is only in the type and allowed usage
                 NativeFunc::GenIndex |  NativeFunc::ToRef  => match *applies[0] {
                     //this is just hashing - but in the key domain
-                    ResolvedType::Native {  typ: NativeType::Data(_), .. } => (FunDesc::Native(Operand::GenIndex),1),
+                    ResolvedType::Native {  typ: NativeType::Data(_), .. } => (FunDesc::Native(Operand::GenIndex),1, gas::hash_plain(applies)),
                     //these are no ops --  same bit representation -- |Index is for toref, others are for genIndex|
                     ResolvedType::Native {  typ: NativeType::Unique, .. }
                     | ResolvedType::Native {  typ: NativeType::Singleton, .. }
@@ -553,15 +613,18 @@ impl<'b,'h> Compactor<'b,'h> {
                     }
                     _ => unreachable!()
                 },
-                NativeFunc::Derive => (FunDesc::Native(Operand::Derive), 1),
+                NativeFunc::Derive => (FunDesc::Native(Operand::Derive), 1,gas::join_hash()),
             }
         };
+
+        self.state.use_gas(cost);
 
         //find the params runtime pos
         let adapted = self.alloc.iter_alloc_slice(vals.iter().map(|val|self.translate_ref(*val)))?;
 
         //push all the results to both stacks
         for _ in 0..rets{
+            //its result of a primitive allocs a Object (some do also alloc Data, this is in the corresponding ones)
             self.state.push_real();
         }
         //generate the runtime code

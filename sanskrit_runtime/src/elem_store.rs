@@ -5,6 +5,7 @@ use sanskrit_common::errors::*;
 use model::*;
 use sanskrit_common::arena::*;
 use byteorder::{LittleEndian, ByteOrder};
+use CONFIG;
 
 //a struct to hold a Slot
 #[derive(Copy, Clone, Debug)]
@@ -27,12 +28,11 @@ enum SlotResult{
 
 impl<'a> CacheSlotMap<'a> {
     pub fn new<'h>(arena:&'a HeapArena<'h>, size:u16, salt:(u8,u8,u16)) -> Result<Self> {
-        let lf = 0.75;
         Ok(CacheSlotMap {
             salt:((salt.0 % 19) as usize, (salt.1 % 16) as u32, salt.2 % (size-1)),
             size:0,
             cap: size,
-            slots: arena.repeated_mut_slice(None,((size as f64)/lf) as usize)?
+            slots: arena.repeated_mut_slice(None,(size * 2) as usize)?
         })
     }
 
@@ -158,7 +158,7 @@ impl<'a,S:Store> ElemStore<'a,S> {
             },
             None => {
                 //Slot not cached, look it up in the backing store
-                let res:StoreElem = self.backend.parsed_get(StorageClass::Elem,&key, alloc)?;
+                let res:StoreElem = self.backend.parsed_get(StorageClass::Elem,&key, CONFIG.max_structural_dept, alloc)?;
                 //create the result
                 let ret = StackEntry::new(res.val,res.typ);
                 //calc the current slot cache value
@@ -196,7 +196,7 @@ impl<'a,S:Store> ElemStore<'a,S> {
             },
             None => {
                 //Slot not cached, look it up in the backing store
-                let res:StoreElem = self.backend.parsed_get(StorageClass::Elem,&key, alloc)?;
+                let res:StoreElem = self.backend.parsed_get(StorageClass::Elem,&key, CONFIG.max_structural_dept, alloc)?;
                 //create the result
                 let ret = StackEntry::new_store_borrowed(res.val.clone(),res.typ.clone());
                 self.cache.insert(key, CacheEntry{
@@ -274,7 +274,7 @@ impl<'a,S:Store> ElemStore<'a,S> {
 
     //writes the changes in the cache back to the store
     pub fn finish<'h>(&mut self, alloc:&VirtualHeapArena<'h>, temporary_values:&HeapArena<'h>) -> Result<()>{
-        let tmp = temporary_values.temp_arena()?;
+        let tmp = temporary_values.temp_arena();
         //collect all the necessary changes and check if they are valid
         let mut commands = tmp.slice_builder(self.cache.len())?;
         //go through all entries and check that they are ok
@@ -286,7 +286,7 @@ impl<'a,S:Store> ElemStore<'a,S> {
                 //should be empty will be empty
                 (None, None) => if self.backend.contains(StorageClass::Elem, key){
                     //ups was full, check if the slot can be dropped to make it empty
-                    let elem:StoreElem = self.backend.parsed_get::<StoreElem, VirtualHeapArena>(StorageClass::Elem, &key, alloc)?;
+                    let elem:StoreElem = self.backend.parsed_get::<StoreElem, VirtualHeapArena>(StorageClass::Elem, &key, CONFIG.max_structural_dept, alloc)?;
                     if elem.typ.get_caps().contains(NativeCap::Drop) {
                         //Drop it later
                         commands.push(StorageCommand::Delete(*key))
@@ -299,7 +299,7 @@ impl<'a,S:Store> ElemStore<'a,S> {
                 //Should be empty will be full
                 (None, Some((val,false))) => if self.backend.contains(StorageClass::Elem, key){
                     //ups was full, check if the slot can be dropped to make it empty
-                    let elem:StoreElem = self.backend.parsed_get::<StoreElem, VirtualHeapArena>(StorageClass::Elem, &key, alloc)?;
+                    let elem:StoreElem = self.backend.parsed_get::<StoreElem, VirtualHeapArena>(StorageClass::Elem, &key, CONFIG.max_structural_dept, alloc)?;
                     if elem.typ.get_caps().contains(NativeCap::Drop) {
                         //Overwrite it later
                         commands.push(StorageCommand::Replace(*key, val))
@@ -324,9 +324,9 @@ impl<'a,S:Store> ElemStore<'a,S> {
         //all is ok, no errors apply the changes
         for cmd in commands.finish().iter() {
             match cmd {
-                StorageCommand::Store(key, val) => self.backend.serialized_set(StorageClass::Elem, key.clone(), val)?,
+                StorageCommand::Store(key, val) => self.backend.serialized_set(StorageClass::Elem, key.clone(), CONFIG.max_structural_dept,val)?,
                 StorageCommand::Delete(key) => self.backend.delete(StorageClass::Elem, &key)?,
-                StorageCommand::Replace(key, val) => self.backend.serialized_replace(StorageClass::Elem, key.clone(), val)?
+                StorageCommand::Replace(key, val) => self.backend.serialized_replace(StorageClass::Elem, key.clone(), CONFIG.max_structural_dept,val)?
             }
         }
 

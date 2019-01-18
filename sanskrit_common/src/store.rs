@@ -24,16 +24,16 @@ pub trait Store {
     fn list(&self, class:StorageClass) -> Vec<(Hash, Vec<u8>)>;
 
     //helper
-    fn parsed_get<'a, P:Parsable<'a>, A: ParserAllocator>(&self, class:StorageClass, key: &Hash, alloc:&'a A) -> Result<P>{
-       self.get(class, key,|d| Parser::parse_fully::<P,A>(d, alloc))?
+    fn parsed_get<'a, P:Parsable<'a>, A: ParserAllocator>(&self, class:StorageClass, key: &Hash, max_dept:usize, alloc:&'a A) -> Result<P>{
+       self.get(class, key,|d| Parser::parse_fully::<P,A>(d, max_dept, alloc))?
     }
 
-    fn serialized_set<S:Serializable,>(&self, class:StorageClass, key:Hash, data:&S) -> Result<()>{
-        self.set(class,key, Serializer::serialize_fully(data))
+    fn serialized_set<S:Serializable,>(&self, class:StorageClass, key:Hash, max_dept:usize, data:&S) -> Result<()>{
+        self.set(class,key, Serializer::serialize_fully(data,max_dept)?)
     }
 
-    fn serialized_replace<S:Serializable,>(&self, class:StorageClass, key:Hash, data:&S) -> Result<()>{
-        self.replace(class,key, Serializer::serialize_fully(data))
+    fn serialized_replace<S:Serializable,>(&self, class:StorageClass, key:Hash, max_dept:usize, data:&S) -> Result<()>{
+        self.replace(class,key, Serializer::serialize_fully(data,max_dept)?)
     }
 }
 

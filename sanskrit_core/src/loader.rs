@@ -79,7 +79,7 @@ impl<'a, S:Store + 'a> StorageCache<'a,S> {
         //if already their ignore it else create it
         if !modules.contains_key(hash) {
             //get the module from the store by its hash
-            let module = self.store.parsed_get::<Module,NoCustomAlloc>(StorageClass::Module,hash, &NoCustomAlloc())?;
+            let module = self.store.parsed_get::<Module,NoCustomAlloc>(StorageClass::Module,hash, usize::max_value(), &NoCustomAlloc())?;
             //Ref count it and insert it
             let res = Rc::new(module);
             modules.insert(hash.clone(),res.clone());

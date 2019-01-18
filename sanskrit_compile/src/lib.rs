@@ -11,6 +11,7 @@ extern crate sanskrit_common;
 
 pub mod compacting;
 pub mod compiler;
+mod gas_table;
 
 use sanskrit_common::model::*;
 use sanskrit_common::store::*;
@@ -30,8 +31,8 @@ impl<'a, S:Store> ComponentProcessor for StoreDescriptorProcessor<'a, S> {
         //calcs the Key for the store
         let key = store_hash(&[&self.module_hash,&[offset]]);
         //serializes the content
-        let mut s = Serializer::new();
-        a_desc.serialize(&mut s);
+        let mut s = Serializer::new(usize::max_value());
+        a_desc.serialize(&mut s)?;
         let data = s.extract();
         //stores it
         self.store.set(StorageClass::AdtDesc, key, data)
@@ -41,8 +42,8 @@ impl<'a, S:Store> ComponentProcessor for StoreDescriptorProcessor<'a, S> {
         //calcs the Key for the store
         let key = store_hash(&[&self.module_hash,&[offset]]);
         //serializes the content
-        let mut s = Serializer::new();
-        f_desc.serialize(&mut s);
+        let mut s = Serializer::new(usize::max_value());
+        f_desc.serialize(&mut s)?;
         let data = s.extract();
         //stores it
         self.store.set(StorageClass::FunDesc, key, data)

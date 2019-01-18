@@ -1,3 +1,4 @@
+use alloc::prelude::*;
 use sanskrit_common::model::*;
 use sanskrit_common::errors::*;
 use model::*;
@@ -210,7 +211,7 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
                                 }
                             }
 
-                            let tmp = self.temporary_values.temp_arena()?;
+                            let tmp = self.temporary_values.temp_arena();
                             //capture each return
                             let workbench = tmp.iter_result_alloc_slice( vals.iter().map(|ValueRef(idx)|self.get(*idx)))?;
                             //reset the stack
@@ -467,7 +468,7 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
                 }
             },
             Operand::GenIndex => self.hash(values,1)?, //Todo: Constant
-            Operand::Derive => self.hash(values, 2)?, //Todo: Constant
+            Operand::Derive => self.join_hash(values, 2)?, //Todo: Constant
             //Cost: constant but op specific
             Operand::FullHash => Object::Data(self.alloc.copy_alloc_slice(&self.env.full_hash)?),
             Operand::TxTHash => Object::Data(self.alloc.copy_alloc_slice(&self.env.txt_hash)?),
@@ -732,6 +733,26 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
         Ok(Object::Data(self.alloc.copy_alloc_slice(hash_data_ref)?))
     }
 
+    //hashes the input recursively
+    fn join_hash(&self, values: &[ValueRef], domain:u8) -> Result<Object<'script>>  {
+        //cost: constant |relative Part in object_hash|
+        let top1 = self.get(values[0].0)?;
+        let top2 = self.get(values[1].0)?;
+        //Make a 20 byte digest hascher
+        let mut context = Blake2b::new(20);
+        //Domain Marker
+        context.update(&[domain]);
+        //fill the hash
+        object_hash(&top1, &mut context);
+        object_hash(&top2, &mut context);
+        //calc the Hash
+        let hash = context.finalize();
+        //generate a array to the hash
+        let hash_data_ref = array_ref!(hash.as_bytes(),0,20);
+        //get ownership and return
+        Ok(Object::Data(self.alloc.copy_alloc_slice(hash_data_ref)?))
+    }
+
     //a non recursive, non-structural variant that just hashes the data input
     fn plain_hash(&self, values: &[ValueRef]) -> Result<Object<'script>> {
         let val = self.get(values[0].0)?;
@@ -756,7 +777,10 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
         Ok(match (&*self.get(values[0].0)?, &*self.get(values[1].0)?) {
             (Object::Data(ref op1), Object::Data(ref op2)) => {
                 //build a new data vector from the inputs
-                Object::Data(self.alloc.merge_alloc_slice(op1, op2)?)
+                let mut conc = Vec::with_capacity(op1.len()+op2.len());
+                conc.extend(op1.iter());
+                conc.extend(op2.iter());
+                Object::Data(self.alloc.copy_alloc_slice(&conc)?)
             },
             _ => unreachable!()
         })
@@ -843,42 +867,42 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
             Object::I8(data) => Object::Data(self.alloc.copy_alloc_slice(&[*data as u8])?),
             Object::U8(data) => Object::Data(self.alloc.copy_alloc_slice(&[*data])?),
             Object::I16(data) => {
-                let mut input = [0; 2];
+                let mut input = vec![0; 2];
                 LittleEndian::write_i16(&mut input, *data);
                 Object::Data(self.alloc.copy_alloc_slice(&input)?)
             },
             Object::U16(data) => {
-                let mut input = [0; 2];
+                let mut input = vec![0; 2];
                 LittleEndian::write_u16(&mut input, *data);
                 Object::Data(self.alloc.copy_alloc_slice(&input)?)
             },
             Object::I32(data) => {
-                let mut input = [0; 4];
+                let mut input = vec![0; 4];
                 LittleEndian::write_i32(&mut input, *data);
                 Object::Data(self.alloc.copy_alloc_slice(&input)?)
             },
             Object::U32(data) => {
-                let mut input = [0; 4];
+                let mut input = vec![0; 4];
                 LittleEndian::write_u32(&mut input, *data);
                 Object::Data(self.alloc.copy_alloc_slice(&input)?)
             },
             Object::I64(data) => {
-                let mut input = [0; 8];
+                let mut input = vec![0; 8];
                 LittleEndian::write_i64(&mut input, *data);
                 Object::Data(self.alloc.copy_alloc_slice(&input)?)
             },
             Object::U64(data) => {
-                let mut input = [0; 8];
+                let mut input = vec![0; 8];
                 LittleEndian::write_u64(&mut input, *data);
                 Object::Data(self.alloc.copy_alloc_slice(&input)?)
             },
             Object::I128(data) => {
-                let mut input = [0; 16];
+                let mut input = vec![0; 16];
                 LittleEndian::write_i128(&mut input, *data);
                 Object::Data(self.alloc.copy_alloc_slice(&input)?)
             },
             Object::U128(data) => {
-                let mut input = [0; 16];
+                let mut input = vec![0; 16];
                 LittleEndian::write_u128(&mut input, *data);
                 Object::Data(self.alloc.copy_alloc_slice(&input)?)
             },

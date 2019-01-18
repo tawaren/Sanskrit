@@ -447,7 +447,7 @@ impl<'a,'c, 'h> ScriptContext<'a,'c, 'h> {
     }
 
     pub fn generate_type_ref(&mut self, t_ref:&Type) -> Result<Ptr<'c, TypeApplyRef<'c>>,String> {
-        self.alloc.alloc(match t_ref.main {
+        Ok(self.alloc.alloc(match t_ref.main {
             Ref::Generic(_) => return Err("Ref is not an adt".into()),
             Ref::Module(ref m_id, ref e_id) => {
                 let module = &self.mapping[m_id];
@@ -540,7 +540,7 @@ impl<'a,'c, 'h> ScriptContext<'a,'c, 'h> {
                 let hash_data_ref = array_ref!(decoded,0,20);
                 TypeApplyRef::RemoteNewType(hash_data_ref.to_owned(),num.0.parse::<u8>().unwrap())
             }
-        })
+        }))
     }
 
     pub fn get_tag(&mut self, r:&Ref, ctr:Id) -> Result<Tag,String>{

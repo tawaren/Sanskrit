@@ -12,6 +12,7 @@ mod tests {
     use std::env::current_dir;
     use sanskrit_common::store::StorageClass;
     use sanskrit_common::arena::Heap;
+    use sanskrit_runtime::CONFIG;
 
     fn parse_and_compile_and_run(id:&str) -> Result<()>{
         let id = Id(id.into());
@@ -25,7 +26,7 @@ mod tests {
             let res = deploy_module(&s, r)?;
             compile_module(&s, res)?;
         }
-        let mut heap = Heap::new(150000,0,2.0);
+        let mut heap = Heap::new(CONFIG.calc_heap_size(2),2.0);
         for txt in comp_res.txts {
            execute(&s, &txt, 0, &heap)?;
             heap = heap.reuse();
@@ -38,9 +39,9 @@ mod tests {
     }
 
     impl HeapContainer {
-        fn new(size:usize) -> Self {
+        fn new(size:usize, convert:f64) -> Self {
             HeapContainer{
-                heap: Some(Heap::new(size,0,2.0))
+                heap: Some(Heap::new(size,convert))
             }
         }
 
@@ -65,8 +66,8 @@ mod tests {
             let res = deploy_module(&s, r.clone()).unwrap();
             compile_module(&s, res).unwrap();
         }
+        let mut heap = HeapContainer::new(CONFIG.calc_heap_size(2), 2.0);
 
-        let mut heap = HeapContainer::new(8 * 1024 * 1024); //1MB
         b.iter(move || {
             for txt in &comp_res.txts {
                 match heap.heap {

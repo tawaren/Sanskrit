@@ -5,6 +5,7 @@ use sanskrit_common::model::*;
 use sanskrit_common::linear_stack::*;
 use sanskrit_common::store::*;
 use sanskrit_common::encoding::*;
+use alloc::prelude::*;
 use model::*;
 use native::*;
 use blake2_rfc::blake2b::{Blake2b};
@@ -12,7 +13,7 @@ use byteorder::{LittleEndian, ByteOrder};
 use elem_store::ElemStore;
 use ContextEnvironment;
 use sanskrit_common::arena::*;
-use alloc::vec::Vec;
+use CONFIG;
 
 //The state of the script execution
 pub struct Executor<'a, 'h, S:Store>{
@@ -68,7 +69,7 @@ fn extract_key(entry:&StackEntry) -> Result<Hash> {
 
     //fetch the value
     Ok(match &*entry.val {
-        Object::Data(key) => *array_ref!(key,0,20),
+        Object::Data(key) => array_ref!(key,0,20).to_owned(),
         _ => unreachable!()
     })
 }
@@ -139,7 +140,7 @@ impl<'a, 'h, S:Store> Executor<'a,'h,S> {
             TypeApplyRef::Module(ref hash, ref applies) => {
                 let b_applies = self.alloc.iter_result_alloc_slice(applies.iter().map(|appl|self.resolve_type(appl).map(|r|r.1)))?;
                 let code_alloc = self.code_alloc.temp_arena()?;
-                let desc = self.store.backend.parsed_get::<AdtDescriptor, VirtualHeapArena>(StorageClass::AdtDesc, hash, &code_alloc)?;
+                let desc = self.store.backend.parsed_get::<AdtDescriptor, VirtualHeapArena>(StorageClass::AdtDesc, hash, CONFIG.max_structural_dept, &code_alloc)?;
                 let res = (false,desc.build_type(b_applies, self.alloc)?);
                 Ok(res)
             }
@@ -155,7 +156,7 @@ impl<'a, 'h, S:Store> Executor<'a,'h,S> {
             }
             _ => return type_mismatch()
         };
-        self.store.backend.parsed_get::<T, VirtualHeapArena>(class, hash, code_alloc)
+        self.store.backend.parsed_get::<T, VirtualHeapArena>(class, hash, CONFIG.max_structural_dept, code_alloc)
     }
 
     fn pack<'c>(&mut self, adt_ref:AdtRef, applies:&'c [Ptr<'c,TypeApplyRef>], tag:Tag, vals:&'c [ValueRef], is_borrowed:bool) -> Result<()> {
@@ -163,7 +164,7 @@ impl<'a, 'h, S:Store> Executor<'a,'h,S> {
         let code_alloc = self.code_alloc.temp_arena()?;
         let desc = match adt_ref {
             AdtRef::Dynamic(val) => self.extract_desc(val, StorageClass::AdtDesc, &code_alloc)?,
-            AdtRef::Ref(hash) => self.store.backend.parsed_get::<AdtDescriptor, VirtualHeapArena>(StorageClass::AdtDesc, &hash, &code_alloc)?,
+            AdtRef::Ref(hash) => self.store.backend.parsed_get::<AdtDescriptor, VirtualHeapArena>(StorageClass::AdtDesc, &hash, CONFIG.max_structural_dept, &code_alloc)?,
             AdtRef::Native(typ) => typ.get_native_adt_descriptor(&code_alloc)?,
         };
         desc.pack(types, tag, &vals, is_borrowed, &mut self.stack, self.alloc)?;
@@ -174,7 +175,7 @@ impl<'a, 'h, S:Store> Executor<'a,'h,S> {
         let code_alloc = self.code_alloc.temp_arena()?;
         let desc = match adt_ref {
             AdtRef::Dynamic(val) => self.extract_desc(val, StorageClass::AdtDesc, &code_alloc)?,
-            AdtRef::Ref(hash) => self.store.backend.parsed_get::<AdtDescriptor, VirtualHeapArena>(StorageClass::AdtDesc, &hash, &code_alloc)?,
+            AdtRef::Ref(hash) => self.store.backend.parsed_get::<AdtDescriptor, VirtualHeapArena>(StorageClass::AdtDesc, &hash, CONFIG.max_structural_dept, &code_alloc)?,
             AdtRef::Native(typ) => typ.get_native_adt_descriptor(&code_alloc)?,
         };
         desc.unpack(val, expected_tag, is_borrowed, &mut self.stack, self.alloc, temporary_values)?;
@@ -182,12 +183,12 @@ impl<'a, 'h, S:Store> Executor<'a,'h,S> {
     }
 
     fn invoke<'c>(&mut self, func_ref:FuncRef, applies:&'c[Ptr<'c,TypeApplyRef>], vals:&'c[ValueRef], temporary_values:&HeapArena<'h>) -> Result<()> {
-        let tmp = temporary_values.temp_arena()?;
+        let tmp = temporary_values.temp_arena();
         let types = tmp.iter_result_alloc_slice(applies.iter().map(|t_ref| self.resolve_type(t_ref)))?;
         let code_alloc = self.code_alloc.temp_arena()?;
         let desc = match func_ref {
             FuncRef::Dynamic(val) => self.extract_desc(val, StorageClass::FunDesc, &code_alloc)?,
-            FuncRef::Ref(ref hash) => self.store.backend.parsed_get::<FunctionDescriptor, VirtualHeapArena>(StorageClass::FunDesc, hash, &code_alloc)?,
+            FuncRef::Ref(ref hash) => self.store.backend.parsed_get::<FunctionDescriptor, VirtualHeapArena>(StorageClass::FunDesc, hash, CONFIG.max_structural_dept, &code_alloc)?,
         };
         desc.apply(&types, &vals, &mut self.stack, self.env, self.alloc, &self.stack_alloc, &tmp)?;
         Ok(())

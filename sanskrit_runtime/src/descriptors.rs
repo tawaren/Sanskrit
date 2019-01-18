@@ -7,6 +7,8 @@ use sanskrit_common::capabilities::CapSet;
 use model::*;
 use ContextEnvironment;
 use sanskrit_common::arena::*;
+use sanskrit_common::encoding::*;
+use CONFIG;
 
 impl<'b> AdtDescriptor<'b> {
 
@@ -178,7 +180,7 @@ impl<'b> AdtDescriptor<'b> {
         }
 
 
-        let temp = temporary_values.temp_arena()?;
+        let temp = temporary_values.temp_arena();
         //generate the resulting fields
         let elems = if self.constructors.len() == 1 && self.constructors[0].len() == 1 {
             //Wrapper Optimisation Branch
@@ -225,7 +227,7 @@ impl<'b> FunctionDescriptor<'b> {
             return num_applied_generics_error()
         }
 
-        let tmp = temporary_values.temp_arena()?;
+        let tmp = temporary_values.temp_arena();
         //check the type parameters and prepare them for application
         let mut plain_applies = tmp.slice_builder(applies.len())?;
         for (FunTypeParam{is_protected, is_phantom, caps},(is_priv,typ)) in self.generics.iter().zip(applies.iter()) {
@@ -258,9 +260,9 @@ impl<'b> FunctionDescriptor<'b> {
 
         //prepare the stacks needed for interpretation
 
-        let tmp_stack_alloc = stack_alloc.temp_arena()?;
-        let mut value_stack = tmp_stack_alloc.alloc_stack(1000)?;
-        let mut frame_stack = tmp_stack_alloc.alloc_stack(1000)?;
+        let tmp_stack_alloc = stack_alloc.temp_arena();
+        let mut value_stack = tmp_stack_alloc.alloc_stack(CONFIG.max_stack_depth);
+        let mut frame_stack = tmp_stack_alloc.alloc_stack(CONFIG.max_frame_depth);
 
         //extract the information needed to execute the function on the stack
         assert_eq!(value_stack.len(), 0);

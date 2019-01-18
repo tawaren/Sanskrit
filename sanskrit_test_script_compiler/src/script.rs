@@ -170,8 +170,8 @@ impl<'a> Compiler<'a> {
                 }
             }
 
-            let mut s = Serializer::new();
-            r_module.serialize(&mut s);
+            let mut s = Serializer::new(usize::max_value());
+            r_module.serialize(&mut s)?;
             let res = s.extract();
             let hash = store_hash(&[&res]);
             let module = self.parsed.get_mut(&id).unwrap();

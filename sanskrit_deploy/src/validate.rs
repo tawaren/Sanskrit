@@ -26,7 +26,7 @@ use sanskrit_common::model::Hash;
 
 pub fn validate<S:Store>(data:&[u8], store:&S, link:Hash) -> Result<()>{
     //Parse the module
-    let parsed:Module = Parser::parse_fully::<Module,NoCustomAlloc>(data,&NoCustomAlloc())?;
+    let parsed:Module = Parser::parse_fully::<Module,NoCustomAlloc>(data, usize::max_value(),&NoCustomAlloc())?;
     //Prepare the cache for this iteration
     let resolver = StorageCache::new_incremental(store, link,parsed);
     //Get a reference to the cached Module

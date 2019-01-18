@@ -32,11 +32,11 @@ pub trait ComponentProcessor {
 //Entry point that compiles all types and public functions of a module
 pub fn compile<'b, S:Store, P:ComponentProcessor>(module_hash:&Hash, store:&S, proc:&mut P) -> Result<()>{
     //load the module
-    let module:Module = store.parsed_get(StorageClass::Module,module_hash, &NoCustomAlloc())?;
+    let module:Module = store.parsed_get(StorageClass::Module,module_hash, usize::max_value(),&NoCustomAlloc())?;
     let resolver = StorageCache::new_complete(store);
 
-    let heap = Heap::new(10000,0,1.0);
-    let mut alloc = heap.new_arena(10000)?;
+    let heap = Heap::new(10000,1.0);
+    let mut alloc = heap.new_arena(10000);
     //generate descriptors for all adts
     for (offset,adt) in  module.adts.iter().enumerate() {
         //Prepare the context
@@ -112,7 +112,7 @@ fn generate_function_descriptor<'b,'h, S:Store>(fun:&FunctionComponent, module:&
     let mut params = alloc.slice_builder(fun.params.len())?;
     for p in &fun.params{
         //build the builder
-        let builder = alloc.alloc(resolved_type_to_builder(&*p.typ.fetch(ctx)?, alloc)?)?;
+        let builder = alloc.alloc(resolved_type_to_builder(&*p.typ.fetch(ctx)?, alloc)?);
         params.push(Param(p.consumes, builder));
     }
     let params = params.finish();
@@ -121,7 +121,7 @@ fn generate_function_descriptor<'b,'h, S:Store>(fun:&FunctionComponent, module:&
     let mut returns =  alloc.slice_builder(fun.returns.len())?;
     for r in &fun.returns{
         //build the builder
-        let ret = alloc.alloc(resolved_type_to_builder(&*r.typ.fetch(ctx)?, alloc)?)?;
+        let ret = alloc.alloc(resolved_type_to_builder(&*r.typ.fetch(ctx)?, alloc)?);
         returns.push(Return(ret, alloc.copy_alloc_slice(&r.borrows)?));
     }
     let returns = returns.finish();
@@ -132,7 +132,6 @@ fn generate_function_descriptor<'b,'h, S:Store>(fun:&FunctionComponent, module:&
     let (pos,args,ressources) = compactor.emit_func(fun,module,offset,ctx)?;
     assert_eq!(args as usize, returns.len());
     assert_eq!(pos, 0);
-    //todo: Write resource info into descriptor
 
     //get all the compiled functions
     let functions = compactor.extract_functions()?;
@@ -140,9 +139,16 @@ fn generate_function_descriptor<'b,'h, S:Store>(fun:&FunctionComponent, module:&
         return size_limit_exceeded_error();
     }
 
+    //Todo: we can go lower based on block max limits
+    if ressources.max_gas > u32::max_value as usize {return size_limit_exceeded_error()}
+    if ressources.max_manifest_stack > u16::max_value as usize {return size_limit_exceeded_error()}
+    if ressources.max_frames > u16::max_value as usize {return size_limit_exceeded_error()}
+
     //pack it all together in an adt descriptor
     Ok(FunctionDescriptor{
-        //todo: max_stack, max_frame, max_gas, max_mem
+        gas_cost: ressources.max_gas as u32,
+        max_stack: ressources.max_manifest_stack as u16,
+        max_frames: ressources.max_frames as u16,
         generics,
         params,
         returns,
@@ -163,7 +169,7 @@ pub fn resolved_type_to_builder<'b,'h>(typ:&ResolvedType, alloc:&'b HeapArena<'h
             //recursively process each apply
             let r_typ = resolved_type_to_builder(&*typ, alloc)?;
             //record it
-            builders.push((*is_phantom,alloc.alloc(r_typ)?));
+            builders.push((*is_phantom,alloc.alloc(r_typ)));
         }
         //put it together
         let builder = TypeBuilder::Dynamic(caps,kind, builders.finish());

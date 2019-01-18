@@ -244,7 +244,7 @@ impl Case {
 
 impl ScriptCode {
     pub fn compile<'a,'c, 'h, A: ParserAllocator>(&self, env:&mut Environment<'c, A>, imp:&mut ScriptContext<'a,'c,'h>) -> Result<Ptr<'c,RScriptCode<'c>>, String> {
-        imp.alloc.alloc(match *self {
+        Ok(imp.alloc.alloc(match *self {
             ScriptCode::Lit(ref id,ref lit, ref typ) => {
                 let num = imp.alloc.copy_alloc_slice(&parse_lit(&lit.0,&typ))?;
                 let desc = gen_lit_desc(&typ);
@@ -335,6 +335,6 @@ impl ScriptCode {
                 let from_v = env.get_id_pos(val).unwrap();
                 RScriptCode::Store(from_v)
             }
-        })
+        }))
     }
 }

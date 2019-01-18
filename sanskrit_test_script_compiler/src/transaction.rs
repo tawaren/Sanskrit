@@ -17,6 +17,7 @@ use std::mem;
 use sanskrit_common::arena::HeapArena;
 use sanskrit_common::model::SlicePtr;
 use sanskrit_common::arena::Heap;
+use sanskrit_runtime::CONFIG;
 //Process text -> Adt -> Adt + Index (allows to get stuff by Id) -> EAst (has stuff like captures) -> Final
 //All involved file go seq:
 // First collect dependencies & Bring everithing into Adt Form
@@ -110,8 +111,8 @@ impl<'a> Compiler<'a> {
                 signatures: SlicePtr::empty()
             };
 
-            let mut s = Serializer::new();
-            r_txt.serialize(&mut s);
+            let mut s = Serializer::new(usize::max_value());
+            r_txt.serialize(&mut s)?;
             let mut txt_data = s.extract();
             //Serialization Specific
             txt_data.pop();//pop drops the signatures: vec![] //1 of 2 Bytes
@@ -119,13 +120,13 @@ impl<'a> Compiler<'a> {
             r_txt.signatures =  txt_alloc.iter_alloc_slice(txt.sigs.iter().map(|id|{
                 sks[id].sign::<Sha512>(&txt_data).to_bytes()
             }))?;
-            let mut s = Serializer::new();
-            r_txt.serialize(&mut s);
+            let mut s = Serializer::new(usize::max_value());
+            r_txt.serialize(&mut s)?;
             Ok(s.extract())
         }
 
-        let heap = Heap::new(10000,0,1.0);
-        let mut txt_alloc = heap.new_arena(10000)?;
+        let heap = Heap::new(10000,1.0);
+        let mut txt_alloc = heap.new_arena(10000);
         for txt in &self.parsed_txts {
             self.compiled_txts.push(compile_txt(txt, &self.modules, &sks, &txt_alloc)?);
             txt_alloc = txt_alloc.reuse();

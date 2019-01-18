@@ -29,50 +29,45 @@ pub struct Heap {
 }
 
 impl Heap {
-    pub fn new(real: usize, virt:usize, convert:f64) -> Self {
-        let virt = virt + ((virt as f64)*(convert-1.0)) as usize;
+    pub fn new(real: usize,  convert:f64) -> Self {
         Heap {
-            buffer: RefCell::new(Vec::with_capacity(real + virt)),
+            buffer: RefCell::new(Vec::with_capacity(real)),
             pos: Cell::new(0),
             convert,
         }
     }
 
-    pub fn words(size:usize) -> usize {
-        size*8
-    }
-
-    pub fn elems<T:Sized>(num:usize) -> usize {
+    pub const fn elems<T:Sized>(num:usize) -> usize {
         num*mem::size_of::<T>()
     }
 
-    pub fn new_arena(&self, size: usize) -> Result<HeapArena> {
+    pub fn new_arena(&self, size: usize) -> HeapArena {
         let ptr = unsafe { self.buffer.borrow().as_ptr().offset(self.pos.get() as isize) };
         let align_offset = align_address(ptr, mem::align_of::<usize>());
         let start = self.pos.get();
         let end = start + size + align_offset;
         if self.buffer.borrow().capacity() < end {
-            return size_limit_exceeded_error()
+            panic!();
         }
         self.pos.set(end);
-        Ok(HeapArena {
+        HeapArena {
             buffer: &self.buffer,
             start,
             pos: Cell::new(start),
             end,
             locked:Cell::new(false)
-        })
+        }
     }
 
-    pub fn new_virtual_arena(&self, size: usize) -> Result<VirtualHeapArena> {
+    pub fn new_virtual_arena(&self, size: usize) -> VirtualHeapArena {
         //ensures at least size if f > 1
         let real_size = size + ((size as f64)*(self.convert-1.0)) as usize;
         assert!(real_size > 0);
-        Ok(VirtualHeapArena{
-            uncounted:self.new_arena(real_size)?,
+        VirtualHeapArena{
+            uncounted:self.new_arena(real_size),
             virt_pos: Cell::new(0),
             virt_end: size
-        })
+        }
     }
 
     pub fn reuse(self) -> Self  {
@@ -105,7 +100,7 @@ pub struct ArenaLock<'a, T:ArenaUnlock> {
 impl<'a, T:ArenaUnlock> Deref for ArenaLock<'a, T> {
     type Target = T;
     fn deref(&self) -> &T {
-       &self.new
+        &self.new
     }
 }
 
@@ -139,18 +134,18 @@ impl<'h> HeapArena<'h> {
         self.end >= self.pos.get() + size + align_offset
     }
 
-    unsafe fn alloc_raw_slice<T: Sized + Copy>(&self, len: usize) -> Result<&mut [T]> {
+    unsafe fn alloc_raw_slice<T: Sized + Copy>(&self, len: usize) -> &mut [T] {
         let size = len * mem::size_of::<T>();
         if self.has_room(size, mem::align_of::<T>()) {
             let ptr = self.reserve(size, mem::align_of::<T>()) as *mut T;
-            Ok(from_raw_parts_mut(ptr, len))
+            from_raw_parts_mut(ptr, len)
         } else {
-            size_limit_exceeded_error()
+            panic!();
         }
     }
 
     pub fn repeated_mut_slice<T:Copy+Sized>(&self, val:T, len: usize) -> Result<MutSlicePtr<T>> {
-        let mut slice = unsafe {self.alloc_raw_slice(len)?};
+        let mut slice = unsafe {self.alloc_raw_slice(len)};
         for i in 0..len {
             slice[i] = val;
         }
@@ -162,10 +157,8 @@ impl<'h> HeapArena<'h> {
         Ok(self.repeated_mut_slice(val,len)?.freeze())
     }
 
-
-
     pub fn iter_alloc_slice<T: Sized + Copy>(&self, vals: impl ExactSizeIterator<Item = T>) -> Result<SlicePtr<T>> {
-        let mut slice = unsafe {self.alloc_raw_slice(vals.len())?};
+        let mut slice = unsafe {self.alloc_raw_slice(vals.len())};
         for (i,val) in vals.enumerate() {
             slice[i] = val;
         }
@@ -173,7 +166,7 @@ impl<'h> HeapArena<'h> {
     }
 
     pub fn iter_result_alloc_slice<T: Sized + Copy>(&self, vals: impl ExactSizeIterator<Item=Result<T>>) -> Result<SlicePtr<T>> {
-        let mut slice = unsafe {self.alloc_raw_slice(vals.len())?};
+        let mut slice = unsafe {self.alloc_raw_slice(vals.len())};
         for (i,val) in vals.enumerate() {
             slice[i] = val?;
         }
@@ -200,38 +193,38 @@ impl<'h> HeapArena<'h> {
         }
     }
 
-    pub fn temp_arena(&self) -> Result<ArenaLock<Self>> {
-        if self.locked.get() {return size_limit_exceeded_error();}
+    pub fn temp_arena(&self) -> ArenaLock<Self> {
+        if self.locked.get() {panic!();}
         let new = self.unlocked_clone();
         self.locked.set(true);
-        Ok(ArenaLock{
+        ArenaLock{
             old: self,
             new,
-        })
+        }
     }
 
-    pub fn alloc<T:Sized + Copy>(&self, val: T) -> Result<Ptr<T>> {
+    pub fn alloc<T:Sized + Copy>(&self, val: T) -> Ptr<T> {
         if self.has_room(mem::size_of::<T>(), mem::align_of::<T>()) {
             unsafe {
                 let ptr = self.reserve(mem::size_of::<T>(), mem::align_of::<T>());
                 let ptr = ptr as *mut T;
                 ptr::write(&mut (*ptr), val);
-                Ok(Ptr(&*ptr))
+                Ptr(&*ptr)
             }
         } else {
-            size_limit_exceeded_error()
+            panic!();
         }
     }
 
     pub fn merge_alloc_slice<T: Sized + Copy + VirtualSize>(&self, vals1: &[T], vals2: &[T]) -> Result<SlicePtr<T>> {
-        let slice = unsafe {self.alloc_raw_slice(vals1.len() + vals2.len())?};
+        let slice = unsafe {self.alloc_raw_slice(vals1.len() + vals2.len())};
         slice[..vals1.len()].copy_from_slice(vals1);
         slice[vals1.len()..].copy_from_slice(vals2);
         SlicePtr::new(slice)
     }
 
     pub fn copy_alloc_slice<T: Sized + Copy>(&self, vals: &[T]) -> Result<SlicePtr<T>> {
-        let slice = unsafe {self.alloc_raw_slice(vals.len())?};
+        let slice = unsafe {self.alloc_raw_slice(vals.len())};
         slice.copy_from_slice(vals);
         SlicePtr::new(slice)
     }
@@ -240,25 +233,22 @@ impl<'h> HeapArena<'h> {
         if len > u16::max_value() as usize {
             size_limit_exceeded_error()
         } else {
-            Ok(SliceBuilder::new(unsafe {self.alloc_raw_slice(len)?}, 0))
+            Ok(SliceBuilder::new(unsafe {self.alloc_raw_slice(len)}, 0))
         }
     }
 
-    pub fn alloc_stack<T:Copy+Sized>(&self, size: usize) -> Result<HeapStack<T>> {
-        let mut slice = unsafe {self.alloc_raw_slice(size)?};
-        Ok(HeapStack{
+    pub fn alloc_stack<T:Copy+Sized>(&self, size: usize) -> HeapStack<T> {
+        let mut slice = unsafe {self.alloc_raw_slice(size)};
+        HeapStack{
             slice,
             pos: 0
-        })
+        }
     }
-
-
-
 }
 
 impl<'o> ParserAllocator for HeapArena<'o>  {
     fn poly_alloc<T: Sized + Copy + VirtualSize>(&self, val: T) -> Result<Ptr<T>> {
-        self.alloc(val)
+        Ok(self.alloc(val))
     }
 
     fn poly_slice_builder<T: Sized + Copy + VirtualSize>(&self, len: usize) -> Result<SliceBuilder<T>> {
@@ -285,9 +275,9 @@ pub struct VirtualHeapArena<'o>{
 impl<'o> VirtualHeapArena<'o> {
 
     fn ensure_virt_space(&self, size:usize) -> Result<()>{
-            self.virt_pos.set(self.virt_pos.get()+size);
-            if self.virt_pos.get() >= self.virt_end {return size_limit_exceeded_error()}
-            Ok(())
+        self.virt_pos.set(self.virt_pos.get()+size);
+        if self.virt_pos.get() >= self.virt_end {return size_limit_exceeded_error()}
+        Ok(())
     }
 
     pub fn repeated_slice<T: Sized + Copy + VirtualSize>(&self, val: T, len:usize) -> Result<SlicePtr<T>> {
@@ -334,7 +324,7 @@ impl<'o> VirtualHeapArena<'o> {
 
     pub fn alloc<T: Sized + Copy + VirtualSize>(&self, val: T) -> Result<Ptr<T>> {
         self.ensure_virt_space(T::SIZE)?;
-        self.uncounted.alloc(val)
+        Ok(self.uncounted.alloc(val))
     }
 
     pub fn copy_alloc_slice<T: Sized + Copy + VirtualSize>(&self, vals: &[T]) -> Result<SlicePtr<T>> {

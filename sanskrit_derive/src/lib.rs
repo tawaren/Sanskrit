@@ -55,8 +55,8 @@ fn impl_serialize_macro(ast:&DeriveInput) -> TokenStream {
             let mut body = Vec::new();
             for (idx,f) in ds.fields.iter().enumerate() {
                 body.push(match &f.ident {
-                    None => quote!{self.#idx.serialize(s)},
-                    Some(id) => quote!{self.#id.serialize(s)},
+                    None => quote!{self.#idx.serialize(s)?},
+                    Some(id) => quote!{self.#id.serialize(s)?},
                 })
             }
             quote!{#(#body;)*}
@@ -87,12 +87,16 @@ fn impl_serialize_macro(ast:&DeriveInput) -> TokenStream {
                     if named {
                         cases.push(quote!{#prefix::#name{#(#fields),*} => {
                             s.produce_byte(#num);
+                            s.increment_depth()?;
                             #body
+                            s.decrement_depth();
                         }})
                     } else {
                         cases.push(quote!{#prefix::#name(#(#fields),*) => {
                             s.produce_byte(#num);
+                            s.increment_depth()?;
                             #body
+                            s.decrement_depth();
                         }})
                     }
                 }
@@ -111,8 +115,9 @@ fn impl_serialize_macro(ast:&DeriveInput) -> TokenStream {
     let argumented = extract_agumented_generics(&ast.generics, quote!{Serializable});
     quote!{
         impl<#(#argumented),*> Serializable for #prefix<#(#plain),*> {
-             fn serialize(&self, s:&mut Serializer) {
+             fn serialize(&self, s:&mut Serializer) -> Result<()> {
                 #body
+                Ok(())
              }
         }
     }
@@ -132,11 +137,24 @@ fn impl_parsable_macro(ast:&DeriveInput) -> TokenStream {
                     },
                 }
             }).collect();
-            if named {
-                quote!{Ok(#prefix{#(#body),*})}
+            let fields = body.len();
+            let build = if named {
+                quote!{ Ok(#prefix{#(#body),*}) }
             } else {
-                quote!{Ok(#prefix(#(#body),*))}
+                quote!{ Ok(#prefix(#(#body),*)) }
+            };
+
+            if fields == 0{
+                build
+            } else {
+                quote!{
+                    p.increment_depth()?;
+                    let res = #build;
+                    p.decrement_depth();
+                    res
+                }
             }
+
         }
         Data::Enum(ref ed) => {
             let mut cases = Vec::new();
@@ -238,9 +256,9 @@ fn pattern_body_serialize<'a>(fs: impl Iterator<Item=&'a Field>) -> TokenStream 
         body.push(match &f.ident {
             None => {
                 let id = Ident::new(&format!("_{}",idx), Span::call_site());
-                quote!{#id.serialize(s)}
+                quote!{#id.serialize(s)?}
             }
-            Some(id) => quote!{#id.serialize(s)},
+            Some(id) => quote!{#id.serialize(s)?},
         })
     }
     quote!{#(#body;)*}

@@ -3,6 +3,7 @@
 #![feature(nll)]
 
 extern crate blake2_rfc;
+#[macro_use]
 extern crate alloc;
 #[macro_use]
 extern crate arrayref;
@@ -29,14 +30,15 @@ use elem_store::ElemStore;
 use script_stack::LinearScriptStack;
 use script_interpreter::Executor;
 use sanskrit_common::arena::*;
+use alloc::prelude::Vec;
 use script_stack::StackEntry;
 use sanskrit_common::model::SlicePtr;
 use sanskrit_common::linear_stack::Elem;
 use sanskrit_common::model::Ptr;
 use model::Object;
 use interpreter::Frame;
-use elem_store::*;
-use alloc::vec::Vec;
+use elem_store::CacheSlotMap;
+use elem_store::CacheEntry;
 
 
 pub mod native;
@@ -49,6 +51,44 @@ pub mod type_builder;
 pub mod elem_store;
 pub mod encoding;
 
+
+pub const CONFIG: Configuration = Configuration {
+    max_stack_depth:1024,
+    max_frame_depth:256,
+    max_heap_size:512 * 1024,
+    max_script_stack_size:256,
+    max_code_size:128 * 1024,
+    max_structural_dept:64,
+    max_transaction_size:128 * 1024,
+    max_store_slots: 32,
+    temporary_buffer: 24 * 255 //recalc
+};
+
+impl Configuration {
+    pub const fn calc_heap_size(&self, virt_factor:usize) -> usize {
+        Heap::elems::<Elem<StackEntry,SlicePtr<usize>>>(self.max_script_stack_size)
+        + Heap::elems::<Ptr<Object>>(self.max_stack_depth)
+        + Heap::elems::<Frame>(self.max_stack_depth)
+        + Heap::elems::<Option<(Hash, CacheEntry)>>((self.max_store_slots as usize)*2 )
+        + (self.max_code_size* virt_factor)
+        + (self.max_heap_size* virt_factor)
+        + (self.max_transaction_size * virt_factor)
+        + self.temporary_buffer
+    }
+}
+
+pub struct Configuration {
+    max_stack_depth:usize,
+    max_frame_depth:usize,
+    max_heap_size:usize,
+    max_script_stack_size:usize,
+    max_code_size:usize,
+    max_structural_dept: usize,
+    max_transaction_size: usize,
+    max_store_slots: u16,
+    temporary_buffer: usize
+}
+
 //A struct holding context information of the current transaction
 #[derive(Copy, Clone, Debug)]
 pub struct ContextEnvironment {
@@ -58,38 +98,31 @@ pub struct ContextEnvironment {
     pub code_hash:Hash
 }
 
-
-
 //Executes a transaction
 pub fn execute<S:Store>(store:&S, txt_data:&[u8], block_no:u64, heap:&Heap) -> Result<Hash> {
     //Create Allocator
-    //size of real mesured part
-    let size_txt_alloc = Heap::words(500);
-    let size_temp_alloc = Heap::words(4*3*255);
-    let size_slot_map = Heap::elems::<Option<(Hash, CacheEntry)>>((8.0/0.75) as usize);
-    let size_script_stack = Heap::elems::<Elem<StackEntry,SlicePtr<usize>>>(1000);
-    let size_interpreter_stack = Heap::elems::<Ptr<Object>>(1000);
-    let size_frame_stack = Heap::elems::<Frame>(1000);
-
-    //sizes of virtual measured part
-    let size_code_alloc = Heap::words(500);
-    let size_alloc = Heap::words(500);
+    let size_script_stack = Heap::elems::<Elem<StackEntry,SlicePtr<usize>>>(CONFIG.max_script_stack_size);
+    let size_interpreter_stack = Heap::elems::<Ptr<Object>>(CONFIG.max_stack_depth);
+    let size_frame_stack = Heap::elems::<Frame>(CONFIG.max_stack_depth);
+    let size_slot_map = Heap::elems::<Option<(Hash, CacheEntry)>>((CONFIG.max_store_slots as usize) *2);
+    let size_code_alloc = CONFIG.max_code_size;
+    let size_alloc = CONFIG.max_heap_size;
     //Static allocations (could be done once)
     // A buffer to parse the transaction
-    let txt_alloc = heap.new_virtual_arena(size_txt_alloc)?; //todo: will be static conf later (or block consensus)
+    let txt_alloc = heap.new_virtual_arena(CONFIG.max_transaction_size); //todo: will be static conf later (or block consensus)
     //A Buffer to pass dynamically sized vectors
     //Note this is static: it can hold: a type buffer + a param buffer + a return buffer (each max 255 elems)
     //                  or it can hold a ctr field buffer (max 255 values)
-    let temporary_values = heap.new_arena(size_temp_alloc)?; //todo: will be dynamic | static  later
+    let temporary_values = heap.new_arena(CONFIG.temporary_buffer); //todo: will be dynamic | static  later
     //Parse the transaction
-    let txt:Transaction = Parser::parse_fully(txt_data, &txt_alloc)?;
+    let txt:Transaction = Parser::parse_fully(txt_data, CONFIG.max_structural_dept, &txt_alloc)?;
 
     //create heaps: based on txt input
-    let alloc = heap.new_virtual_arena(size_code_alloc)?; //todo: will be dynamic later
-    let code_alloc = heap.new_virtual_arena(size_alloc)?; //todo: will be dynamic
-    let structural_arena = heap.new_arena(size_slot_map+size_script_stack+size_interpreter_stack+size_frame_stack)?;
-    let slot_map = CacheSlotMap::new(&structural_arena, 8,(0,0,0))?; //todo: will be dynamic & random
-    let script_stack = structural_arena.alloc_stack(1000)?; //todo: will be dynamic
+    let alloc = heap.new_virtual_arena(size_alloc); //todo: will be dynamic later
+    let code_alloc = heap.new_virtual_arena(size_code_alloc); //todo: will be dynamic
+    let structural_arena = heap.new_arena(size_slot_map+size_script_stack+size_interpreter_stack+size_frame_stack);
+    let slot_map = CacheSlotMap::new(&structural_arena, CONFIG.max_store_slots,(0,0,0))?; //todo: will be dynamic & random
+    let script_stack = structural_arena.alloc_stack(CONFIG.max_script_stack_size); //todo: will be dynamic
 
     //check that there are enough signatures on it
     if txt.signers.len() != txt.signatures.len() {

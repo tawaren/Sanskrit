@@ -24,26 +24,37 @@ impl ParserAllocator for NoCustomAlloc {
 //the state needed during parsing including the input
 pub struct Parser<'a>{
     index:usize,
+    max_depth:usize,
     data:&'a [u8]
 }
 
 impl<'a> Parser<'a> {
     //create a new parser for an input
-    pub fn new(data:&'a [u8]) -> Self {
+    pub fn new(data:&'a [u8], max_depth:usize) -> Self {
         Parser {
             index: 0,
+            max_depth,
             data,
         }
     }
 
     //parse the whole content as a specific Parsable<'a>
-    pub fn parse_fully<'b,T:Parsable<'b>, A: ParserAllocator>(data:&'a [u8], alloc:&'b A) -> Result<T>{
-        let mut parser = Parser::new(data);
+    pub fn parse_fully<'b,T:Parsable<'b>, A: ParserAllocator>(data:&'a [u8], max_depth:usize, alloc:&'b A) -> Result<T>{
+        let mut parser = Parser::new(data,max_depth);
         let parsed = T::parse(&mut parser, alloc)?;
         if parser.data.len() != parser.index {return parsing_terminated()}
         Ok(parsed)
     }
 
+    pub fn increment_depth(&mut self) -> Result<()> {
+        self.max_depth -=1;
+        if self.max_depth == 0 {return size_limit_exceeded_error()}
+        Ok(())
+    }
+
+    pub fn decrement_depth(&mut self) {
+        self.max_depth +=1
+    }
 
     //fetch a single byte
     pub fn consume_byte(&mut self) -> Result<u8>{
@@ -70,52 +81,68 @@ pub trait Parsable<'a> where Self:Sized {
 
 //the state during serialization
 #[derive(Default)]
-pub struct Serializer(Vec<u8>);
+pub struct Serializer{
+    out:Vec<u8>,
+    max_depth:usize,
+}
 
 impl Serializer{
 
     //Creates a new serializer
-    pub fn new() -> Self {
-        Serializer(Vec::new())
+    pub fn new(max_depth:usize) -> Self {
+        Serializer{
+            out:Vec::new(),
+            max_depth
+        }
     }
 
     //parse the whole content as a specific Parsable<'a>
-    pub fn serialize_fully<S:Serializable>(data:&S,) -> Vec<u8>{
-        let mut serializer = Serializer::new();
-        data.serialize(&mut serializer);
-        serializer.extract()
+    pub fn serialize_fully<S:Serializable>(data:&S,max_depth:usize) -> Result<Vec<u8>>{
+        let mut serializer = Serializer::new(max_depth);
+        data.serialize(&mut serializer)?;
+        Ok(serializer.extract())
     }
 
     //Emits a single byte
     pub fn produce_byte(&mut self, byte:u8){
-        self.0.push(byte)
+        self.out.push(byte)
     }
 
     //emit a fixed number of bytes
     pub fn produce_bytes(&mut self, bytes:&[u8]){
         for b in bytes{
-            self.0.push(*b)
+            self.out.push(*b)
         }
     }
 
     //allocates an outbut buffer and returns a pointer to it
     pub fn get_buf(&mut self, amount:usize) -> &mut [u8]{
-        let start = self.0.len();
+        let start = self.out.len();
         for _ in 0..amount {
-            self.0.push(0)
+            self.out.push(0)
         }
-        &mut self.0[start..]
+        &mut self.out[start..]
+    }
+
+    pub fn increment_depth(&mut self) -> Result<()> {
+        self.max_depth -=1;
+        if self.max_depth == 0 {return size_limit_exceeded_error()}
+        Ok(())
+    }
+
+    pub fn decrement_depth(&mut self) {
+        self.max_depth +=1
     }
 
     //gets the result
     pub fn extract(self) -> Vec<u8>{
-        self.0
+        self.out
     }
 }
 
 //A trait for Serializable types
 pub trait Serializable {
-    fn serialize(&self, s:&mut Serializer);
+    fn serialize(&self, s:&mut Serializer) -> Result<()>;
 }
 
 //helps with turo fish representation ambiguity allows TypeId::<orignalType>::SIZE
@@ -135,20 +162,25 @@ impl<'a,T:Parsable<'a>> Parsable<'a> for Vec<T>{
     fn parse<A: ParserAllocator>(p: &mut Parser, alloc:&'a A) -> Result<Self> {
         let len = p.consume_byte()?;
         let mut elems = Vec::with_capacity(len as usize);
+        p.increment_depth()?;
         for _ in 0..len {
             elems.push(Parsable::parse(p,alloc)?);
         }
+        p.decrement_depth();
         Ok(elems)
     }
 }
 
 impl<T:Serializable> Serializable for Vec<T>{
-    fn serialize(&self, s:&mut Serializer) {
+    fn serialize(&self, s:&mut Serializer) -> Result<()> {
         assert!(self.len() <= 255);
         s.produce_byte(self.len() as u8);
+        s.increment_depth()?;
         for elem in self {
-            elem.serialize(s);
+            elem.serialize(s)?;
         }
+        s.decrement_depth();
+        Ok(())
     }
 }
 
@@ -159,8 +191,9 @@ impl<'a> Parsable<'a> for Hash {
 }
 
 impl Serializable for Hash {
-    fn serialize(&self, s:&mut Serializer) {
-        s.produce_bytes(&self[..])
+    fn serialize(&self, s:&mut Serializer) -> Result<()> {
+        s.produce_bytes(&self[..]);
+        Ok(())
     }
 }
 
@@ -175,8 +208,9 @@ impl<'a> Parsable<'a> for [u8;32]{
 }
 
 impl Serializable for [u8;32]{
-    fn serialize(&self, s:&mut Serializer) {
-        s.produce_bytes(&self[..])
+    fn serialize(&self, s:&mut Serializer) -> Result<()> {
+        s.produce_bytes(&self[..]);
+        Ok(())
     }
 }
 
@@ -191,8 +225,9 @@ impl<'a> Parsable<'a> for [u8;64]{
 }
 
 impl Serializable for [u8;64]{
-    fn serialize(&self, s:&mut Serializer) {
-        s.produce_bytes(&self[..])
+    fn serialize(&self, s:&mut Serializer) -> Result<()> {
+        s.produce_bytes(&self[..]);
+        Ok(())
     }
 }
 
@@ -204,20 +239,25 @@ impl<'a,T:Parsable<'a>+Ord> Parsable<'a> for BTreeSet<T>{
     fn parse<A: ParserAllocator>(p: &mut Parser, alloc:&'a A) -> Result<Self> {
         let len = p.consume_byte()?;
         let mut elems = BTreeSet::new();
+        p.increment_depth()?;
         for _ in 0..len {
             elems.insert(T::parse(p,alloc)?);
         }
+        p.decrement_depth();
         Ok(elems)
     }
 }
 
 impl<T:Serializable+Ord> Serializable for BTreeSet<T>{
-    fn serialize(&self, s:&mut Serializer) {
+    fn serialize(&self, s:&mut Serializer) -> Result<()> {
         assert!(self.len() <= 255);
         s.produce_byte(self.len() as u8);
+        s.increment_depth()?;
         for elem in self {
-            elem.serialize(s);
+            elem.serialize(s)?;
         }
+        s.decrement_depth();
+        Ok(())
     }
 }
 
@@ -225,9 +265,11 @@ impl<'a, K:Parsable<'a>+Ord,V:Parsable<'a>> Parsable<'a> for BTreeMap<K,V>{
     fn parse<A: ParserAllocator>(p: &mut Parser, alloc:&'a A) -> Result<Self> {
         let len = p.consume_byte()?;
         let mut elems = BTreeMap::new();
+        p.increment_depth()?;
         for _ in 0..len {
             elems.insert(K::parse(p,alloc)?,V::parse(p,alloc)?);
         }
+        p.decrement_depth();
         Ok(elems)
     }
 }
@@ -235,28 +277,37 @@ impl<'a, K:Parsable<'a>+Ord,V:Parsable<'a>> Parsable<'a> for BTreeMap<K,V>{
 
 impl<K:Serializable+Ord,V:Serializable> Serializable for BTreeMap<K,V>{
 
-    fn serialize(&self, s:&mut Serializer) {
+    fn serialize(&self, s:&mut Serializer) -> Result<()> {
         assert!(self.len() <= 255);
         s.produce_byte(self.len() as u8);
+        s.increment_depth()?;
         for (k,v) in self {
-            k.serialize(s);
-            v.serialize(s);
+            k.serialize(s)?;
+            v.serialize(s)?;
         }
+        s.decrement_depth();
+        Ok(())
     }
 
 }
 
 impl<'a, K:Parsable<'a>,V:Parsable<'a>> Parsable<'a> for (K,V){
     fn parse<A: ParserAllocator>(p: &mut Parser, alloc:&'a A) -> Result<Self> {
-        Ok((K::parse(p,alloc)?,V::parse(p,alloc)?))
+        p.increment_depth()?;
+        let res = (K::parse(p,alloc)?,V::parse(p,alloc)?);
+        p.decrement_depth();
+        Ok(res)
     }
 }
 
 
 impl<K:Serializable,V:Serializable> Serializable for (K,V){
-    fn serialize(&self, s:&mut Serializer) {
-        self.0.serialize(s);
-        self.1.serialize(s);
+    fn serialize(&self, s:&mut Serializer) -> Result<()> {
+        s.increment_depth()?;
+        self.0.serialize(s)?;
+        self.1.serialize(s)?;
+        s.decrement_depth();
+        Ok(())
     }
 }
 
@@ -268,45 +319,65 @@ impl<'a, T:Parsable<'a>> Parsable<'a> for Option<T> {
     fn parse<A: ParserAllocator>(p: &mut Parser, alloc:&'a A) -> Result<Self> {
        Ok(match p.consume_byte()? {
            0 => None,
-           1 => Some(T::parse(p,alloc)?),
+           1 => {
+               p.increment_depth()?;
+               let res = Some(T::parse(p,alloc)?);
+               p.decrement_depth();
+               res
+           },
            _ => return parsing_case_failure()
        })
     }
 }
 
 impl<T:Serializable> Serializable for Option<T>{
-    fn serialize(&self, s:&mut Serializer) {
+    fn serialize(&self, s:&mut Serializer) -> Result<()> {
         match *self {
             None => s.produce_byte(0),
             Some(ref val) => {
                 s.produce_byte(1);
-                val.serialize(s);
+                s.increment_depth()?;
+                val.serialize(s)?;
+                s.decrement_depth()
             },
         }
+        Ok(())
     }
 }
 
 impl<'a, T:Parsable<'a>> Parsable<'a> for Box<T>{
     fn parse<A: ParserAllocator>(p: &mut Parser, alloc:&'a A) -> Result<Self> {
-        Ok(Box::new(T::parse(p,alloc)?))
+        p.increment_depth()?;
+        let res = Box::new(T::parse(p,alloc)?);
+        p.decrement_depth();
+        Ok(res)
     }
 }
 
 impl<T:Serializable> Serializable for Box<T>{
-    fn serialize(&self, s:&mut Serializer) {
-        self.deref().serialize(s);
+    fn serialize(&self, s:&mut Serializer) -> Result<()> {
+        s.increment_depth()?;
+        self.deref().serialize(s)?;
+        s.decrement_depth();
+        Ok(())
     }
 }
 
 impl<'a, T:Parsable<'a>> Parsable<'a> for Rc<T>{
     fn parse<A: ParserAllocator>(p: &mut Parser, alloc:&'a A) -> Result<Self> {
-        Ok(Rc::new(T::parse(p,alloc)?))
+        p.increment_depth()?;
+        let res = Rc::new(T::parse(p,alloc)?);
+        p.decrement_depth();
+        Ok(res)
     }
 }
 
 impl<T:Serializable> Serializable for Rc<T>{
-    fn serialize(&self, s:&mut Serializer) {
-        self.deref().serialize(s);
+    fn serialize(&self, s:&mut Serializer) -> Result<()> {
+        s.increment_depth()?;
+        self.deref().serialize(s)?;
+        s.decrement_depth();
+        Ok(())
     }
 }
 
@@ -317,8 +388,9 @@ impl<'a> Parsable<'a> for u8 {
 }
 
 impl Serializable for u8 {
-    fn serialize(&self, s:&mut Serializer) {
-        s.produce_byte(*self)
+    fn serialize(&self, s:&mut Serializer) -> Result<()> {
+        s.produce_byte(*self);
+        Ok(())
     }
 }
 
@@ -333,8 +405,9 @@ impl<'a> Parsable<'a> for u16 {
 }
 
 impl Serializable for u16 {
-    fn serialize(&self, s:&mut Serializer) {
-        LittleEndian::write_u16(s.get_buf(2),*self)
+    fn serialize(&self, s:&mut Serializer) -> Result<()> {
+        LittleEndian::write_u16(s.get_buf(2),*self);
+        Ok(())
     }
 }
 
@@ -349,8 +422,9 @@ impl<'a> Parsable<'a> for u32 {
 }
 
 impl Serializable for u32 {
-    fn serialize(&self, s:&mut Serializer) {
-        LittleEndian::write_u32(s.get_buf(4),*self)
+    fn serialize(&self, s:&mut Serializer) -> Result<()> {
+        LittleEndian::write_u32(s.get_buf(4),*self);
+        Ok(())
     }
 }
 
@@ -365,8 +439,9 @@ impl<'a> Parsable<'a> for u64 {
 }
 
 impl Serializable for u64 {
-    fn serialize(&self, s:&mut Serializer) {
-        LittleEndian::write_u64(s.get_buf(8),*self)
+    fn serialize(&self, s:&mut Serializer) -> Result<()> {
+        LittleEndian::write_u64(s.get_buf(8),*self);
+        Ok(())
     }
 }
 
@@ -381,8 +456,9 @@ impl<'a> Parsable<'a> for u128 {
 }
 
 impl Serializable for u128 {
-    fn serialize(&self, s:&mut Serializer) {
-        LittleEndian::write_u128(s.get_buf(16),*self)
+    fn serialize(&self, s:&mut Serializer) -> Result<()> {
+        LittleEndian::write_u128(s.get_buf(16),*self);
+        Ok(())
     }
 }
 
@@ -401,8 +477,9 @@ impl<'a> Parsable<'a> for i8 {
 }
 
 impl Serializable for i8 {
-    fn serialize(&self, s:&mut Serializer) {
-        s.produce_byte(*self as u8)
+    fn serialize(&self, s:&mut Serializer) -> Result<()> {
+        s.produce_byte(*self as u8);
+        Ok(())
     }
 }
 
@@ -417,8 +494,9 @@ impl<'a> Parsable<'a> for i16 {
 }
 
 impl Serializable for i16 {
-    fn serialize(&self, s:&mut Serializer) {
-        LittleEndian::write_i16(s.get_buf(2),*self)
+    fn serialize(&self, s:&mut Serializer) -> Result<()> {
+        LittleEndian::write_i16(s.get_buf(2),*self);
+        Ok(())
     }
 }
 
@@ -433,8 +511,9 @@ impl<'a> Parsable<'a> for i32 {
 }
 
 impl Serializable for i32 {
-    fn serialize(&self, s:&mut Serializer) {
-        LittleEndian::write_i32(s.get_buf(4),*self)
+    fn serialize(&self, s:&mut Serializer) -> Result<()> {
+        LittleEndian::write_i32(s.get_buf(4),*self);
+        Ok(())
     }
 }
 
@@ -449,8 +528,9 @@ impl<'a> Parsable<'a> for i64 {
 }
 
 impl Serializable for i64 {
-    fn serialize(&self, s:&mut Serializer) {
-        LittleEndian::write_i64(s.get_buf(4),*self)
+    fn serialize(&self, s:&mut Serializer) -> Result<()> {
+        LittleEndian::write_i64(s.get_buf(4),*self);
+        Ok(())
     }
 }
 
@@ -465,8 +545,9 @@ impl<'a> Parsable<'a> for i128 {
 }
 
 impl Serializable for i128 {
-    fn serialize(&self, s:&mut Serializer) {
-        LittleEndian::write_i128(s.get_buf(4),*self)
+    fn serialize(&self, s:&mut Serializer) -> Result<()> {
+        LittleEndian::write_i128(s.get_buf(4),*self);
+        Ok(())
     }
 }
 
@@ -485,8 +566,9 @@ impl<'a> Parsable<'a> for bool {
 }
 
 impl Serializable for bool {
-    fn serialize(&self, s:&mut Serializer) {
-        s.produce_byte(if *self {1} else {0})
+    fn serialize(&self, s:&mut Serializer) -> Result<()> {
+        s.produce_byte(if *self {1} else {0});
+        Ok(())
     }
 }
 
@@ -496,15 +578,20 @@ impl VirtualSize for bool{
 
 impl<'a, T:Parsable<'a>+ Copy + VirtualSize> Parsable<'a> for Ptr<'a, T> {
     fn parse<A: ParserAllocator>(p: &mut Parser, alloc:&'a A) -> Result<Self> {
+        p.increment_depth()?;
         let res = {T::parse(p,alloc)?};
+        p.decrement_depth();
         let ret = alloc.poly_alloc(res);
         ret
     }
 }
 
 impl<'a, T:Serializable> Serializable for Ptr<'a, T> {
-    fn serialize(&self, s: &mut Serializer) {
-        self.0.serialize(s)
+    fn serialize(&self, s: &mut Serializer) -> Result<()> {
+        s.increment_depth()?;
+        self.0.serialize(s)?;
+        s.decrement_depth();
+        Ok(())
     }
 }
 
@@ -516,19 +603,24 @@ impl<'a, T:Parsable<'a> + Copy + VirtualSize> Parsable<'a> for SlicePtr<'a, T>  
     fn parse<A: ParserAllocator>(p: &mut Parser, alloc:&'a A) -> Result<Self> {
         let len = u16::parse(p,alloc)?;
         let mut builder = alloc.poly_slice_builder(len as usize)?;
+        p.increment_depth()?;
         for _ in 0..len {
             builder.push(T::parse(p,alloc)?);
         }
+        p.decrement_depth();
         Ok(builder.finish())
     }
 }
 
 impl<'a, T:Serializable> Serializable for SlicePtr<'a, T> {
-    fn serialize(&self, s: &mut Serializer) {
-        (self.0.len() as u16).serialize(s);
+    fn serialize(&self, s: &mut Serializer) -> Result<()>{
+        (self.0.len() as u16).serialize(s)?;
+        s.increment_depth()?;
         for v in self.0 {
-            v.serialize(s);
+            v.serialize(s)?;
         }
+        s.decrement_depth();
+        Ok(())
     }
 }
 

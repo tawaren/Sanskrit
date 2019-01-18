@@ -29,7 +29,7 @@ mod tests {
                 bin.write_all(&r).unwrap();
                 let fa_path = out_folder.join(&id.0.to_lowercase()).with_extension("asm");
                 let mut asm = File::create(fa_path).expect("file not found");
-                asm.write_all(format!("{:?}",Parser::parse_fully::<Module,NoCustomAlloc>(&r,&NoCustomAlloc()).unwrap()).as_bytes()).unwrap();
+                asm.write_all(format!("{:?}",Parser::parse_fully::<Module,NoCustomAlloc>(&r,usize::max_value(), &NoCustomAlloc()).unwrap()).as_bytes()).unwrap();
             }
             let res = deploy_module(&s, r)?;
             compile_module(&s, res)?;

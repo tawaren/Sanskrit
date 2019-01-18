@@ -56,6 +56,10 @@ pub struct Return<#[AllocLifetime] 'b>(pub Ptr<'b,TypeBuilder<'b>>, pub SlicePtr
 
 #[derive(Copy, Clone, Debug, Parsable, Serializable, VirtualSize)]
 pub struct FunctionDescriptor<#[AllocLifetime] 'b> {
+    pub gas_cost:u32,
+    pub max_stack:u16,
+    pub max_frames:u16,
+    //todo: later do mem
     pub generics:SlicePtr<'b,FunTypeParam>,
     pub params:SlicePtr<'b,Param<'b>>,
     pub returns:SlicePtr<'b,Return<'b>>,
@@ -260,8 +264,7 @@ pub struct StoreElem<#[AllocLifetime] 'a> {
 
 //A Object/Adt at runtime
 #[derive(Eq, PartialEq, Clone, Copy, Debug, Parsable, Serializable, VirtualSize)]
-//Size Formula: 48*Objects + Bytes + 4*links //should we do 51 for padding??
-pub enum Object<#[AllocLifetime] 'a> {   //is 32 Bytes + 16 Bytes Rc overhead = 48 Bytes Object overhead --- Primitives are counted twice in this model
+pub enum Object<#[AllocLifetime] 'a> {
     I8(i8),
     U8(u8),
     I16(i16),
