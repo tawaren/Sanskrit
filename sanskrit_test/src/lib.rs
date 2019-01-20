@@ -13,3 +13,5 @@ extern crate test;
 pub mod script_test;
 pub mod linear_type_stack_test;
 pub mod transaction_test;
+#[cfg(test)]
+pub mod gas_bench;

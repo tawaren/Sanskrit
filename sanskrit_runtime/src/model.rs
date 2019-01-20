@@ -191,9 +191,15 @@ pub enum Operand {
     BlockNo,    //gets the blockno in which the transaction is included
     GenIndex,   //generates a new storage index fro data or uniques
     Derive,     //derives a new index or referenz from two others
+    //Gas Testing Operands
+    Id,         //Makes a Copy of the input (this is for testing) -- Establishes a Baseline
+
+
 }
 
 #[derive(Copy, Clone, Debug, Parsable, Serializable, VirtualSize)]
+//todo: lift natives on this level -- else we do 2 additional unecessary jumps
+// todo, further we can spare the SlicePtr indirection
 pub enum OpCode<#[AllocLifetime] 'b> {
     Lit(SlicePtr<'b,u8>, LitDesc),                                  //A opcode that produces a literal
     Let(Ptr<'b, Exp<'b>>),                                          //A Subsope that computes some values and returns them (intermidiary values are removed)
@@ -210,6 +216,8 @@ pub enum OpCode<#[AllocLifetime] 'b> {
 #[derive(Clone, Copy, Eq, PartialEq, Hash, Ord, PartialOrd, Debug, Parsable, Serializable, VirtualSize)]
 pub struct TypeInputRef(pub u8);
 
+//todo: MeasuredRuntimeType
+//  (nodes, leaves, empty_nodes, RuntimeType) //the former is used to calc gas cost of comparing
 #[derive(Clone, Copy, Eq, PartialEq, Debug, Parsable, Serializable, VirtualSize)]
 pub enum RuntimeType<#[AllocLifetime] 'a> {
     Custom {

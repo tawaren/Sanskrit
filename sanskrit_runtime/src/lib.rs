@@ -53,8 +53,8 @@ pub mod encoding;
 
 
 pub const CONFIG: Configuration = Configuration {
-    max_stack_depth:1024,
-    max_frame_depth:256,
+    max_stack_depth:2048,
+    max_frame_depth:512,
     max_heap_size:512 * 1024,
     max_script_stack_size:256,
     max_code_size:128 * 1024,
@@ -78,15 +78,15 @@ impl Configuration {
 }
 
 pub struct Configuration {
-    max_stack_depth:usize,
-    max_frame_depth:usize,
-    max_heap_size:usize,
-    max_script_stack_size:usize,
-    max_code_size:usize,
-    max_structural_dept: usize,
-    max_transaction_size: usize,
-    max_store_slots: u16,
-    temporary_buffer: usize
+    pub max_stack_depth:usize,
+    pub max_frame_depth:usize,
+    pub max_heap_size:usize,
+    pub max_script_stack_size:usize,
+    pub max_code_size:usize,
+    pub max_structural_dept: usize,
+    pub max_transaction_size: usize,
+    pub max_store_slots: u16,
+    pub temporary_buffer: usize
 }
 
 //A struct holding context information of the current transaction

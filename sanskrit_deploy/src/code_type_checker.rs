@@ -328,7 +328,7 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
 
 
     fn switch(&mut self, value:ValueRef, typ:TypeRef, cases:&[Exp], is_borrow:bool) -> Result<()> {
-        //Narrow makes only sense itf their are 2 or more ctrs
+        //switch makes only sense itf their are 2 or more ctrs
         if cases.len() <= 1 {
             return wrong_opcode()
         };

@@ -420,6 +420,7 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
             Operand::Or => self.or(values)?,
             Operand::Xor => self.xor(values)?,
             Operand::Not => self.not(values)?,
+            Operand::Id => self.copy(values)?,
             Operand::ToU(n_size) => match self.to_u(n_size, values)? {
                 None => return Ok(Continuation::Throw(Error::Native(NativeError::NumericError))),
                 Some(obj) => obj,
@@ -469,12 +470,10 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
             },
             Operand::GenIndex => self.hash(values,1)?, //Todo: Constant
             Operand::Derive => self.join_hash(values, 2)?, //Todo: Constant
-            //Cost: constant but op specific
             Operand::FullHash => Object::Data(self.alloc.copy_alloc_slice(&self.env.full_hash)?),
             Operand::TxTHash => Object::Data(self.alloc.copy_alloc_slice(&self.env.txt_hash)?),
             Operand::CodeHash => Object::Data(self.alloc.copy_alloc_slice(&self.env.code_hash)?),
             Operand::BlockNo => Object::U64(self.env.block_no),
-
         };
         let elem = self.alloc.alloc(res)?;
         self.stack.push(elem)?;
@@ -496,8 +495,11 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
             (Object::I128(op1), Object::I128(op2)) => Object::I128(op1 & op2),
             (Object::U128(op1), Object::U128(op2)) => Object::U128(op1 & op2),
             (Object::Data(op1), Object::Data(op2)) => {
-                //Data is anded byte for byte
-                Object::Data(self.alloc.iter_alloc_slice(op1.iter().zip(op2.iter()).map(|(a, b)| *a & *b))?)
+                let mut builder = self.alloc.slice_builder(op1.len()+op2.len())?;
+                for i in 0..op1.len() {
+                    builder.push(op1[i] & op2[i]);
+                }
+                Object::Data(builder.finish())
             },
             //adts and the tag (could be a boolean)
             (Object::Adt(op1, _), Object::Adt(op2, _)) => Object::Adt(op1 & op2, SlicePtr::empty()),
@@ -520,8 +522,11 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
             (Object::I128(op1), Object::I128(op2)) => Object::I128(op1 | op2),
             (Object::U128(op1), Object::U128(op2)) => Object::U128(op1 | op2),
             (Object::Data(op1), Object::Data(op2)) => {
-                //Data is ored byte for byte
-                Object::Data(self.alloc.iter_alloc_slice(op1.iter().zip(op2.iter()).map(|(a, b)| *a | *b))?)
+                let mut builder = self.alloc.slice_builder(op1.len()+op2.len())?;
+                for i in 0..op1.len() {
+                    builder.push(op1[i] | op2[i]);
+                }
+                Object::Data(builder.finish())
             },
             //adts or the tag (could be a boolean)
             (Object::Adt(op1, _), Object::Adt(op2, _)) => Object::Adt(op1 | op2, SlicePtr::empty()),
@@ -544,8 +549,11 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
             (Object::I128(op1), Object::I128(op2)) => Object::I128(op1 ^ op2),
             (Object::U128(op1), Object::U128(op2)) => Object::U128(op1 ^ op2),
             (Object::Data(op1), Object::Data(op2)) => {
-                //Data is xored byte for byte
-                Object::Data(self.alloc.iter_alloc_slice(op1.iter().zip(op2.iter()).map(|(a, b)| *a ^ *b))?)
+                let mut builder = self.alloc.slice_builder(op1.len()+op2.len())?;
+                for i in 0..op1.len() {
+                    builder.push(op1[i] ^ op2[i]);
+                }
+                Object::Data(builder.finish())
             },
             //adts xor the tag (could be a boolean)
             (Object::Adt(op1, _), Object::Adt(op2, _)) => Object::Adt(op1 ^ op2, SlicePtr::empty()),
@@ -568,12 +576,47 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
             Object::I128(op) => Object::I128(!*op),
             Object::U128(op) => Object::U128(!*op),
             //Data is noted byte per byte
-            Object::Data(op) => Object::Data(self.alloc.iter_alloc_slice(op.iter().map(|a| !a))?),
+            Object::Data(op) => {
+                let mut builder = self.alloc.slice_builder(op.len())?;
+                for o in op.iter() {
+                    builder.push(!*o);
+                }
+                Object::Data(builder.finish())
+            },
             //adts not the tag (could be a boolean)
             Object::Adt(op, _) => Object::Adt(!*op, SlicePtr::empty()),
             _ => unreachable!()
         })
     }
+
+    fn copy(&self, values: &[ValueRef]) -> Result<Object<'script>> {
+        //cost: relative to: Object size
+        //get the argument and use ! on them
+        Ok(match &*self.get(values[0].0)? {
+            Object::I8(op) => Object::I8(*op),
+            Object::U8(op) => Object::U8(*op),
+            Object::I16(op) => Object::I16(*op),
+            Object::U16(op) => Object::U16(*op),
+            Object::I32(op) => Object::I32(*op),
+            Object::U32(op) => Object::U32(*op),
+            Object::I64(op) => Object::I64(*op),
+            Object::U64(op) => Object::U64(*op),
+            Object::I128(op) => Object::I128(*op),
+            Object::U128(op) => Object::U128(*op),
+            //Data is noted byte per byte
+            Object::Data(op) => {
+                let mut builder = self.alloc.slice_builder(op.len())?;
+                for o in op.iter() {
+                    builder.push(*o);
+                }
+                Object::Data(builder.finish())
+            },
+            //adts not the tag (could be a boolean)
+            Object::Adt(op, _) => Object::Adt(*op, SlicePtr::empty()),
+            _ => unreachable!()
+        })
+    }
+
 
     //converts the input to a unsigned int with a width on n_size bytes
     fn to_u(&self, n_size: u8, values: &[ValueRef]) -> Result<Option<Object<'script>>> {
@@ -735,16 +778,26 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
 
     //hashes the input recursively
     fn join_hash(&self, values: &[ValueRef], domain:u8) -> Result<Object<'script>>  {
-        //cost: constant |relative Part in object_hash|
-        let top1 = self.get(values[0].0)?;
-        let top2 = self.get(values[1].0)?;
-        //Make a 20 byte digest hascher
+        //Get the first value
+        let val = self.get(values[0].0)?;
+        let data1 = match *val {
+            Object::Data(ref data) => data,
+            _ => unreachable!()
+        };
+        //Get the second value
+        let val = self.get(values[1].0)?;
+        let data2 = match *val {
+            Object::Data(ref data) => data,
+            _ => unreachable!()
+        };
+
         let mut context = Blake2b::new(20);
-        //Domain Marker
+        //push the domain
         context.update(&[domain]);
-        //fill the hash
-        object_hash(&top1, &mut context);
-        object_hash(&top2, &mut context);
+        //fill the hash with first value
+        context.update(&data1);
+        //fill the hash with second value
+        context.update(&data2);
         //calc the Hash
         let hash = context.finalize();
         //generate a array to the hash
@@ -955,14 +1008,14 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
             //create the mask needed to set the bit
             let bit_mask = 1u8 << (bit_pos as u8);
             //prepare a new vector for the result
-            let mut new_v = v.to_vec();
+            let mut new_v = alloc.copy_alloc_mut_slice(v)?;
             //set the bit in the new vector
             if val {
                 new_v[byte_pos as usize] = new_v[byte_pos as usize] | bit_mask;
             } else {
                 new_v[byte_pos as usize] = new_v[byte_pos as usize] & !bit_mask;
             }
-            Ok(Some(Object::Data(alloc.copy_alloc_slice(&new_v)?)))
+            Ok(Some(Object::Data(new_v.freeze())))
         }
         //cost: relative to data size
         //extract vector and index and set bit

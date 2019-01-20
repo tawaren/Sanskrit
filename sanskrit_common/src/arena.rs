@@ -229,6 +229,12 @@ impl<'h> HeapArena<'h> {
         SlicePtr::new(slice)
     }
 
+    pub fn copy_alloc_mut_slice<T: Sized + Copy>(&self, vals: &[T]) -> Result<MutSlicePtr<T>> {
+        let slice = unsafe {self.alloc_raw_slice(vals.len())};
+        slice.copy_from_slice(vals);
+        MutSlicePtr::new(slice)
+    }
+
     pub fn slice_builder<T: Sized + Copy>(&self, len: usize) -> Result<SliceBuilder<T>> {
         if len > u16::max_value() as usize {
             size_limit_exceeded_error()
@@ -330,6 +336,11 @@ impl<'o> VirtualHeapArena<'o> {
     pub fn copy_alloc_slice<T: Sized + Copy + VirtualSize>(&self, vals: &[T]) -> Result<SlicePtr<T>> {
         self.ensure_virt_space(T::SIZE*vals.len())?;
         self.uncounted.copy_alloc_slice(vals)
+    }
+
+    pub fn copy_alloc_mut_slice<T: Sized + Copy + VirtualSize>(&self, vals: &[T]) -> Result<MutSlicePtr<T>> {
+        self.ensure_virt_space(T::SIZE*vals.len())?;
+        self.uncounted.copy_alloc_mut_slice(vals)
     }
 
     pub fn slice_builder<T: Sized + Copy + VirtualSize>(&self, len: usize) -> Result<SliceBuilder<T>> {

@@ -344,6 +344,7 @@ impl<'b,'h> Compactor<'b,'h> {
         let r_typ = typ.fetch(context)?;
         let lit_desc = match *r_typ {
             ResolvedType::Native { typ:NativeType::Data(_), .. } => LitDesc::Data,
+            ResolvedType::Native { typ:NativeType::Ref, .. } => LitDesc::Ref,
             ResolvedType::Native { typ:NativeType::SInt(1), .. } => LitDesc::I8,
             ResolvedType::Native { typ:NativeType::UInt(1), .. } => LitDesc::U8,
             ResolvedType::Native { typ:NativeType::SInt(2), .. } => LitDesc::I16,
@@ -401,14 +402,20 @@ impl<'b,'h> Compactor<'b,'h> {
                 None => 0 as u8,        //todo: maybe have a special struct for these later that spare the tag
                 Some(Tag(t)) => t,
             };
-            //account for the gas
-            self.state.use_gas(gas::unpack(r_ctr[tag as usize].len()));
-            //push all fields from the ctr to both stacks
-            for _ in 0..r_ctr[tag as usize].len(){
-                self.state.push_real()
+
+            if r_ctr[tag as usize].len() == 0 {
+                //eliminate the unpack it produces nothing
+                Ok(None)
+            }  else {
+                //account for the gas
+                self.state.use_gas(gas::unpack(r_ctr[tag as usize].len()));
+                //push all fields from the ctr to both stacks
+                for _ in 0..r_ctr[tag as usize].len(){
+                    self.state.push_real()
+                }
+                //generate the runtime code
+                Ok(Some(ROpCode::Unpack(new_ref)))
             }
-            //generate the runtime code
-            Ok(Some(ROpCode::Unpack(new_ref)))
         }
 
     }
