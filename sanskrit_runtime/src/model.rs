@@ -153,50 +153,6 @@ pub enum LitDesc {
     U128,
 }
 
-//Represents a function that can be called
-#[derive(Ord, PartialOrd, Eq, PartialEq, Copy, Clone, Hash, Debug, Parsable, Serializable, VirtualSize)]
-pub enum FunDesc {
-    Native(Operand),
-    Custom(u16),        //index of the embeded function (eliminates Module Hashes)
-}
-
-//All the Available Native Funcitions
-#[derive(Ord, PartialOrd, Eq, PartialEq, Copy, Clone, Hash, Debug, Parsable, Serializable, VirtualSize)]
-pub enum Operand {
-    And,        //Deploys a logical and on bools or bitwise on ints
-    Or,         //Deploys a logical or on bools or bitwise on ints
-    Xor,        //Deploys a logical xor on bools or bitwise on ints
-    Not,        //Deploys a logical not on bools or bitwise on ints
-    ToU(u8),    //cast to an Unsigned Integer with u8 Bytes
-    ToI(u8),    //cast to an Signed Integer with u8 Bytes
-    Add,        //Does an arithmetic addition of two ints (throws on under or overflow)
-    Sub,        //Does an arithmetic subtraction of two ints (throws on under or overflow)
-    Mul,        //Does an arithmetic multiplication of two ints (throws on under or overflow)
-    Div,        //Does an arithmetic dividation of two ints (throws on a division by zero)
-    Eq,         //Compares two values for equality
-    Hash,       //Calculates the hash of a value
-    PlainHash,  //Calculates a plain hash for a data input (not structurally encoded)
-    Lt,         //Compares two values to decide if one is less than the other
-    Gt,         //Compares two values to decide if one is greater than the other
-    Lte,        //Compares two values to decide if one is less than or equal the other
-    Gte,        //Compares two values to decide if one is greater or equal than the other
-    ToData,     //Transforms Integers & Uniques to data
-    Concat,     //Concats two data values
-    SetBit,     //sets a bit in a data value
-    GetBit,     //queries a bit from a data value
-    GenUnique,  //generates a new unique value (needs context for that)
-    FullHash,   //gets the full hash of the current transactoion (needs context for that)
-    TxTHash,    //gets the transaction hash (no witnesses) of the current transactoion (needs context for that)
-    CodeHash,   //gets the hash of the currents transactions code  (needs context for that)
-    BlockNo,    //gets the blockno in which the transaction is included
-    GenIndex,   //generates a new storage index fro data or uniques
-    Derive,     //derives a new index or referenz from two others
-    //Gas Testing Operands
-    Id,         //Makes a Copy of the input (this is for testing) -- Establishes a Baseline
-
-
-}
-
 #[derive(Copy, Clone, Debug, Parsable, Serializable, VirtualSize)]
 //todo: lift natives on this level -- else we do 2 additional unecessary jumps
 // todo, further we can spare the SlicePtr indirection
@@ -206,9 +162,39 @@ pub enum OpCode<#[AllocLifetime] 'b> {
     Unpack(ValueRef),                                               //Consumes a value to produce its fields (single Ctr only) (Needs Consume or Inspect Cap)
     Switch(ValueRef, SlicePtr<'b,Ptr<'b, Exp<'b>>>),                //Branches on a type that has multiple ctrs where each branch corresponds to 1 Ctr (Does an implicit Unpack)
     Pack(Tag, SlicePtr<'b,ValueRef>),                               //Generates a value
-    Invoke(FunDesc, SlicePtr<'b,ValueRef>),                         //Invokes a Function
+    Invoke(u16, SlicePtr<'b,ValueRef>),                             //Invokes a Function
     Try(Ptr<'b, Exp<'b>>, SlicePtr<'b,(Error, Ptr<'b, Exp<'b>>)>),  //Executes a try block and on error reverts to execute the corresponding catch Block
     Get(ValueRef, u8),                                              //gets a field of a single ctr adt
+    And(ValueRef,ValueRef),                                         //Deploys a logical and on bools or bitwise on ints
+    Or(ValueRef,ValueRef),                                          //Deploys a logical or on bools or bitwise on ints
+    Xor(ValueRef,ValueRef),                                         //Deploys a logical xor on bools or bitwise on ints
+    Not(ValueRef),                                                  //Deploys a logical not on bools or bitwise on ints
+    ToU(u8,ValueRef),                                               //cast to an Unsigned Integer with u8 Bytes
+    ToI(u8,ValueRef),                                               //cast to an Signed Integer with u8 Bytes
+    Add(ValueRef,ValueRef),                                         //Does an arithmetic addition of two ints (throws on under or overflow)
+    Sub(ValueRef,ValueRef),                                         //Does an arithmetic subtraction of two ints (throws on under or overflow)
+    Mul(ValueRef,ValueRef),                                         //Does an arithmetic multiplication of two ints (throws on under or overflow)
+    Div(ValueRef,ValueRef),                                         //Does an arithmetic dividation of two ints (throws on a division by zero)
+    Eq(ValueRef,ValueRef),                                          //Compares two values for equality
+    Hash(ValueRef),                                                 //Calculates the hash of a value
+    PlainHash(ValueRef),                                            //Calculates a plain hash for a data input (not structurally encoded)
+    Lt(ValueRef,ValueRef),                                          //Compares two values to decide if one is less than the other
+    Gt(ValueRef,ValueRef),                                          //Compares two values to decide if one is greater than the other
+    Lte(ValueRef,ValueRef),                                         //Compares two values to decide if one is less than or equal the other
+    Gte(ValueRef,ValueRef),                                         //Compares two values to decide if one is greater or equal than the other
+    ToData(ValueRef),                                               //Transforms Integers & Uniques to data
+    Concat(ValueRef,ValueRef),                                      //Concats two data values
+    SetBit(ValueRef,ValueRef,ValueRef),                             //sets a bit in a data value
+    GetBit(ValueRef,ValueRef),                                      //queries a bit from a data value
+    GenUnique(ValueRef),                                            //generates a new unique value (needs context for that)
+    FullHash,                                                       //gets the full hash of the current transactoion (needs context for that)
+    TxTHash,                                                        //gets the transaction hash (no witnesses) of the current transactoion (needs context for that)
+    CodeHash,                                                       //gets the hash of the currents transactions code  (needs context for that)
+    BlockNo,                                                        //gets the blockno in which the transaction is included
+    GenIndex(ValueRef),                                             //generates a new storage index fro data or uniques
+    Derive(ValueRef,ValueRef),                                      //derives a new index or referenz from two others
+    //Gas Testing Operands
+    Id(ValueRef),                                                   //Makes a Copy of the input (this is for testing) -- Establishes a Baseline
 }
 
 

@@ -272,9 +272,37 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
             OpCode::Pack(tag, values) => self.pack(tag, &values),
             OpCode::Invoke(func, values) => self.invoke(func, &values),
             OpCode::Try(ref try, ref catches) => self.try(try, catches),
+            OpCode::And(op1,op2) => self.and(op1,op2),
+            OpCode::Or(op1,op2) => self.or(op1,op2),
+            OpCode::Xor(op1,op2) => self.xor(op1,op2),
+            OpCode::Not(op) => self.not(op),
+            OpCode::Id(op) => self.copy(op),
+            OpCode::ToU(n_size, op) => self.to_u(n_size, op),
+            OpCode::ToI(n_size, op) => self.to_i(n_size, op),
+            OpCode::Add(op1,op2) => self.add(op1,op2),
+            OpCode::Sub(op1,op2) => self.sub(op1,op2),
+            OpCode::Mul(op1,op2) => self.mul(op1,op2),
+            OpCode::Div(op1,op2) => self.div(op1,op2),
+            OpCode::Eq(op1,op2) => self.eq(op1,op2),
+            OpCode::Hash(op) => self.hash(op,0), //Todo: Constant
+            OpCode::PlainHash(op) => self.plain_hash(op),
+            OpCode::ToData(op) => self.to_data(op),
+            OpCode::Concat(op1,op2) => self.concat(op1,op2),
+            OpCode::Lt(op1,op2) => self.lt(op1,op2),
+            OpCode::Gt(op1,op2) => self.gt(op1,op2),
+            OpCode::Lte(op1,op2) => self.lte(op1,op2),
+            OpCode::Gte(op1,op2) => self.gte(op1,op2),
+            OpCode::SetBit(op1,op2, op3) => self.set_bit(op1,op2, op3),
+            OpCode::GetBit(op1,op2) => self.get_bit(op1,op2),
+            OpCode::GenUnique(op) => self.gen_unique(op),
+            OpCode::GenIndex(op) => self.hash(op,1), //Todo: Constant
+            OpCode::Derive(op1,op2) => self.join_hash(op1, op2, 2), //Todo: Constant
+            OpCode::FullHash => self.fetch_full_hash(),
+            OpCode::TxTHash => self.fetch_txt_hash(),
+            OpCode::CodeHash => self.fetch_code_hash(),
+            OpCode::BlockNo => self.fetch_block_no(),
         }
     }
-
 
     //creates a literal
     fn lit(&mut self, data: &[u8], typ: LitDesc) -> Result<Continuation<'code>> {
@@ -386,104 +414,27 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
     }
 
     //call a function
-    fn invoke(&mut self, func: FunDesc, values: &[ValueRef]) -> Result<Continuation<'code>> {
-        match func {
-            //Cost: constant
-            //execute it if native
-            FunDesc::Native(native_fun) => self.execute_native(native_fun, values),
-            FunDesc::Custom(fun_idx) => {
-                //Cost: relative to: values.len()
-                //Non-Native
-                //get the code
-                let fun_code: &Exp = &self.functions[fun_idx as usize];
-                //fetch the height
-                let stack_height = self.stack.len();
-                //push the arguments
-                assert!(values.len() <= u16::max_value() as usize);
-                for (i,ValueRef(idx)) in values.iter().enumerate() {
-                    let elem = self.get(*idx+(i as u16))?; //i counteracts the already pushed elements
-                    self.stack.push(elem)?;
-                }
-                //Execute the function
-                Ok(Continuation::Cont(fun_code, stack_height))
-            },
+    fn invoke(&mut self, fun_idx: u16, values: &[ValueRef]) -> Result<Continuation<'code>> {
+        //Cost: relative to: values.len()
+        //Non-Native
+        //get the code
+        let fun_code: &Exp = &self.functions[fun_idx as usize];
+        //fetch the height
+        let stack_height = self.stack.len();
+        //push the arguments
+        assert!(values.len() <= u16::max_value() as usize);
+        for (i,ValueRef(idx)) in values.iter().enumerate() {
+            let elem = self.get(*idx+(i as u16))?; //i counteracts the already pushed elements
+            self.stack.push(elem)?;
         }
+        //Execute the function
+        Ok(Continuation::Cont(fun_code, stack_height))
     }
 
-    //execute a native function
-    fn execute_native(&mut self, op: Operand, values: &[ValueRef]) -> Result<Continuation<'code>> {
-        //get the return (multi returns handle one inline)
-        //A none means an error that must be thrown
-        let res = match op {
-            //cost: op specific
-            Operand::And => self.and(values)?,
-            Operand::Or => self.or(values)?,
-            Operand::Xor => self.xor(values)?,
-            Operand::Not => self.not(values)?,
-            Operand::Id => self.copy(values)?,
-            Operand::ToU(n_size) => match self.to_u(n_size, values)? {
-                None => return Ok(Continuation::Throw(Error::Native(NativeError::NumericError))),
-                Some(obj) => obj,
-            },
-            Operand::ToI(n_size) => match self.to_i(n_size, values)? {
-                None => return Ok(Continuation::Throw(Error::Native(NativeError::NumericError))),
-                Some(obj) => obj,
-            },
-            Operand::Add => match self.add(values)? {
-                None => return Ok(Continuation::Throw(Error::Native(NativeError::NumericError))),
-                Some(obj) => obj,
-            },
-            Operand::Sub => match self.sub(values)? {
-                None => return Ok(Continuation::Throw(Error::Native(NativeError::NumericError))),
-                Some(obj) => obj,
-            },
-            Operand::Mul => match self.mul(values)? {
-                None => return Ok(Continuation::Throw(Error::Native(NativeError::NumericError))),
-                Some(obj) => obj,
-            },
-            Operand::Div => match self.div(values)? {
-                None => return Ok(Continuation::Throw(Error::Native(NativeError::NumericError))),
-                Some(obj) => obj,
-            },
-            Operand::Eq => self.eq(values)?,
-            Operand::Hash => self.hash(values,0)?, //Todo: Constant
-            Operand::PlainHash => self.plain_hash(values)?,
-            Operand::ToData => self.to_data(values)?,
-            Operand::Concat => self.concat(values)?,
-            Operand::Lt => self.lt(values)?,
-            Operand::Gt => self.gt(values)?,
-            Operand::Lte => self.lte(values)?,
-            Operand::Gte => self.gte(values)?,
-            Operand::SetBit => match self.set_bit(values)? {
-                None => return Ok(Continuation::Throw(Error::Native(NativeError::IndexError))),
-                Some(obj) => obj,
-            },
-            Operand::GetBit => match self.get_bit(values)? {
-                None => return Ok(Continuation::Throw(Error::Native(NativeError::IndexError))),
-                Some(obj) => obj,
-            },
-            Operand::GenUnique => match self.gen_unique(values)? {
-                (ctx, unique) => {
-                    self.stack.push(self.alloc.alloc(ctx)?)?;   //we can only return 1 push so do the second manually
-                    unique
-                }
-            },
-            Operand::GenIndex => self.hash(values,1)?, //Todo: Constant
-            Operand::Derive => self.join_hash(values, 2)?, //Todo: Constant
-            Operand::FullHash => Object::Data(self.alloc.copy_alloc_slice(&self.env.full_hash)?),
-            Operand::TxTHash => Object::Data(self.alloc.copy_alloc_slice(&self.env.txt_hash)?),
-            Operand::CodeHash => Object::Data(self.alloc.copy_alloc_slice(&self.env.code_hash)?),
-            Operand::BlockNo => Object::U64(self.env.block_no),
-        };
-        let elem = self.alloc.alloc(res)?;
-        self.stack.push(elem)?;
-        Ok(Continuation::Next)
-    }
-
-    fn and(&self, values: &[ValueRef]) -> Result<Object<'script>> {
+    fn and(&mut self, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef) -> Result<Continuation<'code>> {
         //cost: relative to: Object size
         //get the arguments and use & on them
-        Ok(match (&*self.get(values[0].0)?, &*self.get(values[1].0)?) {
+        self.stack.push(self.alloc.alloc(match (&*self.get(val1)?, &*self.get(val2)?) {
             (Object::I8(op1), Object::I8(op2)) => Object::I8(op1 & op2),
             (Object::U8(op1), Object::U8(op2)) => Object::U8(op1 & op2),
             (Object::I16(op1), Object::I16(op2)) => Object::I16(op1 & op2),
@@ -504,13 +455,15 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
             //adts and the tag (could be a boolean)
             (Object::Adt(op1, _), Object::Adt(op2, _)) => Object::Adt(op1 & op2, SlicePtr::empty()),
             _ => unreachable!()
-        })
+        })?)?;
+
+        Ok(Continuation::Next)
     }
 
-    fn or(&self, values: &[ValueRef]) -> Result<Object<'script>> {
+    fn or(&mut self, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef) -> Result<Continuation<'code>> {
         //cost: relative to: Object size
         //get the arguments and use | on them
-        Ok(match (&*self.get(values[0].0)?, &*self.get(values[1].0)?) {
+        self.stack.push(self.alloc.alloc(match (&*self.get(val1)?, &*self.get(val2)?) {
             (Object::I8(op1), Object::I8(op2)) => Object::I8(op1 | op2),
             (Object::U8(op1), Object::U8(op2)) => Object::U8(op1 | op2),
             (Object::I16(op1), Object::I16(op2)) => Object::I16(op1 | op2),
@@ -531,13 +484,15 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
             //adts or the tag (could be a boolean)
             (Object::Adt(op1, _), Object::Adt(op2, _)) => Object::Adt(op1 | op2, SlicePtr::empty()),
             _ => unreachable!()
-        })
+        })?)?;
+
+        Ok(Continuation::Next)
     }
 
-    fn xor(&self, values: &[ValueRef]) -> Result<Object<'script>> {
+    fn xor(&mut self, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef) -> Result<Continuation<'code>> {
         //cost: relative to: Object size
         //get the arguments and use ^ on them
-        Ok(match (&*self.get(values[0].0)?, &*self.get(values[1].0)?) {
+        self.stack.push(self.alloc.alloc(match (&*self.get(val1)?, &*self.get(val2)?) {
             (Object::I8(op1), Object::I8(op2)) => Object::I8(op1 ^ op2),
             (Object::U8(op1), Object::U8(op2)) => Object::U8(op1 ^ op2),
             (Object::I16(op1), Object::I16(op2)) => Object::I16(op1 ^ op2),
@@ -558,13 +513,15 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
             //adts xor the tag (could be a boolean)
             (Object::Adt(op1, _), Object::Adt(op2, _)) => Object::Adt(op1 ^ op2, SlicePtr::empty()),
             _ => unreachable!()
-        })
+        })?)?;
+
+        Ok(Continuation::Next)
     }
 
-    fn not(&self, values: &[ValueRef]) -> Result<Object<'script>> {
+    fn not(&mut self, ValueRef(val):ValueRef) -> Result<Continuation<'code>> {
         //cost: relative to: Object size
         //get the argument and use ! on them
-        Ok(match &*self.get(values[0].0)? {
+        self.stack.push(self.alloc.alloc(match &*self.get(val)? {
             Object::I8(op) => Object::I8(!*op),
             Object::U8(op) => Object::U8(!*op),
             Object::I16(op) => Object::I16(!*op),
@@ -586,13 +543,15 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
             //adts not the tag (could be a boolean)
             Object::Adt(op, _) => Object::Adt(!*op, SlicePtr::empty()),
             _ => unreachable!()
-        })
+        })?)?;
+
+        Ok(Continuation::Next)
     }
 
-    fn copy(&self, values: &[ValueRef]) -> Result<Object<'script>> {
+    fn copy(&mut self, ValueRef(val):ValueRef) -> Result<Continuation<'code>> {
         //cost: relative to: Object size
         //get the argument and use ! on them
-        Ok(match &*self.get(values[0].0)? {
+        self.stack.push(self.alloc.alloc(match &*self.get(val)? {
             Object::I8(op) => Object::I8(*op),
             Object::U8(op) => Object::U8(*op),
             Object::I16(op) => Object::I16(*op),
@@ -614,12 +573,14 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
             //adts not the tag (could be a boolean)
             Object::Adt(op, _) => Object::Adt(*op, SlicePtr::empty()),
             _ => unreachable!()
-        })
+        })?)?;
+
+        Ok(Continuation::Next)
     }
 
 
     //converts the input to a unsigned int with a width on n_size bytes
-    fn to_u(&self, n_size: u8, values: &[ValueRef]) -> Result<Option<Object<'script>>> {
+    fn to_u(&mut self, n_size: u8, ValueRef(val):ValueRef) -> Result<Continuation<'code>> {
         fn to_u<'script,T: ToPrimitive>(prim: &T, n_size: u8) -> Option<Object<'script>> {
             //cost: relative to: Object size
             //use to a method from another trait to do the conversion
@@ -634,7 +595,7 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
         }
 
         //cost: relative to: Object size
-        Ok(match &*self.get(values[0].0)? {
+        let res = match &*self.get(val)? {
             Object::I8(op) => to_u(&*op, n_size),
             Object::U8(op) => to_u(&*op, n_size),
             Object::I16(op) => to_u(&*op, n_size),
@@ -646,11 +607,20 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
             Object::I128(op) => to_u(&*op, n_size),
             Object::U128(op) => to_u(&*op, n_size),
             _ => unreachable!()
-        })
+        };
+
+        match res {
+            None => Ok(Continuation::Throw(Error::Native(NativeError::NumericError))),
+            Some(r) => {
+                self.stack.push(self.alloc.alloc(r)?)?;
+                Ok(Continuation::Next)
+            }
+        }
+
     }
 
     //converts the input to a signed int with a width on n_size bytes
-    fn to_i(&self, n_size: u8, values: &[ValueRef]) -> Result<Option<Object<'script>>> {
+    fn to_i(&mut self, n_size: u8, ValueRef(val):ValueRef) -> Result<Continuation<'code>> {
         fn to_i<'script,T: ToPrimitive>(prim: &T, n_size: u8) -> Option<Object<'script>> {
             //cost: relative to: Object size
             //use to a method from another trait to do the conversion
@@ -664,7 +634,7 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
             }
         }
         //cost: relative to: Object size
-        Ok(match &*self.get(values[0].0)? {
+        let res = match &*self.get(val)? {
             Object::I8(op) => to_i(&*op, n_size),
             Object::U8(op) => to_i(&*op, n_size),
             Object::I16(op) => to_i(&*op, n_size),
@@ -676,13 +646,21 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
             Object::I128(op) => to_i(&*op, n_size),
             Object::U128(op) => to_i(&*op, n_size),
             _ => unreachable!()
-        })
+        };
+
+        match res {
+            None => Ok(Continuation::Throw(Error::Native(NativeError::NumericError))),
+            Some(r) => {
+                self.stack.push(self.alloc.alloc(r)?)?;
+                Ok(Continuation::Next)
+            }
+        }
     }
 
     //does an addition (a checked one, returns None in case of Over/under flow)
-    fn add(&self, values: &[ValueRef]) -> Result<Option<Object<'script>>> {
+    fn add(&mut self, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef) -> Result<Continuation<'code>> {
         //cost: relative to: Object size
-        Ok(match (&*self.get(values[0].0)?, &*self.get(values[1].0)?) {
+        let res = match (&*self.get(val1)?, &*self.get(val2)?) {
             (Object::I8(op1), Object::I8(op2)) => op1.checked_add(*op2).map(Object::I8),
             (Object::U8(op1), Object::U8(op2)) => op1.checked_add(*op2).map(Object::U8),
             (Object::I16(op1), Object::I16(op2)) => op1.checked_add(*op2).map(Object::I16),
@@ -694,13 +672,22 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
             (Object::I128(op1), Object::I128(op2)) => op1.checked_add(*op2).map(Object::I128),
             (Object::U128(op1), Object::U128(op2)) => op1.checked_add(*op2).map(Object::U128),
             _ => unreachable!()
-        })
+        };
+
+        match res {
+            None => Ok(Continuation::Throw(Error::Native(NativeError::NumericError))),
+            Some(r) => {
+                //Note: Alloc is approx 20ns
+                self.stack.push(self.alloc.alloc(r)?)?;
+                Ok(Continuation::Next)
+            }
+        }
     }
 
     //does a substraction (a checked one, returns None in case of Over/under flow)
-    fn sub(&self, values: &[ValueRef]) -> Result<Option<Object<'script>>> {
+    fn sub(&mut self, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef) -> Result<Continuation<'code>> {
         //cost: relative to: Object size
-        Ok(match (&*self.get(values[0].0)?, &*self.get(values[1].0)?) {
+        let res = match (&*self.get(val1)?, &*self.get(val2)?) {
             (Object::I8(op1), Object::I8(op2)) => op1.checked_sub(*op2).map(Object::I8),
             (Object::U8(op1), Object::U8(op2)) => op1.checked_sub(*op2).map(Object::U8),
             (Object::I16(op1), Object::I16(op2)) => op1.checked_sub(*op2).map(Object::I16),
@@ -712,13 +699,21 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
             (Object::I128(op1), Object::I128(op2)) => op1.checked_sub(*op2).map(Object::I128),
             (Object::U128(op1), Object::U128(op2)) => op1.checked_sub(*op2).map(Object::U128),
             _ => unreachable!()
-        })
+        };
+
+        match res {
+            None => Ok(Continuation::Throw(Error::Native(NativeError::NumericError))),
+            Some(r) => {
+                self.stack.push(self.alloc.alloc(r)?)?;
+                Ok(Continuation::Next)
+            }
+        }
     }
 
     //does a multiplication (a checked one, returns None in case of Over/under flow)
-    fn mul(&self, values: &[ValueRef]) -> Result<Option<Object<'script>>> {
+    fn mul(&mut self, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef) -> Result<Continuation<'code>> {
         //cost: relative to: Object size
-        Ok(match (&*self.get(values[0].0)?, &*self.get(values[1].0)?) {
+        let res = match (&*self.get(val1)?, &*self.get(val2)?) {
             (Object::I8(op1), Object::I8(op2)) => op1.checked_mul(*op2).map(Object::I8),
             (Object::U8(op1), Object::U8(op2)) => op1.checked_mul(*op2).map(Object::U8),
             (Object::I16(op1), Object::I16(op2)) => op1.checked_mul(*op2).map(Object::I16),
@@ -730,13 +725,21 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
             (Object::I128(op1), Object::I128(op2)) => op1.checked_mul(*op2).map(Object::I128),
             (Object::U128(op1), Object::U128(op2)) => op1.checked_mul(*op2).map(Object::U128),
             _ => unreachable!()
-        })
+        };
+
+        match res {
+            None => Ok(Continuation::Throw(Error::Native(NativeError::NumericError))),
+            Some(r) => {
+                self.stack.push(self.alloc.alloc(r)?)?;
+                Ok(Continuation::Next)
+            }
+        }
     }
 
     //does a division (a checked one, returns None in case of Over/under flow or division by 0)
-    fn div(&self, values: &[ValueRef]) -> Result<Option<Object<'script>>> {
+    fn div(&mut self, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef) -> Result<Continuation<'code>> {
         //cost: relative to: Object size
-        Ok(match (&*self.get(values[0].0)?, &*self.get(values[1].0)?) {
+        let res = match (&*self.get(val1)?, &*self.get(val2)?) {
             (Object::I8(op1), Object::I8(op2)) => op1.checked_div(*op2).map(Object::I8),
             (Object::U8(op1), Object::U8(op2)) => op1.checked_div(*op2).map(Object::U8),
             (Object::I16(op1), Object::I16(op2)) => op1.checked_div(*op2).map(Object::I16),
@@ -748,20 +751,29 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
             (Object::I128(op1), Object::I128(op2)) => op1.checked_div(*op2).map(Object::I128),
             (Object::U128(op1), Object::U128(op2)) => op1.checked_div(*op2).map(Object::U128),
             _ => unreachable!()
-        })
+        };
+
+        match res {
+            None => Ok(Continuation::Throw(Error::Native(NativeError::NumericError))),
+            Some(r) => {
+                self.stack.push(self.alloc.alloc(r)?)?;
+                Ok(Continuation::Next)
+            }
+        }
     }
 
     //compares the inputs for equality
-    fn eq(&self, values: &[ValueRef]) -> Result<Object<'script>> {
+    fn eq(&mut self, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef) -> Result<Continuation<'code>> {
         //cost: relative to: Object size
         //Note: cost calc is hard without a custom Eq impl as we do not have appropriate info -- make eq similar to hash
-        Ok(Object::Adt(if self.get(values[0].0)? == self.get(values[1].0)? { 1 } else { 0 }, SlicePtr::empty()))
+        self.stack.push(self.alloc.alloc(Object::Adt(if self.get(val1)? == self.get(val2)? { 1 } else { 0 }, SlicePtr::empty()))?)?;
+        Ok(Continuation::Next)
     }
 
     //hashes the input recursively
-    fn hash(&self, values: &[ValueRef], domain:u8) -> Result<Object<'script>>  {
+    fn hash(&mut self, ValueRef(val):ValueRef, domain:u8) -> Result<Continuation<'code>>  {
         //cost: constant |relative Part in object_hash|
-        let top = self.get(values[0].0)?;
+        let top = self.get(val)?;
         //Make a 20 byte digest hascher
         let mut context = Blake2b::new(20);
         //Domain Marker
@@ -773,19 +785,20 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
         //generate a array to the hash
         let hash_data_ref = array_ref!(hash.as_bytes(),0,20);
         //get ownership and return
-        Ok(Object::Data(self.alloc.copy_alloc_slice(hash_data_ref)?))
+        self.stack.push(self.alloc.alloc(Object::Data(self.alloc.copy_alloc_slice(hash_data_ref)?))?)?;
+        Ok(Continuation::Next)
     }
 
     //hashes the input recursively
-    fn join_hash(&self, values: &[ValueRef], domain:u8) -> Result<Object<'script>>  {
+    fn join_hash(&mut self, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef, domain:u8) -> Result<Continuation<'code>>  {
         //Get the first value
-        let val = self.get(values[0].0)?;
+        let val = self.get(val1)?;
         let data1 = match *val {
             Object::Data(ref data) => data,
             _ => unreachable!()
         };
         //Get the second value
-        let val = self.get(values[1].0)?;
+        let val = self.get(val2)?;
         let data2 = match *val {
             Object::Data(ref data) => data,
             _ => unreachable!()
@@ -803,12 +816,13 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
         //generate a array to the hash
         let hash_data_ref = array_ref!(hash.as_bytes(),0,20);
         //get ownership and return
-        Ok(Object::Data(self.alloc.copy_alloc_slice(hash_data_ref)?))
+        self.stack.push(self.alloc.alloc(Object::Data(self.alloc.copy_alloc_slice(hash_data_ref)?))?)?;
+        Ok(Continuation::Next)
     }
 
     //a non recursive, non-structural variant that just hashes the data input
-    fn plain_hash(&self, values: &[ValueRef]) -> Result<Object<'script>> {
-        let val = self.get(values[0].0)?;
+    fn plain_hash(&mut self, ValueRef(val):ValueRef) -> Result<Continuation<'code>> {
+        let val = self.get(val)?;
         let data = match *val {
             Object::Data(ref data) => data,
             _ => unreachable!()
@@ -821,13 +835,14 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
         //generate a array to the hash
         let hash_data_ref = array_ref!(hash.as_bytes(),0,20);
         //get ownership and return
-        Ok(Object::Data(self.alloc.copy_alloc_slice(hash_data_ref)?))
+        self.stack.push(self.alloc.alloc(Object::Data(self.alloc.copy_alloc_slice(hash_data_ref)?))?)?;
+        Ok(Continuation::Next)
     }
 
     //concats the data inputs
-    fn concat(&self,values:&[ValueRef]) -> Result<Object<'script>> {
+    fn concat(&mut self, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef) -> Result<Continuation<'code>> {
         //get the args
-        Ok(match (&*self.get(values[0].0)?, &*self.get(values[1].0)?) {
+        self.stack.push(self.alloc.alloc(match (&*self.get(val1)?, &*self.get(val2)?) {
             (Object::Data(ref op1), Object::Data(ref op2)) => {
                 //build a new data vector from the inputs
                 let mut conc = Vec::with_capacity(op1.len()+op2.len());
@@ -836,13 +851,14 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
                 Object::Data(self.alloc.copy_alloc_slice(&conc)?)
             },
             _ => unreachable!()
-        })
+        })?)?;
+        Ok(Continuation::Next)
     }
 
     //compares the inputs for less than
-    fn lt(&self, values: &[ValueRef]) -> Result<Object<'script>> {
+    fn lt(&mut self, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef) -> Result<Continuation<'code>> {
         //cost: relative to: Object size
-        Ok(match (&*self.get(values[0].0)?, &*self.get(values[1].0)?) {
+        self.stack.push(self.alloc.alloc(match (&*self.get(val1)?, &*self.get(val2)?) {
             (Object::I8(op1), Object::I8(op2)) => Object::Adt(if op1 < op2 { 1 } else { 0 }, SlicePtr::empty()),
             (Object::U8(op1), Object::U8(op2)) => Object::Adt(if op1 < op2 { 1 } else { 0 }, SlicePtr::empty()),
             (Object::I16(op1), Object::I16(op2)) => Object::Adt(if op1 < op2 { 1 } else { 0 }, SlicePtr::empty()),
@@ -854,13 +870,14 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
             (Object::I128(op1), Object::I128(op2)) => Object::Adt(if op1 < op2 { 1 } else { 0 }, SlicePtr::empty()),
             (Object::U128(op1), Object::U128(op2)) => Object::Adt(if op1 < op2 { 1 } else { 0 }, SlicePtr::empty()),
             _ => unreachable!()
-        })
+        })?)?;
+        Ok(Continuation::Next)
     }
 
     //compares the inputs for greater than
-    fn gt(&self, values: &[ValueRef]) -> Result<Object<'script>> {
+    fn gt(&mut self, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef) -> Result<Continuation<'code>> {
         //cost: relative to: Object size
-        Ok(match (&*self.get(values[0].0)?, &*self.get(values[1].0)?) {
+        self.stack.push(self.alloc.alloc(match (&*self.get(val1)?, &*self.get(val2)?) {
             (Object::I8(op1), Object::I8(op2)) => Object::Adt(if op1 > op2 { 1 } else { 0 }, SlicePtr::empty()),
             (Object::U8(op1), Object::U8(op2)) => Object::Adt(if op1 > op2 { 1 } else { 0 }, SlicePtr::empty()),
             (Object::I16(op1), Object::I16(op2)) => Object::Adt(if op1 > op2 { 1 } else { 0 }, SlicePtr::empty()),
@@ -872,13 +889,14 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
             (Object::I128(op1), Object::I128(op2)) => Object::Adt(if op1 > op2 { 1 } else { 0 }, SlicePtr::empty()),
             (Object::U128(op1), Object::U128(op2)) => Object::Adt(if op1 > op2 { 1 } else { 0 }, SlicePtr::empty()),
             _ => unreachable!()
-        })
+        })?)?;
+        Ok(Continuation::Next)
     }
 
     //compares the inputs for less than or equal
-    fn lte(&self, values: &[ValueRef]) -> Result<Object<'script>> {
+    fn lte(&mut self, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef) -> Result<Continuation<'code>> {
         //cost: relative to: Object size
-        Ok(match (&*self.get(values[0].0)?, &*self.get(values[1].0)?) {
+        self.stack.push(self.alloc.alloc(match (&*self.get(val1)?, &*self.get(val2)?) {
             (Object::I8(op1), Object::I8(op2)) => Object::Adt(if op1 <= op2 { 1 } else { 0 }, SlicePtr::empty()),
             (Object::U8(op1), Object::U8(op2)) => Object::Adt(if op1 <= op2 { 1 } else { 0 }, SlicePtr::empty()),
             (Object::I16(op1), Object::I16(op2)) => Object::Adt(if op1 <= op2 { 1 } else { 0 }, SlicePtr::empty()),
@@ -890,13 +908,14 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
             (Object::I128(op1), Object::I128(op2)) => Object::Adt(if op1 <= op2 { 1 } else { 0 }, SlicePtr::empty()),
             (Object::U128(op1), Object::U128(op2)) => Object::Adt(if op1 <= op2 { 1 } else { 0 }, SlicePtr::empty()),
             _ => unreachable!()
-        })
+        })?)?;
+        Ok(Continuation::Next)
     }
 
     //compares the inputs for greater than or equal
-    fn gte(&self, values: &[ValueRef]) -> Result<Object<'script>> {
+    fn gte(&mut self, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef) -> Result<Continuation<'code>> {
         //cost: relative to: Object size
-        Ok(match (&*self.get(values[0].0)?, &*self.get(values[1].0)?) {
+        self.stack.push(self.alloc.alloc(match (&*self.get(val1)?, &*self.get(val2)?) {
             (Object::I8(op1), Object::I8(op2)) => Object::Adt(if op1 >= op2 { 1 } else { 0 }, SlicePtr::empty()),
             (Object::U8(op1), Object::U8(op2)) => Object::Adt(if op1 >= op2 { 1 } else { 0 }, SlicePtr::empty()),
             (Object::I16(op1), Object::I16(op2)) => Object::Adt(if op1 >= op2 { 1 } else { 0 }, SlicePtr::empty()),
@@ -908,15 +927,16 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
             (Object::I128(op1), Object::I128(op2)) => Object::Adt(if op1 >= op2 { 1 } else { 0 }, SlicePtr::empty()),
             (Object::U128(op1), Object::U128(op2)) => Object::Adt(if op1 >= op2 { 1 } else { 0 }, SlicePtr::empty()),
             _ => unreachable!()
-        })
+        })?)?;
+        Ok(Continuation::Next)
     }
 
     //converts numeric input to data
     //uses byteorder crate for conversion where not trivial
     // conversion is little endian
-    fn to_data(&self, values: &[ValueRef]) -> Result<Object<'script>> {
+    fn to_data(&mut self, ValueRef(val):ValueRef) -> Result<Continuation<'code>> {
         //cost: relative to: Object size
-        Ok(match &*self.get(values[0].0)? {
+        self.stack.push(self.alloc.alloc(match &*self.get(val)? {
             Object::I8(data) => Object::Data(self.alloc.copy_alloc_slice(&[*data as u8])?),
             Object::U8(data) => Object::Data(self.alloc.copy_alloc_slice(&[*data])?),
             Object::I16(data) => {
@@ -960,11 +980,12 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
                 Object::Data(self.alloc.copy_alloc_slice(&input)?)
             },
             _ => unreachable!(),
-        })
+        })?)?;
+        Ok(Continuation::Next)
     }
 
     //gets a bit in a data value (as boolean)
-    fn get_bit(&self, values: &[ValueRef]) -> Result<Option<Object<'script>>> {
+    fn get_bit(&mut self, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef) -> Result<Continuation<'code>> {
         //helper that gets a bit in a vector
         fn get_inner_bit<'script>(v: &[u8], idx: u16) -> Option<Object<'script>> {
             //reverse the index (todo: is this really necessary??)
@@ -986,15 +1007,23 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
         }
         //cost: constant
         //extract vector and index and get bit
-        Ok(match (&*self.get(values[0].0)?, &*self.get(values[1].0)?) {
+        let res = match (&*self.get(val1)?, &*self.get(val2)?) {
             (Object::Data(op1), Object::U8(op2)) => get_inner_bit(op1, *op2 as u16),
             (Object::Data(op1), Object::U16(op2)) => get_inner_bit(op1, *op2),
             _ => unreachable!()
-        })
+        };
+
+        match res {
+            None => Ok(Continuation::Throw(Error::Native(NativeError::IndexError))),
+            Some(r) => {
+                self.stack.push(self.alloc.alloc(r)?)?;
+                Ok(Continuation::Next)
+            }
+        }
     }
 
     //sets a bit in a data value (as boolean)
-    fn set_bit(&self, values: &[ValueRef]) -> Result<Option<Object<'script>>> {
+    fn set_bit(&mut self, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef, ValueRef(val3):ValueRef) -> Result<Continuation<'code>> {
         //helper that sets a bit in a vector
         fn set_inner_bit<'script,'heap>(v: &[u8], idx: u16, val: bool, alloc:&'script VirtualHeapArena<'heap>) -> Result<Option<Object<'script>>> {
             //reverse the index (todo: is this really necessary??)
@@ -1019,24 +1048,57 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
         }
         //cost: relative to data size
         //extract vector and index and set bit
-        match (&*self.get(values[0].0)?, &*self.get(values[1].0)?, &*self.get(values[2].0)?) {
+        let res = match (&*self.get(val1)?, &*self.get(val2)?, &*self.get(val3)?) {
             (Object::Data(op1), Object::U8(op2), Object::Adt(tag, _)) => set_inner_bit(op1, *op2 as u16, *tag == 1, self.alloc),
             (Object::Data(op1), Object::U16(op2), Object::Adt(tag, _)) => set_inner_bit(op1, *op2, *tag == 1, self.alloc),
             _ => unreachable!()
+        }?;
+
+        match res {
+            None => Ok(Continuation::Throw(Error::Native(NativeError::IndexError))),
+            Some(r) => {
+                self.stack.push(self.alloc.alloc(r)?)?;
+                Ok(Continuation::Next)
+            }
         }
     }
 
 
     //sreate a unique data value from the context
-    fn gen_unique(&self, values: &[ValueRef]) -> Result<(Object<'script>, Object<'script>)> {
+    fn gen_unique(&mut self, ValueRef(val):ValueRef) -> Result<Continuation<'code>> {
         //cost: constant
-        Ok(match &*self.get(values[0].0)? {
-            Object::Context(num) => (
-                Object::Context(num + 1),       //increase the context so a new value is generated next time
+        match &*self.get(val)? {
+            Object::Context(num) => {
+                self.stack.push(self.alloc.alloc(Object::Context(num + 1))?)?;       //increase the context so a new value is generated next time
                 //derive the value
-                unique_hash(&self.env.txt_hash, UniqueDomain::Unique, *num, self.alloc)?
-            ),
+                self.stack.push(self.alloc.alloc(unique_hash(&self.env.txt_hash, UniqueDomain::Unique, *num, self.alloc)?)?)?;
+            },
             _ => unreachable!()
-        })
+        };
+        Ok(Continuation::Next)
+    }
+
+    fn fetch_full_hash(&mut self) -> Result<Continuation<'code>> {
+        let val = &self.env.full_hash;
+        self.stack.push(self.alloc.alloc(Object::Data(self.alloc.copy_alloc_slice(val)?))?)?;
+        Ok(Continuation::Next)
+    }
+
+    fn fetch_txt_hash(&mut self) -> Result<Continuation<'code>> {
+        let val = &self.env.txt_hash;
+        self.stack.push(self.alloc.alloc(Object::Data(self.alloc.copy_alloc_slice(val)?))?)?;
+        Ok(Continuation::Next)
+    }
+
+    fn fetch_code_hash(&mut self) -> Result<Continuation<'code>> {
+        let val = &self.env.code_hash;
+        self.stack.push(self.alloc.alloc(Object::Data(self.alloc.copy_alloc_slice(val)?))?)?;
+        Ok(Continuation::Next)
+    }
+
+    fn fetch_block_no(&mut self) -> Result<Continuation<'code>> {
+        let val = self.env.block_no;
+        self.stack.push(self.alloc.alloc(Object::U64(val))?)?;
+        Ok(Continuation::Next)
     }
 }

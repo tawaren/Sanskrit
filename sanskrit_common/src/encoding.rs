@@ -7,6 +7,7 @@ use errors::*;
 use core::ops::Deref;
 use model::*;
 use arena::*;
+use core::fmt::Debug;
 
 
 pub trait ParserAllocator {
@@ -149,7 +150,7 @@ pub trait Serializable {
 // where Original type is in X<A> Notation instead of X::<A>
 pub type TypeId<T> = T;
 pub const fn max(a: usize, b: usize) -> usize {
-    [a, b][(a > b) as usize]
+    [a, b][(a < b) as usize]
 }
 
 pub trait VirtualSize {

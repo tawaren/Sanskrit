@@ -22,8 +22,6 @@ use sanskrit_common::model::*;
 use sanskrit_common::store::*;
 use sanskrit_runtime::model::Error;
 use sanskrit_runtime::model::LitDesc;
-use sanskrit_runtime::model::FunDesc;
-use sanskrit_runtime::model::Operand;
 use sanskrit_runtime::model::Object;
 use core::mem;
 use sanskrit_common::arena::*;
@@ -522,10 +520,10 @@ impl<'b,'h> Compactor<'b,'h> {
         //generate the runtime code
         Ok(Some(ROpCode::Try(new_try, new_catches.finish())))
     }
-
+    
     fn invoke<S:Store>(&mut self, fun:FuncRef, vals:&[ValueRef], context:&Context<S>) -> Result<Option<ROpCode<'b>>> {
         //diferentiate between native and Custom
-        let (f_desc, rets, cost) = match *fun.fetch(context)? {
+        let (code, rets, cost) = match *fun.fetch(context)? {
             ResolvedFunction::Import { ref module, offset, .. } => {
                 //load the called function from the store
                 let fun_cache = context.store.get_func(&*module, offset)?;
@@ -541,42 +539,44 @@ impl<'b,'h> Compactor<'b,'h> {
                 //produce it
                 match self.emit_func(fun_comp, &hash,offset,&new_ctx)? {
                     (index,rets,resources) => {
+                        //adapted values
+                        let adapted = self.alloc.iter_alloc_slice(vals.iter().map(|val|self.translate_ref(*val)))?;
                         //account for the ressources
                         self.state.include_call_resources(resources);
                         //return the essential info
-                        (FunDesc::Custom(index),rets,gas::call(fun_comp.params.len())) //gas is already accounted for -- Maybe call cost???
+                        (ROpCode::Invoke(index,adapted),rets,gas::call(fun_comp.params.len())) //gas is already accounted for -- Maybe call cost???
                     }
                 }
             },
             //if it is a native do a case by case transformation (most just map 1 to 1)
             ResolvedFunction::Native { typ, ref applies } => match typ {
-                NativeFunc::And => (FunDesc::Native(Operand::And),1, gas::and(applies)),
-                NativeFunc::Or => (FunDesc::Native(Operand::Or),1, gas::or(applies)),
-                NativeFunc::Xor => (FunDesc::Native(Operand::Xor),1, gas::xor(applies)),
-                NativeFunc::Not => (FunDesc::Native(Operand::Not),1, gas::not(applies)),
+                NativeFunc::And => (ROpCode::And(self.translate_ref(vals[0]), self.translate_ref(vals[1])),1, gas::and(applies)),
+                NativeFunc::Or => (ROpCode::Or(self.translate_ref(vals[0]), self.translate_ref(vals[1])),1, gas::or(applies)),
+                NativeFunc::Xor => (ROpCode::Xor(self.translate_ref(vals[0]), self.translate_ref(vals[1])),1, gas::xor(applies)),
+                NativeFunc::Not => (ROpCode::Not(self.translate_ref(vals[0])),1, gas::not(applies)),
                 //The casts are represented differently at runtime, the compiletime rep was choosen to have Extend not throwing an error
                 NativeFunc::SignCast  | NativeFunc::Cut  | NativeFunc::Extend => match *applies[1] { //the type 1 is the target type
                     //runtime is split into signed & unsigned conversions
-                    ResolvedType::Native {  typ: NativeType::SInt(size), .. } => (FunDesc::Native(Operand::ToI(size)),1, gas::convert()),
-                    ResolvedType::Native {  typ: NativeType::UInt(size), .. } => (FunDesc::Native(Operand::ToU(size)),1, gas::convert()),
+                    ResolvedType::Native {  typ: NativeType::SInt(size), .. } => (ROpCode::ToI(size,self.translate_ref(vals[0])),1, gas::convert()),
+                    ResolvedType::Native {  typ: NativeType::UInt(size), .. } => (ROpCode::ToU(size,self.translate_ref(vals[0])),1, gas::convert()),
                     _ => unreachable!()
                 },
-                NativeFunc::Add => (FunDesc::Native(Operand::Add),1, gas::add()),
-                NativeFunc::Sub => (FunDesc::Native(Operand::Sub),1, gas::sub()),
-                NativeFunc::Mul => (FunDesc::Native(Operand::Mul),1, gas::mul()),
-                NativeFunc::Div => (FunDesc::Native(Operand::Div),1, gas::div()),
-                NativeFunc::Eq => (FunDesc::Native(Operand::Eq),1, gas::eq(applies, context)?),
-                NativeFunc::Hash => (FunDesc::Native(Operand::Hash),1, gas::hash(applies, context)?),
-                NativeFunc::PlainHash => (FunDesc::Native(Operand::PlainHash),1,gas::hash_plain(applies)),
-                NativeFunc::Lt => (FunDesc::Native(Operand::Lt),1, gas::cmp()),
-                NativeFunc::Gt => (FunDesc::Native(Operand::Gt),1, gas::cmp()),
-                NativeFunc::Lte => (FunDesc::Native(Operand::Lte),1, gas::cmp()),
-                NativeFunc::Gte => (FunDesc::Native(Operand::Gte),1, gas::cmp()),
+                NativeFunc::Add => (ROpCode::Add(self.translate_ref(vals[0]), self.translate_ref(vals[1])),1, gas::add()),
+                NativeFunc::Sub => (ROpCode::Sub(self.translate_ref(vals[0]), self.translate_ref(vals[1])),1, gas::sub()),
+                NativeFunc::Mul => (ROpCode::Mul(self.translate_ref(vals[0]), self.translate_ref(vals[1])),1, gas::mul()),
+                NativeFunc::Div => (ROpCode::Div(self.translate_ref(vals[0]), self.translate_ref(vals[1])),1, gas::div()),
+                NativeFunc::Eq => (ROpCode::Eq(self.translate_ref(vals[0]), self.translate_ref(vals[1])),1, gas::eq(applies, context)?),
+                NativeFunc::Hash => (ROpCode::Hash(self.translate_ref(vals[0])),1, gas::hash(applies, context)?),
+                NativeFunc::PlainHash => (ROpCode::PlainHash(self.translate_ref(vals[0])),1,gas::hash_plain(applies)),
+                NativeFunc::Lt => (ROpCode::Lt(self.translate_ref(vals[0]), self.translate_ref(vals[1])),1, gas::cmp()),
+                NativeFunc::Gt => (ROpCode::Gt(self.translate_ref(vals[0]), self.translate_ref(vals[1])),1, gas::cmp()),
+                NativeFunc::Lte => (ROpCode::Lte(self.translate_ref(vals[0]), self.translate_ref(vals[1])),1, gas::cmp()),
+                NativeFunc::Gte => (ROpCode::Gte(self.translate_ref(vals[0]), self.translate_ref(vals[1])),1, gas::cmp()),
                 //to Data can be a no op depending on the types
                 NativeFunc::ToData =>  match *applies[0] {
                     //For ints it is needed
                     ResolvedType::Native {  typ: NativeType::UInt(_), .. }
-                    | ResolvedType::Native {  typ: NativeType::SInt(_), .. } => (FunDesc::Native(Operand::ToData),1,  gas::to_data(applies)),
+                    | ResolvedType::Native {  typ: NativeType::SInt(_), .. } => (ROpCode::ToData(self.translate_ref(vals[0])),1,  gas::to_data(applies)),
                     //the rest are no ops --  same bit representation --
                     _  => {
                         //is a NoOp, as Unique & Singleton have same repr: Data(20) & are unique (prevails uniqueness)
@@ -587,9 +587,9 @@ impl<'b,'h> Compactor<'b,'h> {
                         return Ok(None)
                     }
                 },
-                NativeFunc::Concat => (FunDesc::Native(Operand::Concat),1, gas::concat(applies)),
-                NativeFunc::GetBit => (FunDesc::Native(Operand::GetBit),1, gas::get_bit(applies)),
-                NativeFunc::SetBit => (FunDesc::Native(Operand::SetBit),1, gas::set_bit(applies)),
+                NativeFunc::Concat => (ROpCode::Concat(self.translate_ref(vals[0]), self.translate_ref(vals[1])),1, gas::concat(applies)),
+                NativeFunc::GetBit => (ROpCode::GetBit(self.translate_ref(vals[0]), self.translate_ref(vals[1])),1, gas::get_bit(applies)),
+                NativeFunc::SetBit => (ROpCode::SetBit(self.translate_ref(vals[0]), self.translate_ref(vals[1]),self.translate_ref(vals[2])),1, gas::set_bit(applies)),
                 //is a NoOp, as Unique & Singleton & Manifest & Index & Ref have same repr: Data(20)
                 NativeFunc::ToUnique => {
                     //push the compiletime stack
@@ -599,19 +599,18 @@ impl<'b,'h> Compactor<'b,'h> {
                     return Ok(None)
                 },
                 //todo: Data alloc mem use
-                NativeFunc::GenUnique => (FunDesc::Native(Operand::GenUnique),2,gas::gen_unique()),
-                NativeFunc::FullHash => (FunDesc::Native(Operand::FullHash),1,gas::fetch_env_hash()),
-                NativeFunc::TxTHash => (FunDesc::Native(Operand::TxTHash),1,gas::fetch_env_hash()),
-                NativeFunc::CodeHash => (FunDesc::Native(Operand::CodeHash),1,gas::fetch_env_hash()),
-                NativeFunc::BlockNo => (FunDesc::Native(Operand::BlockNo),1,gas::fetch_env_val()),
+                NativeFunc::GenUnique => (ROpCode::GenUnique(self.translate_ref(vals[0])),2,gas::gen_unique()),
+                NativeFunc::FullHash => (ROpCode::FullHash,1,gas::fetch_env_hash()),
+                NativeFunc::TxTHash => (ROpCode::TxTHash,1,gas::fetch_env_hash()),
+                NativeFunc::CodeHash => (ROpCode::CodeHash,1,gas::fetch_env_hash()),
+                NativeFunc::BlockNo => (ROpCode::BlockNo,1,gas::fetch_env_val()),
                 //Index and Ref have the same runtime behaviour and representation, the difference is only in the type and allowed usage
                 NativeFunc::GenIndex |  NativeFunc::ToRef  => match *applies[0] {
                     //this is just hashing - but in the key domain
-                    ResolvedType::Native {  typ: NativeType::Data(_), .. } => (FunDesc::Native(Operand::GenIndex),1, gas::hash_plain(applies)),
+                    ResolvedType::Native {  typ: NativeType::Data(_), .. } => (ROpCode::GenIndex(self.translate_ref(vals[0])),1, gas::hash_plain(applies)),
                     //these are no ops --  same bit representation -- |Index is for toref, others are for genIndex|
                     ResolvedType::Native {  typ: NativeType::Unique, .. }
-                    | ResolvedType::Native {  typ: NativeType::Singleton, .. }
-                    | ResolvedType::Native {  typ: NativeType::Index, .. } => {
+                    | ResolvedType::Native {  typ: NativeType::Singleton, .. } => {
                         //push the compiletime stack
                         let pos = self.get(vals[0]);
                         self.state.push_alias(pos);
@@ -620,22 +619,19 @@ impl<'b,'h> Compactor<'b,'h> {
                     }
                     _ => unreachable!()
                 },
-                NativeFunc::Derive => (FunDesc::Native(Operand::Derive), 1,gas::join_hash()),
+                NativeFunc::Derive => (ROpCode::Derive(self.translate_ref(vals[0]), self.translate_ref(vals[1])), 1,gas::join_hash()),
             }
         };
 
         self.state.use_gas(cost);
-
-        //find the params runtime pos
-        let adapted = self.alloc.iter_alloc_slice(vals.iter().map(|val|self.translate_ref(*val)))?;
-
+        
         //push all the results to both stacks
         for _ in 0..rets{
             //its result of a primitive allocs a Object (some do also alloc Data, this is in the corresponding ones)
             self.state.push_real();
         }
         //generate the runtime code
-        Ok(Some(ROpCode::Invoke(f_desc,adapted)))
+        Ok(Some(code))
     }
 
     //extract all the produced code

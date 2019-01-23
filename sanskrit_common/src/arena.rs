@@ -63,6 +63,7 @@ impl Heap {
         //ensures at least size if f > 1
         let real_size = size + ((size as f64)*(self.convert-1.0)) as usize;
         assert!(real_size > 0);
+        assert!(real_size > size);
         VirtualHeapArena{
             uncounted:self.new_arena(real_size),
             virt_pos: Cell::new(0),
@@ -120,25 +121,34 @@ impl<'a, T:ArenaUnlock> Drop for ArenaLock<'a, T> {
 }
 
 impl<'h> HeapArena<'h> {
-    unsafe fn reserve(&self, size: usize, align: usize) -> *mut u8 {
-        let align_offset = align_address(self.buffer.borrow().as_ptr().offset(self.pos.get() as isize), align);
-        let ptr = self.buffer.borrow_mut().as_mut_ptr().offset((self.pos.get()  + align_offset) as isize);
-        self.pos.set(self.pos.get() + size + align_offset);
-        ptr
-    }
 
-    fn has_room(&self, size: usize, align: usize) -> bool {
-        if self.locked.get() {return false}
-        let ptr = unsafe { self.buffer.borrow().as_ptr().offset(self.pos.get() as isize) };
-        let align_offset = align_address(ptr, align);
-        self.end >= self.pos.get() + size + align_offset
+    pub fn alloc<T:Sized + Copy>(&self, val: T) -> Ptr<T> {
+        if self.locked.get() {panic!()}
+        let size = mem::size_of::<T>();
+        let pos = self.pos.get();
+        unsafe {
+            let ptr = self.buffer.borrow_mut().as_mut_ptr().offset(pos as isize);
+            let align_offset = align_address(ptr, mem::align_of::<T>());
+            self.pos.set(pos + align_offset + size);
+            if self.end >= self.pos.get() {
+                let ptr = ptr.offset(align_offset as isize) as *mut T;
+                ptr::write(&mut (*ptr), val);
+                Ptr(&*ptr)
+            } else {
+                panic!();
+            }
+        }
     }
 
     unsafe fn alloc_raw_slice<T: Sized + Copy>(&self, len: usize) -> &mut [T] {
+        if self.locked.get() {panic!()}
         let size = len * mem::size_of::<T>();
-        if self.has_room(size, mem::align_of::<T>()) {
-            let ptr = self.reserve(size, mem::align_of::<T>()) as *mut T;
-            from_raw_parts_mut(ptr, len)
+        let pos = self.pos.get();
+        let ptr = self.buffer.borrow_mut().as_mut_ptr().offset(pos as isize);
+        let align_offset = align_address(ptr, mem::align_of::<T>());
+        self.pos.set(pos + align_offset + size);
+        if self.end >= self.pos.get() {
+            from_raw_parts_mut(ptr.offset(align_offset as isize) as *mut T, len)
         } else {
             panic!();
         }
@@ -200,19 +210,6 @@ impl<'h> HeapArena<'h> {
         ArenaLock{
             old: self,
             new,
-        }
-    }
-
-    pub fn alloc<T:Sized + Copy>(&self, val: T) -> Ptr<T> {
-        if self.has_room(mem::size_of::<T>(), mem::align_of::<T>()) {
-            unsafe {
-                let ptr = self.reserve(mem::size_of::<T>(), mem::align_of::<T>());
-                let ptr = ptr as *mut T;
-                ptr::write(&mut (*ptr), val);
-                Ptr(&*ptr)
-            }
-        } else {
-            panic!();
         }
     }
 
@@ -281,8 +278,10 @@ pub struct VirtualHeapArena<'o>{
 impl<'o> VirtualHeapArena<'o> {
 
     fn ensure_virt_space(&self, size:usize) -> Result<()>{
-        self.virt_pos.set(self.virt_pos.get()+size);
-        if self.virt_pos.get() >= self.virt_end {return size_limit_exceeded_error()}
+        let pos = self.virt_pos.get();
+        let new_pos = pos+size;
+        if new_pos >= self.virt_end {return size_limit_exceeded_error()}
+        self.virt_pos.set(new_pos);
         Ok(())
     }
 
