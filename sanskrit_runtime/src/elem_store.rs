@@ -29,7 +29,7 @@ enum SlotResult{
 impl<'a> CacheSlotMap<'a> {
     pub fn new<'h>(arena:&'a HeapArena<'h>, size:u16, salt:(u8,u8,u16)) -> Result<Self> {
         Ok(CacheSlotMap {
-            salt:((salt.0 % 19) as usize, (salt.1 % 16) as u32, salt.2 % (size-1)),
+            salt:((salt.0 % 19) as usize, u32::from(salt.1 % 16), salt.2 % (size-1)),
             size:0,
             cap: size,
             slots: arena.repeated_mut_slice(None,(size * 2) as usize)?
@@ -84,7 +84,7 @@ impl<'a> CacheSlotMap<'a> {
     pub fn contains(&mut self, key:&Hash) -> bool{
         match self.find_slot(key) {
             SlotResult::Full(_) => true,
-            SlotResult::Empty(slot) => false,
+            SlotResult::Empty(_) => false,
         }
     }
 
@@ -94,6 +94,9 @@ impl<'a> CacheSlotMap<'a> {
 
     pub fn len(&self) -> usize {
         self.size as usize
+    }
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
 }
@@ -143,7 +146,7 @@ impl<'a,S:Store> ElemStore<'a,S> {
         Ok(match self.cache.get_mut(&key){
             Some(ref mut entry) => {
                 //it is in cache
-                match entry.txt_store.clone() {
+                match entry.txt_store {
                     // Slot is empty or borrowed and thus can not be loaded
                     None | Some((_, true)) => return item_not_found(),
                     //slot is present
@@ -163,7 +166,7 @@ impl<'a,S:Store> ElemStore<'a,S> {
                 let ret = StackEntry::new(res.val,res.typ);
                 //calc the current slot cache value
                 let txt_store =  if res.typ.get_caps().contains(NativeCap::Copy) {
-                    Some((res.clone(),false))
+                    Some((res,false))
                 } else {
                     None
                 };
@@ -183,13 +186,13 @@ impl<'a,S:Store> ElemStore<'a,S> {
         Ok(match self.cache.get_mut(&key) {
             //it is in cache
             Some(ref mut entry) => {
-                match entry.txt_store.clone() {
+                match entry.txt_store {
                     // Slot is empty or already borrowed and thus can not be borrowed
                     None | Some((_, true)) => return item_not_found(),
                     // it is available
                     Some((res, false)) => {
                         //mark borrowed
-                        entry.txt_store = Some((res.clone(), true));
+                        entry.txt_store = Some((res, true));
                         StackEntry::new_store_borrowed(res.val, res.typ)
                     },
                 }
@@ -198,9 +201,9 @@ impl<'a,S:Store> ElemStore<'a,S> {
                 //Slot not cached, look it up in the backing store
                 let res:StoreElem = self.backend.parsed_get(StorageClass::Elem,&key, CONFIG.max_structural_dept, alloc)?;
                 //create the result
-                let ret = StackEntry::new_store_borrowed(res.val.clone(),res.typ.clone());
+                let ret = StackEntry::new_store_borrowed(res.val,res.typ);
                 self.cache.insert(key, CacheEntry{
-                    real_store: Some(res.clone()),      //Mark the original as existent
+                    real_store: Some(res),      //Mark the original as existent
                     txt_store: Some((res,true)),        //Mark the current as borrowed
                 })?;
                 ret
@@ -223,8 +226,8 @@ impl<'a,S:Store> ElemStore<'a,S> {
                         if res.typ.get_caps().contains(NativeCap::Drop) {
                             //Overwrite with the new one
                             entry.txt_store = Some((StoreElem{
-                                val: elem.val.clone(),
-                                typ: elem.typ.clone(),
+                                val: elem.val,
+                                typ: elem.typ,
                             }, false))
                         } else {
                             //error can not drop existing item
@@ -234,8 +237,8 @@ impl<'a,S:Store> ElemStore<'a,S> {
                     None => {
                         //Its empty so just store to it
                         entry.txt_store = Some((StoreElem{
-                            val: elem.val.clone(),
-                            typ: elem.typ.clone(),
+                            val: elem.val,
+                            typ: elem.typ,
                         }, false))
                     },
                 }
@@ -245,8 +248,8 @@ impl<'a,S:Store> ElemStore<'a,S> {
                 self.cache.insert(key, CacheEntry{
                     real_store: None,               //remark that the backing slot is expected to be empty
                     txt_store: Some((StoreElem{     //create the cache entry
-                        val: elem.val.clone(),
-                        typ: elem.typ.clone(),
+                        val: elem.val,
+                        typ: elem.typ,
                     }, false))
                 })?;
             },
@@ -263,7 +266,7 @@ impl<'a,S:Store> ElemStore<'a,S> {
                     //it must be in the cache as borrowed
                     Some((res, true)) => {
                         //add it back as stored
-                        entry.txt_store = Some((res.clone(), false));
+                        entry.txt_store = Some((*res, false));
                     },
                     _ => unreachable!()
                 }

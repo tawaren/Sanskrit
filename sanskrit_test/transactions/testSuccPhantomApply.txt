@@ -1,5 +1,4 @@
-signed(A) transaction{
-     D = new;
+signed(A) new(D) transaction{
      () = call SomeFunctions.PhantomFun[A]();
      () = call SomeFunctions.PhantomFun[D]();
      a = pack SomeTypes.PhantomArg[A]#Ctr();

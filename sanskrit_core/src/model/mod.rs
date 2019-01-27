@@ -178,6 +178,7 @@ pub enum OpCode {
     CopyPack(TypeRef, Tag, Vec<ValueRef>),              //Generates a value for a multi ctr mutli field type by coping the inputs (requieres copy cap for them)
     Invoke(FuncRef, Vec<ValueRef>),                     //Invokes a Function
     Try(Exp, Vec<(ErrorRef, Exp)>),                     //Executes a try block and on error reverts to execute the corresponding catch Block
+    ModuleIndex                                         //A private constant index associated with each module (it returns the one of the current Module)
 }
 
 

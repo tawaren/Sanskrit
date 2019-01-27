@@ -83,7 +83,7 @@ pub fn validate_function<S:Store>(fun:&FunctionComponent, ctx:&Context<S>) -> Re
     check_params_and_returns(fun, ctx)?;
 
     //check visibility
-    check_function_visibility(fun, ctx)
+    check_function_visibility(fun)
 }
 
 fn check_capabilities<S:Store>(adt:&AdtComponent, context:&Context<S>) -> Result<()>{
@@ -102,7 +102,7 @@ fn check_capabilities<S:Store>(adt:&AdtComponent, context:&Context<S>) -> Result
         //Make sure each ctr is indexed
         for ctr in &adt.constructors{
             //must have at least 1 field per ctr to be indexed
-            if ctr.fields.len() == 0 {
+            if ctr.fields.is_empty() {
                 return capability_constraints_violation()
             }
 
@@ -194,7 +194,7 @@ fn check_function_import_validity<S:Store>(funs:&[FunctionImport], context:&Cont
 fn check_function_import_visibility<S:Store>(fun:&FunctionComponent, context:&Context<S>) -> Result<()> {
     //Helper to check if a base full fills the protection constraint
     // is seperate for readability purposes
-    fn check_typ_protection<S:Store>(fun:&FunctionComponent, typ:&Crc<ResolvedType>, context:&Context<S>) -> Result<()> {
+    fn check_typ_protection(fun:&FunctionComponent, typ:&Crc<ResolvedType>) -> Result<()> {
         match &**typ {
             //Natives are primitive and owned collectively
             ResolvedType::Native{ .. } => visibility_violation(),
@@ -245,7 +245,7 @@ fn check_function_import_visibility<S:Store>(fun:&FunctionComponent, context:&Co
                         //check that all protected types are ok
                         for &GenRef(index) in guards {
                             //check the ownership/forwarded protection
-                            check_typ_protection(fun,&applies[index as usize], context)?
+                            check_typ_protection(fun,&applies[index as usize])?
                         }
                     }
                 }
@@ -256,7 +256,7 @@ fn check_function_import_visibility<S:Store>(fun:&FunctionComponent, context:&Co
     Ok(())
 }
 
-fn check_function_visibility<S:Store>(fun:&FunctionComponent, context:&Context<S>) -> Result<()>  {
+fn check_function_visibility(fun:&FunctionComponent) -> Result<()>  {
     match fun.visibility {
         Visibility::Protected(ref guards) => {
             //check that all protected types are ok
@@ -275,24 +275,17 @@ fn check_params_and_returns<S:Store>(fun:&FunctionComponent, context:&Context<S>
 
     //process all params
     for &Param{ typ, ..} in &fun.params {
-        match *typ.fetch(context)? {
+        if let ResolvedType::Generic { is_phantom:true, .. } = *typ.fetch(context)? {
             //forbid phantoms
-            ResolvedType::Generic { is_phantom:true, .. } => {
-                return vals_need_to_be_real()
-            },
-            _ => {}
+            return vals_need_to_be_real()
         }
     }
 
     //process all returns
-    for Ret{ typ, ref borrows} in &fun.returns {
-
-        match *typ.fetch(context)? {
+    for Ret{ typ, ..} in &fun.returns {
+        if let  ResolvedType::Generic { is_phantom:true, .. } =  *typ.fetch(context)? {
             //forbid phantoms
-            ResolvedType::Generic { is_phantom:true, .. } => {
-                return vals_need_to_be_real()
-            },
-            _ => {}
+            return vals_need_to_be_real()
         }
     }
     Ok(())

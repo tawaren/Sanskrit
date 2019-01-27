@@ -7,7 +7,7 @@ use byteorder::{LittleEndian, ByteOrder};
 use num_traits::ToPrimitive;
 use blake2_rfc::blake2b::{Blake2b};
 use script_interpreter::unique_hash;
-use script_interpreter::UniqueDomain;
+use script_interpreter::HashingDomain;
 use ContextEnvironment;
 use sanskrit_common::arena::*;
 
@@ -277,16 +277,16 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
             OpCode::Xor(op1,op2) => self.xor(op1,op2),
             OpCode::Not(op) => self.not(op),
             OpCode::Id(op) => self.copy(op),
-            OpCode::ToU(n_size, op) => self.to_u(n_size, op),
-            OpCode::ToI(n_size, op) => self.to_i(n_size, op),
+            OpCode::ToU(n_size, op) => self.convert_to_u(n_size, op),
+            OpCode::ToI(n_size, op) => self.convert_to_i(n_size, op),
             OpCode::Add(op1,op2) => self.add(op1,op2),
             OpCode::Sub(op1,op2) => self.sub(op1,op2),
             OpCode::Mul(op1,op2) => self.mul(op1,op2),
             OpCode::Div(op1,op2) => self.div(op1,op2),
             OpCode::Eq(op1,op2) => self.eq(op1,op2),
-            OpCode::Hash(op) => self.hash(op,0), //Todo: Constant
+            OpCode::Hash(op) => self.struct_hash(op),
             OpCode::PlainHash(op) => self.plain_hash(op),
-            OpCode::ToData(op) => self.to_data(op),
+            OpCode::ToData(op) => self.convert_to_data(op),
             OpCode::Concat(op1,op2) => self.concat(op1,op2),
             OpCode::Lt(op1,op2) => self.lt(op1,op2),
             OpCode::Gt(op1,op2) => self.gt(op1,op2),
@@ -295,8 +295,8 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
             OpCode::SetBit(op1,op2, op3) => self.set_bit(op1,op2, op3),
             OpCode::GetBit(op1,op2) => self.get_bit(op1,op2),
             OpCode::GenUnique(op) => self.gen_unique(op),
-            OpCode::GenIndex(op) => self.hash(op,1), //Todo: Constant
-            OpCode::Derive(op1,op2) => self.join_hash(op1, op2, 2), //Todo: Constant
+            OpCode::GenIndex(op) => self.hash(op, HashingDomain::Index),
+            OpCode::Derive(op1,op2) => self.join_hash(op1, op2, HashingDomain::Derive),
             OpCode::FullHash => self.fetch_full_hash(),
             OpCode::TxTHash => self.fetch_txt_hash(),
             OpCode::CodeHash => self.fetch_code_hash(),
@@ -355,7 +355,7 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
         //must be an adt (static guarantee)
         if let Object::Adt(_, elems) = &*elem {
             //push the correct field
-            self.stack.push(elems[field as usize].clone())?;
+            self.stack.push(elems[field as usize])?;
             Ok(Continuation::Next)
         } else { unreachable!() }
     }
@@ -580,7 +580,7 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
 
 
     //converts the input to a unsigned int with a width on n_size bytes
-    fn to_u(&mut self, n_size: u8, ValueRef(val):ValueRef) -> Result<Continuation<'code>> {
+    fn convert_to_u(&mut self, n_size: u8, ValueRef(val):ValueRef) -> Result<Continuation<'code>> {
         fn to_u<'script,T: ToPrimitive>(prim: &T, n_size: u8) -> Option<Object<'script>> {
             //cost: relative to: Object size
             //use to a method from another trait to do the conversion
@@ -620,7 +620,7 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
     }
 
     //converts the input to a signed int with a width on n_size bytes
-    fn to_i(&mut self, n_size: u8, ValueRef(val):ValueRef) -> Result<Continuation<'code>> {
+    fn convert_to_i(&mut self, n_size: u8, ValueRef(val):ValueRef) -> Result<Continuation<'code>> {
         fn to_i<'script,T: ToPrimitive>(prim: &T, n_size: u8) -> Option<Object<'script>> {
             //cost: relative to: Object size
             //use to a method from another trait to do the conversion
@@ -771,13 +771,11 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
     }
 
     //hashes the input recursively
-    fn hash(&mut self, ValueRef(val):ValueRef, domain:u8) -> Result<Continuation<'code>>  {
+    fn struct_hash(&mut self, ValueRef(val):ValueRef) -> Result<Continuation<'code>>  {
         //cost: constant |relative Part in object_hash|
         let top = self.get(val)?;
         //Make a 20 byte digest hascher
-        let mut context = Blake2b::new(20);
-        //Domain Marker
-        context.update(&[domain]);
+        let mut context = HashingDomain::Object.get_domain_hasher(-1); //-1 is used for dynamic sized input (Sadly no better option
         //fill the hash
         object_hash(&top, &mut context);
         //calc the Hash
@@ -789,8 +787,29 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
         Ok(Continuation::Next)
     }
 
-    //hashes the input recursively
-    fn join_hash(&mut self, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef, domain:u8) -> Result<Continuation<'code>>  {
+    //hashes data input
+    fn hash(&mut self, ValueRef(val1):ValueRef, domain:HashingDomain) -> Result<Continuation<'code>>  {
+        //Get the first value
+        let val = self.get(val1)?;
+        let data1 = match *val {
+            Object::Data(ref data) => data,
+            _ => unreachable!()
+        };
+
+        let mut context = domain.get_domain_hasher(data1.len() as i32);
+        //fill the hash with value
+        context.update(&data1);
+        //calc the Hash
+        let hash = context.finalize();
+        //generate a array to the hash
+        let hash_data_ref = array_ref!(hash.as_bytes(),0,20);
+        //get ownership and return
+        self.stack.push(self.alloc.alloc(Object::Data(self.alloc.copy_alloc_slice(hash_data_ref)?))?)?;
+        Ok(Continuation::Next)
+    }
+
+    //hashes 2 inputs together
+    fn join_hash(&mut self, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef, domain:HashingDomain) -> Result<Continuation<'code>>  {
         //Get the first value
         let val = self.get(val1)?;
         let data1 = match *val {
@@ -804,9 +823,7 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
             _ => unreachable!()
         };
 
-        let mut context = Blake2b::new(20);
-        //push the domain
-        context.update(&[domain]);
+        let mut context = domain.get_domain_hasher((data1.len()+data2.len()) as i32);
         //fill the hash with first value
         context.update(&data1);
         //fill the hash with second value
@@ -820,7 +837,8 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
         Ok(Continuation::Next)
     }
 
-    //a non recursive, non-structural variant that just hashes the data input
+    //a non recursive, non-structural variant that just hashes the data input -- it has no collision guarantees
+    // This is never used to generate collision free hashes like unique, singleton, indexes etc...
     fn plain_hash(&mut self, ValueRef(val):ValueRef) -> Result<Continuation<'code>> {
         let val = self.get(val)?;
         let data = match *val {
@@ -934,7 +952,7 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
     //converts numeric input to data
     //uses byteorder crate for conversion where not trivial
     // conversion is little endian
-    fn to_data(&mut self, ValueRef(val):ValueRef) -> Result<Continuation<'code>> {
+    fn convert_to_data(&mut self, ValueRef(val):ValueRef) -> Result<Continuation<'code>> {
         //cost: relative to: Object size
         self.stack.push(self.alloc.alloc(match &*self.get(val)? {
             Object::I8(data) => Object::Data(self.alloc.copy_alloc_slice(&[*data as u8])?),
@@ -1008,7 +1026,7 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
         //cost: constant
         //extract vector and index and get bit
         let res = match (&*self.get(val1)?, &*self.get(val2)?) {
-            (Object::Data(op1), Object::U8(op2)) => get_inner_bit(op1, *op2 as u16),
+            (Object::Data(op1), Object::U8(op2)) => get_inner_bit(op1, u16::from(*op2)),
             (Object::Data(op1), Object::U16(op2)) => get_inner_bit(op1, *op2),
             _ => unreachable!()
         };
@@ -1040,16 +1058,16 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
             let mut new_v = alloc.copy_alloc_mut_slice(v)?;
             //set the bit in the new vector
             if val {
-                new_v[byte_pos as usize] = new_v[byte_pos as usize] | bit_mask;
+                new_v[byte_pos as usize] |= bit_mask;
             } else {
-                new_v[byte_pos as usize] = new_v[byte_pos as usize] & !bit_mask;
+                new_v[byte_pos as usize] &= !bit_mask;
             }
             Ok(Some(Object::Data(new_v.freeze())))
         }
         //cost: relative to data size
         //extract vector and index and set bit
         let res = match (&*self.get(val1)?, &*self.get(val2)?, &*self.get(val3)?) {
-            (Object::Data(op1), Object::U8(op2), Object::Adt(tag, _)) => set_inner_bit(op1, *op2 as u16, *tag == 1, self.alloc),
+            (Object::Data(op1), Object::U8(op2), Object::Adt(tag, _)) => set_inner_bit(op1, u16::from(*op2), *tag == 1, self.alloc),
             (Object::Data(op1), Object::U16(op2), Object::Adt(tag, _)) => set_inner_bit(op1, *op2, *tag == 1, self.alloc),
             _ => unreachable!()
         }?;
@@ -1071,7 +1089,7 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
             Object::Context(num) => {
                 self.stack.push(self.alloc.alloc(Object::Context(num + 1))?)?;       //increase the context so a new value is generated next time
                 //derive the value
-                self.stack.push(self.alloc.alloc(unique_hash(&self.env.txt_hash, UniqueDomain::Unique, *num, self.alloc)?)?)?;
+                self.stack.push(self.alloc.alloc(unique_hash(&self.env.txt_hash, HashingDomain::Unique, *num, self.alloc)?)?)?;
             },
             _ => unreachable!()
         };

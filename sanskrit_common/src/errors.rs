@@ -1,4 +1,6 @@
 use core::result::Result as OResult;
+
+#[cfg(feature = "string_errors")]
 use alloc::prelude::String;
 
 

@@ -7,18 +7,24 @@ use sanskrit_common::errors::*;
 //A transaction
 #[derive(Copy, Clone, Parsable, Serializable, VirtualSize)]
 pub struct Transaction<#[AllocLifetime] 'c> {
+    //Config:
     pub start_block_no: u64,
     //the earliest block to include it
     //Todo: Memory Claim
     //Todo: Stack Depth Claim / Stack Heap Claim
     //Todo: Desc Buffer Claim
     //Todo: Entry Cache Claim
-    pub signers: SlicePtr<'c, [u8; 32]>,
+    //Consts:
+    pub signers: SlicePtr<'c, [u8; 32]>, //todo: Not needed if we can recover from sig
+    pub imports: SlicePtr<'c, Hash>,
+    pub new_types:u8,
     pub code: SlicePtr<'c, Ptr<'c, ScriptCode<'c>>>,
     pub signatures: SlicePtr<'c, [u8; 64]>,
+    pub witness: SlicePtr<'c, SlicePtr<'c,u8>>,
 }
 
 //bool == is is_phantom
+//todo: Make structural
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Parsable, Serializable, VirtualSize)]
 pub struct TypeTypeParam(pub bool, pub CapSet);
 
@@ -74,30 +80,36 @@ pub enum NativeAdtType {
     Bool,
 }
 
+#[derive(Copy, Clone, Debug, Parsable, Serializable, VirtualSize)]
+pub struct ImpRef(pub u8);
+
 //A reference to identify an Adt descriptor
 #[derive(Copy, Clone, Debug, Parsable, Serializable, VirtualSize)]
 pub enum AdtRef {
-    Dynamic(ValueRef),
-    Ref(Hash),
+    Ref(ImpRef, u8),
     Native(NativeAdtType)
 }
 
+
+
 //A reference to identify an Adfunctiont descriptor
 #[derive(Copy, Clone, Debug, Parsable, Serializable, VirtualSize)]
-pub enum FuncRef{
-    Dynamic(ValueRef),
-    Ref(Hash),
+pub struct FuncRef{
+    pub module: ImpRef,
+    pub offset:u8
 }
+
 
 #[derive(Copy, Clone, Debug, Parsable, Serializable, VirtualSize)]
 pub enum TypeApplyRef<#[AllocLifetime] 'c> {
-    Account(u8),            //Count as Priviledged (can call protected)
-    RemoteAccount(Hash),
-    NewType(u8),            //Count as Priviledged (can call protected)
-    RemoteNewType(Hash,u8),
-    Value(ValueRef),
+    Account(u8),                //Count as Priviledged (can call protected)
+    RemoteAccount(ImpRef),
+    NewType(u8),                //Count as Priviledged (can call protected)
+    RemoteNewType(ImpRef,u8),
+    TypeOf(ValueRef),
+    ArgTypeOf(ValueRef, SlicePtr<'c, u8>),
     Native(NativeType, SlicePtr<'c, Ptr<'c,TypeApplyRef<'c>>>),
-    Module(Hash,  SlicePtr<'c, Ptr<'c,TypeApplyRef<'c>>>),
+    Module(ImpRef, u8,  SlicePtr<'c, Ptr<'c,TypeApplyRef<'c>>>),
 
 }
 
@@ -109,6 +121,7 @@ pub enum ScriptCode<#[AllocLifetime] 'c> {
     BorrowUnpack(AdtRef, Tag, ValueRef),                                                        //Borrow the fields of an adt
     Invoke(FuncRef, SlicePtr<'c,Ptr<'c,TypeApplyRef<'c>>>, SlicePtr<'c,ValueRef>),              //Call a function
     Lit(SlicePtr<'c, u8>, LitDesc),                                                             //Generate a literal
+    Wit(u8, LitDesc),                                                                           //Generate a literal from a Witness
     Copy(ValueRef),                                                                             //Copy a stack value
     Fetch(ValueRef),                                                                            //Move a stack value
     BorrowFetch(ValueRef),                                                                      //Borrow a stack value
@@ -117,7 +130,6 @@ pub enum ScriptCode<#[AllocLifetime] 'c> {
     Load(ValueRef),                                                                             //Load a value from the store
     BorrowLoad(ValueRef),                                                                       //Borrow a value from the store
     Store(ValueRef),                                                                            //Save a value to the store
-    NewType,                                                                                    //Generte a new type and a singleton value for it
     //todo: Should we have a Derive Here
 }
 

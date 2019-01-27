@@ -10,7 +10,7 @@ pub struct CapSet(pub u8);
 
 //Assosiation between capabilities and bits
 //Eac capabulity is assosiated with 1 bit in a u8
-const DROP_MASK:u8 = 1 << 0;
+const DROP_MASK:u8 = 1;
 const COPY_MASK:u8 = 1 << 1;
 const PERSIST_MASK:u8 = 1 << 2;
 const CONSUME_MASK:u8 = 1 << 3;

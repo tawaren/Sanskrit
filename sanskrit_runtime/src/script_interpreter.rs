@@ -4,7 +4,6 @@ use sanskrit_common::errors::*;
 use sanskrit_common::model::*;
 use sanskrit_common::linear_stack::*;
 use sanskrit_common::store::*;
-use sanskrit_common::encoding::*;
 use alloc::prelude::*;
 use model::*;
 use native::*;
@@ -18,7 +17,9 @@ use CONFIG;
 //The state of the script execution
 pub struct Executor<'a, 'h, S:Store>{
     pub accounts:SlicePtr<'a,Ptr<'a,RuntimeType<'a>>>,
-    pub newtypes:Vec<Ptr<'a,RuntimeType<'a>>>,
+    pub witness:SlicePtr<'a,SlicePtr<'a,u8>>,
+    pub newtypes:SlicePtr<'a,Ptr<'a,RuntimeType<'a>>>,
+    pub imports:SlicePtr<'a, Hash>,
     pub stack:LinearScriptStack<'a, 'h>,
     pub env:ContextEnvironment,
     pub store:ElemStore<'a,S>,
@@ -28,25 +29,41 @@ pub struct Executor<'a, 'h, S:Store>{
 }
 
 //Hashing Domains to ensure there are no collisions
-pub enum UniqueDomain {
+pub enum HashingDomain {
     Unique,
-    Singleton
+    Singleton,
+    Index,
+    Derive,
+    Object,
+}
+
+impl HashingDomain {
+    pub fn get_domain_hasher(&self, input_len:i32) -> Blake2b {
+        let dom =  match *self {
+            HashingDomain::Unique => 0,
+            HashingDomain::Singleton => 1,
+            HashingDomain::Index => 2,
+            HashingDomain::Derive => 3,
+            HashingDomain::Object => 4,
+        };
+        let mut context = Blake2b::new(20);
+        //prepare the counter
+        let mut input = [0u8; 4];
+        LittleEndian::write_i32(&mut input, input_len);
+        context.update(&[dom]);
+        context.update(&input);
+        context
+    }
 }
 
 //generates a new hash from a hash (usually txtHash) and a counter
-pub fn unique_hash<'a, 'h>(base: &Hash, domain:UniqueDomain, ctr: u64, alloc:&'a VirtualHeapArena<'h>) -> Result<Object<'a>> {
+pub fn unique_hash<'a, 'h>(base: &Hash, domain: HashingDomain, ctr: u64, alloc:&'a VirtualHeapArena<'h>) -> Result<Object<'a>> {
     //create the hasher
-    let mut context = Blake2b::new(20);
+    let mut context = domain.get_domain_hasher(28);
     //prepare the counter
-    let mut input = [0; 8];
+    let mut input = [0u8; 8];
     LittleEndian::write_u64(&mut input, ctr);
-    //prepare the domain
-    let dom = match domain {
-        UniqueDomain::Unique => 0u8,
-        UniqueDomain::Singleton => 1u8,
-    };
     //update the hasher with all information
-    context.update(&[dom]);
     context.update(&input);
     context.update(base);
     //create the hash
@@ -75,6 +92,18 @@ fn extract_key(entry:&StackEntry) -> Result<Hash> {
 }
 
 impl<'a, 'h, S:Store> Executor<'a,'h,S> {
+
+    //helper to resolve keys
+    fn elem_key(&self, ImpRef(idx):ImpRef, offset:u8) -> Result<Hash> {
+        if idx as usize >= self.imports.len() {return item_not_found()}
+        Ok(store_hash(&[&self.imports[idx as usize],&[offset]]))
+    }
+
+    fn import(&self, ImpRef(idx):ImpRef) -> Result<Hash> {
+        if idx as usize >= self.imports.len() {return item_not_found()}
+        Ok(self.imports[idx as usize])
+    }
+
     //execute all codes
     pub fn execute<'c, 's>(&mut self, codes:&'c [Ptr<'c, ScriptCode>], temporary_values:&'s HeapArena<'h>) -> Result<()> {
         for code in codes {
@@ -85,6 +114,7 @@ impl<'a, 'h, S:Store> Executor<'a,'h,S> {
                 ScriptCode::BorrowUnpack(adt_ref, tag, val) => self.unpack(adt_ref, val, tag ,true, temporary_values)?,
                 ScriptCode::Invoke(func_ref, ref applies, ref vals) => self.invoke(func_ref, applies, vals, temporary_values)?,
                 ScriptCode::Lit(ref data, desc) => self.lit(data,desc)?,
+                ScriptCode::Wit(wit_ref, desc) => self.wit(wit_ref,desc)?,
                 ScriptCode::Copy(val) => self.copy(val)?,
                 ScriptCode::Fetch(val) => self.fetch(val, false)?,
                 ScriptCode::BorrowFetch(val) => self.fetch(val, true)?,
@@ -93,7 +123,6 @@ impl<'a, 'h, S:Store> Executor<'a,'h,S> {
                 ScriptCode::Load(val) => self.load(val)?,
                 ScriptCode::BorrowLoad(val) => self.borrow_load(val)?,
                 ScriptCode::Store(val) => self.store(val)?,
-                ScriptCode::NewType => self.new_type()?,
             }
         }
         //first clean up the stack (may release elems from store)
@@ -109,26 +138,44 @@ impl<'a, 'h, S:Store> Executor<'a,'h,S> {
             //if it is an account type fetch it from th executor state
             TypeApplyRef::Account(a_idx) => {
                 if *a_idx as usize >= self.accounts.len() { return type_index_error()}
-                Ok((true,self.accounts[*a_idx as usize].clone()))
+                Ok((true,self.accounts[*a_idx as usize]))
             },
-            TypeApplyRef::RemoteAccount(ref addr) => {
+            TypeApplyRef::RemoteAccount(imp) => {
                 Ok((false,self.alloc.alloc(RuntimeType::AccountType {
-                    address: addr.clone()
+                    address: self.import(*imp)?
                 })?))
             }
             //if it is an new type fetch it from th executor state
             TypeApplyRef::NewType(n_idx) => {
                 if *n_idx as usize >= self.newtypes.len() { return type_index_error()}
-                Ok((true,self.newtypes[*n_idx as usize].clone()))
+                Ok((true,self.newtypes[*n_idx as usize]))
             },
-            TypeApplyRef::RemoteNewType(ref txt, offset) => {
+            TypeApplyRef::RemoteNewType(imp, offset) => {
                 Ok((false,self.alloc.alloc(RuntimeType::NewType {
-                    txt: txt.clone(),
+                    txt: self.import(*imp)?,
                     offset: *offset
                 })?))
             },
             //if it is an ref to a value extract the type of that value from the stack
-            TypeApplyRef::Value(idx) => Ok((false,self.stack.value_of(*idx)?.typ.clone())),
+            TypeApplyRef::TypeOf(idx) => Ok((false, self.stack.value_of(*idx)?.typ)),
+
+            //if it is a path into a values type, extract it from the values type
+            TypeApplyRef::ArgTypeOf(idx, select) => {
+                let mut base_typ = self.stack.value_of(*idx)?.typ;
+                for s in &**select {
+                    match *base_typ {
+                        RuntimeType::NativeType { ref applies, ..}
+                        | RuntimeType::Custom { ref applies, ..} => {
+                            if applies.len() >= *s as usize {return item_not_found()}
+                            base_typ = applies[*s as usize]
+                        },
+                        _ => return item_not_found()
+                    };
+                }
+                Ok((false, base_typ))
+            },
+
+
             //if it is a native resolve the applies and construct the type
             TypeApplyRef::Native(ref typ, ref applies) => {
                 let b_applies = self.alloc.iter_result_alloc_slice(applies.iter().map(|appl|self.resolve_type(appl).map(|r|r.1)))?;
@@ -137,61 +184,41 @@ impl<'a, 'h, S:Store> Executor<'a,'h,S> {
                 Ok(res)
             },
             //if it is an adt resolve the applies and construct the type over a descriptor
-            TypeApplyRef::Module(ref hash, ref applies) => {
+            TypeApplyRef::Module(imp, offset, ref applies) => {
                 let b_applies = self.alloc.iter_result_alloc_slice(applies.iter().map(|appl|self.resolve_type(appl).map(|r|r.1)))?;
                 let code_alloc = self.code_alloc.temp_arena()?;
-                let desc = self.store.backend.parsed_get::<AdtDescriptor, VirtualHeapArena>(StorageClass::AdtDesc, hash, CONFIG.max_structural_dept, &code_alloc)?;
+                let desc = self.store.backend.parsed_get::<AdtDescriptor, VirtualHeapArena>(StorageClass::AdtDesc, &self.elem_key(*imp, *offset)?, CONFIG.max_structural_dept, &code_alloc)?;
                 let res = (false,desc.build_type(b_applies, self.alloc)?);
                 Ok(res)
             }
         }
     }
 
-    fn extract_desc<'b,T:Parsable<'b>>(&self, val:ValueRef, class:StorageClass, code_alloc:&'b VirtualHeapArena<'h>) -> Result<T> {
-        let res = self.stack.value_of(val)?;
-        let hash = match *res.typ {
-            RuntimeType::NativeType {typ:NativeType::Data(20), ..} => match *res.val{
-                Object::Data(ref data) => array_ref!(data,0,20),
-                _ => unreachable!()
-            }
-            _ => return type_mismatch()
-        };
-        self.store.backend.parsed_get::<T, VirtualHeapArena>(class, hash, CONFIG.max_structural_dept, code_alloc)
-    }
-
     fn pack<'c>(&mut self, adt_ref:AdtRef, applies:&'c [Ptr<'c,TypeApplyRef>], tag:Tag, vals:&'c [ValueRef], is_borrowed:bool) -> Result<()> {
         let types = self.alloc.iter_result_alloc_slice(applies.iter().map(|t_ref| self.resolve_type(t_ref).map(|t|t.1)))?;
         let code_alloc = self.code_alloc.temp_arena()?;
         let desc = match adt_ref {
-            AdtRef::Dynamic(val) => self.extract_desc(val, StorageClass::AdtDesc, &code_alloc)?,
-            AdtRef::Ref(hash) => self.store.backend.parsed_get::<AdtDescriptor, VirtualHeapArena>(StorageClass::AdtDesc, &hash, CONFIG.max_structural_dept, &code_alloc)?,
+            AdtRef::Ref(imp, offset) => self.store.backend.parsed_get::<AdtDescriptor, VirtualHeapArena>(StorageClass::AdtDesc, &self.elem_key(imp,offset)?, CONFIG.max_structural_dept, &code_alloc)?,
             AdtRef::Native(typ) => typ.get_native_adt_descriptor(&code_alloc)?,
         };
-        desc.pack(types, tag, &vals, is_borrowed, &mut self.stack, self.alloc)?;
-        Ok(())
+        desc.pack(types, tag, &vals, is_borrowed, &mut self.stack, self.alloc)
     }
 
     fn unpack(&mut self, adt_ref:AdtRef, val:ValueRef, expected_tag:Tag, is_borrowed:bool, temporary_values:&HeapArena<'h>) -> Result<()> {
         let code_alloc = self.code_alloc.temp_arena()?;
         let desc = match adt_ref {
-            AdtRef::Dynamic(val) => self.extract_desc(val, StorageClass::AdtDesc, &code_alloc)?,
-            AdtRef::Ref(hash) => self.store.backend.parsed_get::<AdtDescriptor, VirtualHeapArena>(StorageClass::AdtDesc, &hash, CONFIG.max_structural_dept, &code_alloc)?,
+            AdtRef::Ref(imp, offset) => self.store.backend.parsed_get::<AdtDescriptor, VirtualHeapArena>(StorageClass::AdtDesc, &self.elem_key(imp,offset)?, CONFIG.max_structural_dept, &code_alloc)?,
             AdtRef::Native(typ) => typ.get_native_adt_descriptor(&code_alloc)?,
         };
-        desc.unpack(val, expected_tag, is_borrowed, &mut self.stack, self.alloc, temporary_values)?;
-        Ok(())
+        desc.unpack(val, expected_tag, is_borrowed, &mut self.stack, self.alloc, temporary_values)
     }
 
     fn invoke<'c>(&mut self, func_ref:FuncRef, applies:&'c[Ptr<'c,TypeApplyRef>], vals:&'c[ValueRef], temporary_values:&HeapArena<'h>) -> Result<()> {
         let tmp = temporary_values.temp_arena();
         let types = tmp.iter_result_alloc_slice(applies.iter().map(|t_ref| self.resolve_type(t_ref)))?;
         let code_alloc = self.code_alloc.temp_arena()?;
-        let desc = match func_ref {
-            FuncRef::Dynamic(val) => self.extract_desc(val, StorageClass::FunDesc, &code_alloc)?,
-            FuncRef::Ref(ref hash) => self.store.backend.parsed_get::<FunctionDescriptor, VirtualHeapArena>(StorageClass::FunDesc, hash, CONFIG.max_structural_dept, &code_alloc)?,
-        };
-        desc.apply(&types, &vals, &mut self.stack, self.env, self.alloc, &self.stack_alloc, &tmp)?;
-        Ok(())
+        let desc = self.store.backend.parsed_get::<FunctionDescriptor, VirtualHeapArena>(StorageClass::FunDesc, &self.elem_key(func_ref.module, func_ref.offset)?, CONFIG.max_structural_dept, &code_alloc)?;
+        desc.apply(&types, &vals, &mut self.stack, self.env, self.alloc, &self.stack_alloc, &tmp)
     }
 
     fn lit(&mut self, data:&[u8], desc:LitDesc) -> Result<()>{
@@ -200,13 +227,18 @@ impl<'a, 'h, S:Store> Executor<'a,'h,S> {
         self.stack.provide(StackEntry::new( val, typ ))
     }
 
+    fn wit(&mut self, data_ref:u8, desc:LitDesc) -> Result<()>{
+        if data_ref as usize >= self.witness.len() {return item_not_found()}
+        let data = self.witness[data_ref as usize];
+        self.lit(&data,desc)
+    }
+
     fn copy(&mut self, vl:ValueRef) -> Result<()> {
         let typ = &self.stack.value_of(vl)?.typ;
         if !typ.get_caps().contains(NativeCap::Copy) {
             return capability_missing_error()
         }
-        self.stack.fetch(vl, FetchMode::Copy)?;
-        Ok(())
+        self.stack.fetch(vl, FetchMode::Copy)
     }
 
     fn fetch(&mut self, vl:ValueRef, is_borrowed:bool) -> Result<()> {
@@ -215,8 +247,7 @@ impl<'a, 'h, S:Store> Executor<'a,'h,S> {
         } else {
             FetchMode::Consume
         };
-        self.stack.fetch(vl, mode)?;
-        Ok(())
+        self.stack.fetch(vl, mode)
     }
 
     fn free(&mut self, v1:ValueRef) -> Result<()> {
@@ -228,8 +259,7 @@ impl<'a, 'h, S:Store> Executor<'a,'h,S> {
             let key = freed.val.extract_key();
             self.store.free(key)
         }
-        self.stack.free(v1)?;
-        Ok(())
+        self.stack.free(v1)
     }
 
     fn drop(&mut self, vl:ValueRef) -> Result<()> {
@@ -237,8 +267,7 @@ impl<'a, 'h, S:Store> Executor<'a,'h,S> {
         if !typ.get_caps().contains(NativeCap::Drop) {
             return capability_missing_error()
         }
-        self.stack.drop(vl)?;
-        Ok(())
+        self.stack.drop(vl)
     }
 
     fn load(&mut self, v1:ValueRef) -> Result<()> {
@@ -262,31 +291,8 @@ impl<'a, 'h, S:Store> Executor<'a,'h,S> {
         }
 
         let key = entry.val.extract_key();
-        self.store.store(*key,entry.clone())?;
+        self.store.store(*key,entry)?;
         self.stack.consume(vl)
-    }
-
-    fn new_type(&mut self) -> Result<()> {
-        if self.newtypes.len() > u8::max_value() as usize {
-            return size_limit_exceeded_error();
-        }
-        let offset = self.newtypes.len() as u8;
-        let n_type = self.alloc.alloc(RuntimeType::NewType {
-            txt: self.env.txt_hash.clone(),
-            offset,
-        })?;
-        self.newtypes.push(n_type);
-        //create and push singleton
-        let val = unique_hash(&self.env.txt_hash, UniqueDomain::Singleton, offset as u64, self.alloc)?;
-        let singleton = StackEntry::new(
-            self.alloc.alloc(val)?,
-            self.alloc.alloc(RuntimeType::NativeType {
-                caps: NativeType::Singleton.base_caps(), //ok as n_type is phantom
-                typ: NativeType::Singleton,
-                applies: self.alloc.copy_alloc_slice(&[n_type])?
-            })?
-        );
-        self.stack.provide(singleton)
     }
 
 }

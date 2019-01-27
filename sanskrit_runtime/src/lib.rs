@@ -30,7 +30,6 @@ use elem_store::ElemStore;
 use script_stack::LinearScriptStack;
 use script_interpreter::Executor;
 use sanskrit_common::arena::*;
-use alloc::prelude::Vec;
 use script_stack::StackEntry;
 use sanskrit_common::model::SlicePtr;
 use sanskrit_common::linear_stack::Elem;
@@ -135,8 +134,11 @@ pub fn execute<S:Store>(store:&S, txt_data:&[u8], block_no:u64, heap:&Heap) -> R
 
     //find the start of each of the transaction hashes
     //note this is serialize format dependent
+    //todo: update when new format
+    // code start should include imports & new_types
     let code_start = 8 + 2 + txt.signers.len()*32;                  //8 is blockNo overhead, 2 is num signers
-    let sigs_start = txt_data.len() - txt.signatures.len()*64 - 2;  //1 is num sigs
+    let witness_size = txt.witness.iter().map(|w|w.len() + 2).sum::<usize>() + 2;  //2 is num wittness / Num Bytes
+    let sigs_start = txt_data.len() - witness_size - txt.signatures.len()*64 - 2;  //2 is num sigs
     //hash over everything
     //todo: alloc  & store ptrs
     let full_hash = hash(&txt_data);
@@ -150,7 +152,7 @@ pub fn execute<S:Store>(store:&S, txt_data:&[u8], block_no:u64, heap:&Heap) -> R
     //extract the account types and check the sigantures
     let mut accounts = alloc.slice_builder(txt.signers.len())?;
     for (sig,pk) in txt.signatures.iter().zip(txt.signers.iter()) {
-        /*//parse the public key
+        //parse the public key
         let rpk = match PublicKey::from_bytes(pk){
             Ok(r) => r,
             Err(_) => return signature_error(),
@@ -167,15 +169,27 @@ pub fn execute<S:Store>(store:&S, txt_data:&[u8], block_no:u64, heap:&Heap) -> R
             Err(_) => return signature_error(),
         }
         //hash the pk to get the address
-        */
+
         accounts.push(alloc.alloc(RuntimeType::AccountType { address: hash(pk) })?)
     }
 
+    let mut newtypes = alloc.slice_builder(txt.new_types as usize)?;
+    for offset in 0..txt.new_types {
+        let n_type = alloc.alloc(RuntimeType::NewType {
+            txt: txt_hash,
+            offset,
+        })?;
+        newtypes.push(n_type);
+    }
+    let newtypes = newtypes.finish();
+
     //create the transaction executor
-    let stack = LinearScriptStack::new(&alloc,script_stack)?;
+    let stack = LinearScriptStack::new(&alloc,script_stack,&newtypes)?;
     let mut exec = Executor{
         accounts: accounts.finish(),
-        newtypes:Vec::new(),
+        witness: txt.witness,
+        newtypes,
+        imports: txt.imports,
         stack,
         env:ContextEnvironment {
             block_no,

@@ -17,6 +17,7 @@ use sanskrit_core::model::Param;
 use blake2_rfc::blake2b::{Blake2b};
 use sanskrit_common::encoding::ParserAllocator;
 use sanskrit_common::model::Ptr;
+use sanskrit_common::model::ValueRef;
 
 impl Block {
     pub fn compile_with_input<A: ParserAllocator>(&self, inputs:&[Id], env:&mut Environment<A>, imp:&mut CodeImportBuilder) -> Result<Exp,String> {
@@ -183,6 +184,11 @@ impl OpCode {
                 }
                 Ok(ROpCode::Try(try,c_exprs))
             },
+
+            OpCode::ModuleIndex(ref id) => {
+                env.push_new(id.clone());
+                Ok(ROpCode::ModuleIndex)
+            },
         }
     }
 }
@@ -251,6 +257,15 @@ impl ScriptCode {
                 env.push_new(id.clone());
                 RScriptCode::Lit(num,desc)
             },
+
+            ScriptCode::Wit(ref id,ref lit, ref typ) => {
+                let num = imp.alloc.copy_alloc_slice(&parse_lit(&lit.0,&typ))?;
+                let desc = gen_lit_desc(&typ);
+                env.push_new(id.clone());
+                let wit_ref = imp.generate_wit_ref(num);
+                RScriptCode::Wit(wit_ref,desc)
+            },
+
             ScriptCode::RefGen(ref id, ref val) => {
                 let mut context = Blake2b::new(20);
                 context.update(val.0.as_bytes());
@@ -317,11 +332,18 @@ impl ScriptCode {
                 }
                 RScriptCode::Invoke(f_ref, types,inputs)
             },
-            ScriptCode::NewType(ref assig) => {
-                imp.push_new_type(assig.clone());
+
+            ScriptCode::Singleton(ref assig, ref param, borrow) => {
+                let pos = imp.get_singleton_offset(param);
+                let from_v = ValueRef((env.stack_depth + pos as usize) as u16 );
                 env.push_new(assig.clone());
-                RScriptCode::NewType
-            }
+                if borrow {
+                    RScriptCode::BorrowFetch(from_v)
+                } else {
+                    RScriptCode::Fetch(from_v)
+                }
+            },
+
             ScriptCode::Load(ref assig, ref val, borrow) => {
                 let from_v = env.get_id_pos(val).unwrap();
                 env.push_new(assig.clone());
@@ -334,7 +356,8 @@ impl ScriptCode {
             ScriptCode::Store(ref val) => {
                 let from_v = env.get_id_pos(val).unwrap();
                 RScriptCode::Store(from_v)
-            }
+            },
+
         }))
     }
 }

@@ -1,0 +1,5 @@
+signed(A) transaction{
+     a = wit 1:$u8;
+     b = &a;
+     c = pack SomeTypes.NoCreate[$u8]#Ctr(b);
+};

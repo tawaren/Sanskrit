@@ -75,8 +75,8 @@ pub fn to_runtime_type<'a,'b,'h>(typ:NativeType, applies:SlicePtr<'a,Ptr<'a,Runt
 
 
 impl NativeAdtType {
-    pub fn get_native_adt_descriptor<'b,'h>(&self, alloc:&'b VirtualHeapArena<'h>) -> Result<AdtDescriptor<'b>> {
-        Ok(match *self {
+    pub fn get_native_adt_descriptor<'b,'h>(self, alloc:&'b VirtualHeapArena<'h>) -> Result<AdtDescriptor<'b>> {
+        Ok(match self {
             NativeAdtType::Tuple(apply_size) => AdtDescriptor {
                 //A Tuple has non-phatnom generics (one per field)
                 generics: alloc.repeated_slice(TypeTypeParam(false, CapSet::from_cap(NativeCap::Embed)),apply_size as usize)?,
@@ -109,8 +109,8 @@ impl NativeAdtType {
 
 impl LitDesc {
 
-    pub fn lit_typ<'a,'h>(&self, size:u16, alloc:&'a VirtualHeapArena<'h>) -> Result<Ptr<'a,RuntimeType<'a>>>{
-        match *self {
+    pub fn lit_typ<'a,'h>(self, size:u16, alloc:&'a VirtualHeapArena<'h>) -> Result<Ptr<'a,RuntimeType<'a>>>{
+        match self {
             LitDesc::Ref => {
                 if size != 20 {return literal_data_error()}
                 resolve_runtime_leaf_type(NativeType::Ref, SlicePtr::empty(), alloc)

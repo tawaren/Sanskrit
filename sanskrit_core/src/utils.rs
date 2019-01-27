@@ -98,9 +98,8 @@ fn get_cache<T:Clone>(map:&mut LazyCache<T>) -> &mut Vec<State<T>>{
         }
     }
     //if it is empty make it full
-    match get_empty(map) {
-        Some(amount) =>  *map = LazyCache::Full(vec![State::Missing;amount]),
-        None => {}
+    if let Some(amount) = get_empty(map) {
+        *map = LazyCache::Full(vec![State::Missing;amount])
     }
     //returned the necessarely initialized value
     if let LazyCache::Full(ref mut v) = *map {

@@ -18,6 +18,7 @@ use sanskrit_common::arena::HeapArena;
 use sanskrit_common::model::SlicePtr;
 use sanskrit_common::arena::Heap;
 use sanskrit_runtime::CONFIG;
+use sanskrit_runtime::model::ImpRef;
 //Process text -> Adt -> Adt + Index (allows to get stuff by Id) -> EAst (has stuff like captures) -> Final
 //All involved file go seq:
 // First collect dependencies & Bring everithing into Adt Form
@@ -96,30 +97,43 @@ impl<'a> Compiler<'a> {
         //Helper to aid the borrow checker realize that txt_alloc is no longer used after this
         fn compile_txt(txt:&Transaction, modules:&MCompiler, sks:&HashMap<Id,Keypair>, txt_alloc:&HeapArena) -> Result<Vec<u8>,String> {
             let sigs = txt.sigs.iter().enumerate().map(|(idx,id)|(id.clone(),idx as u8)).collect();
+            let news = txt.news.iter().enumerate().map(|(idx,id)|(id.clone(),idx as u8)).collect();
             let signers = txt_alloc.iter_alloc_slice(txt.sigs.iter().map(|id|sks[id].public.to_bytes()))?;
 
             let mut code = txt_alloc.slice_builder(txt.codes.len())?;
             let mut env = Environment::new_with_ctx(txt_alloc);
-            let mut imp = ScriptContext::new(&modules.parsed, &sigs, txt_alloc);
+            let mut imp = ScriptContext::new(&modules.parsed, &sigs,&news, txt_alloc);
             for c in &txt.codes {
                 code.push(c.compile(&mut env,&mut imp)?)
             }
+
+            let mut tmp_vec = vec![[0;20];imp.imports.len()];
+            for (hash,ImpRef(idx)) in imp.imports {
+                assert_eq!(tmp_vec[idx as usize], [0;20]);
+                tmp_vec[idx as usize] = hash
+            }
+
+
             let mut r_txt = RTransaction {
                 start_block_no: 0,
                 signers,
+                imports: txt_alloc.copy_alloc_slice(&tmp_vec)?,
+                new_types: txt.news.len() as u8,
                 code:code.finish(),
-                signatures: SlicePtr::empty()
+                signatures: SlicePtr::empty(),
+                witness: SlicePtr::empty(),
             };
 
             let mut s = Serializer::new(usize::max_value());
             r_txt.serialize(&mut s)?;
             let mut txt_data = s.extract();
             //Serialization Specific
-            txt_data.pop();//pop drops the signatures: vec![] //1 of 2 Bytes
-            txt_data.pop();//pop drops the signatures: vec![] //2 of 2 Bytes
             r_txt.signatures =  txt_alloc.iter_alloc_slice(txt.sigs.iter().map(|id|{
-                sks[id].sign::<Sha512>(&txt_data).to_bytes()
+                sks[id].sign::<Sha512>(&txt_data[0..(txt_data.len()-4)]).to_bytes() //-4 are the 4 bytes serialized for signatures & witness
             }))?;
+
+            r_txt.witness = txt_alloc.copy_alloc_slice(&imp.wit)?;
+
             let mut s = Serializer::new(usize::max_value());
             r_txt.serialize(&mut s)?;
             Ok(s.extract())

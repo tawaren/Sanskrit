@@ -7,7 +7,6 @@ signed(A, B) transaction{
      () = call SomeFunctions.EmptyProt[B]();
 };
 
-signed(A) transaction{
-     C = new;
+signed(A) new(C) transaction{
      () = call SomeFunctions.EmptyProt[C]();
 };

@@ -23,6 +23,7 @@ use alloc::prelude::*;
 use sanskrit_core::resolver::Context;
 use sanskrit_common::model::*;
 use native::check_valid_literal_construction;
+use sanskrit_core::native::base::resolved_native_type;
 
 
 pub struct TypeCheckerContext<'a,'b, S:Store + 'b> {
@@ -101,7 +102,7 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
     fn type_check_exp<'c>(&mut self, exp: &'c Exp) -> Result<ExprResult<'c>> {
 
         //Find out if the expression returns a result or a failure
-        let res = match *exp {
+        match *exp {
             //If a return process the blocks opcode
             Exp::Ret(ref op_seq, ref vals, ref drops) => {
                 //Type check the opcodes leading up to this Return
@@ -124,9 +125,7 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
                 // Signal that this block produces an error
                 Ok(ExprResult::Throw)
             },
-        };
-        res
-        
+        }
     }
 
     //The heavy lifter that type checks op code
@@ -152,6 +151,7 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
             OpCode::Field(value, base_ref, field) => self.field(value, base_ref, field, FetchMode::Consume),
             OpCode::CopyField(value, base_ref, field) => self.field(value, base_ref, field, FetchMode::Copy),
             OpCode::BorrowField(value, base_ref, field) => self.field(value, base_ref, field, FetchMode::Borrow),
+            OpCode::ModuleIndex => self.module_index(),
         }
     }
 
@@ -162,6 +162,11 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
         check_valid_literal_construction(&(data.0), &r_lit)?;
         //Tell the Stack that an element has appeared out of nowhere
         self.stack.provide(r_lit)
+    }
+
+    fn module_index(&mut self,) -> Result<()> {
+        //Tell the Stack that an element has appeared out of nowhere
+        self.stack.provide(resolved_native_type(NativeType::Index, &[]))
     }
 
     //_ as let is keyword
@@ -306,10 +311,8 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
         match mode {
             FetchMode::Consume => {
                 for (idx,field_type) in r_ctr[0 as usize].iter().enumerate() {
-                    if idx != field as usize {
-                        if !field_type.get_caps().contains(NativeCap::Drop) {
-                            return capability_missing_error()
-                        }
+                    if idx != field as usize && !field_type.get_caps().contains(NativeCap::Drop) {
+                        return capability_missing_error()
                     }
                 }
             },
@@ -359,7 +362,7 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
         let mut branching = self.stack.start_branching();
         //Process all the branches
         // Note: The stack ensures that each branch returns the same Elements (this includes their type)
-        for (i,case) in cases.into_iter().enumerate() {
+        for (i,case) in cases.iter().enumerate() {
             //if this is not the first iter then tell the stack that the next branch will be processed (will restore stack)
             if let Some(res) = loop_res {
                 self.stack.next_branch( &mut branching, res)?;
@@ -402,7 +405,7 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
         }
 
         //check that the case exists and has the right number of fields
-        if r_ctr[t as usize].len() == 0 && mode == FetchMode::Borrow {
+        if r_ctr[t as usize].is_empty() && mode == FetchMode::Borrow {
             return empty_borrow_error()
         }
 

@@ -119,7 +119,7 @@ pub fn check_native_type_constraints(typ: NativeType, types:&[Crc<ResolvedType>]
                     _ => return native_type_not_exist_error()
                 }
             }
-            return num_applied_generics_error();
+            num_applied_generics_error()
         },
 
         //Data and bool are not allowed to have type params
@@ -129,7 +129,7 @@ pub fn check_native_type_constraints(typ: NativeType, types:&[Crc<ResolvedType>]
             if types.is_empty() {
                 Ok(())
             } else {
-                return num_applied_generics_error();
+                num_applied_generics_error()
             }
         }
         //The number of tuple type parameters must much the number of its fields
@@ -141,7 +141,7 @@ pub fn check_native_type_constraints(typ: NativeType, types:&[Crc<ResolvedType>]
                 have_embed(types)?;
                 are_real(types)
             } else {
-                return num_applied_generics_error();
+                num_applied_generics_error()
             }
         },
         //These have 0 params
@@ -150,10 +150,10 @@ pub fn check_native_type_constraints(typ: NativeType, types:&[Crc<ResolvedType>]
         | NativeType::Unique
         | NativeType::Context => {
             //These have zero generic type
-            if types.len() == 0 {
+            if types.is_empty() {
                 Ok(())
             } else {
-                return num_applied_generics_error();
+                num_applied_generics_error()
             }
         },
 
@@ -163,7 +163,7 @@ pub fn check_native_type_constraints(typ: NativeType, types:&[Crc<ResolvedType>]
             if types.len() == 1 {
                 Ok(())
             } else {
-                return num_applied_generics_error();
+                num_applied_generics_error()
             }
         },
 

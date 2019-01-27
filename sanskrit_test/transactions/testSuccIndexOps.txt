@@ -1,26 +1,26 @@
-signed(A) transaction{
-   T1 = new;
-   T2 = new;
-   u1 = call IndexOps.ToUnique[T1](T1);
-   u2 = call IndexOps.ToUnique[T2](T2);
+signed(A) new(T1,T2) transaction{
+   t1 = token T1;
+   t2 = token T2;
+   u1 = call IndexOps.ToUnique[T1](t1);
+   u2 = call IndexOps.ToUnique[T2](t2);
    () = call Helpers.AssertNotEqUnique(u1,u2);
 };
 
-signed(A) transaction{
-   T1 = new;
-   T2 = new;
-   u1 = call IndexOps.ToUnique[T1](T1);
-   u2 = call IndexOps.ToUnique[T2](T2);
+signed(A) new(T1,T2) transaction{
+   t1 = token T1;
+   t2 = token T2;
+   u1 = call IndexOps.ToUnique[T1](t1);
+   u2 = call IndexOps.ToUnique[T2](t2);
    i1 = call IndexOps.GenIndex(u1);
    i2 = call IndexOps.GenIndex(u2);
    () = call Helpers.AssertNotEqIndex(i1,i2);
 };
 
-signed(A) transaction{
-   T1 = new;
-   T2 = new;
-   u1 = call IndexOps.ToUnique[T1](T1);
-   u2 = call IndexOps.ToUnique[T2](T2);
+signed(A) new(T1,T2) transaction{
+   t1 = token T1;
+   t2 = token T2;
+   u1 = call IndexOps.ToUnique[T1](t1);
+   u2 = call IndexOps.ToUnique[T2](t2);
    i1 = call IndexOps.GenIndex(u1);
    i2 = call IndexOps.GenIndex(u2);
    r1 = call IndexOps.ToRef(i1);
@@ -28,20 +28,20 @@ signed(A) transaction{
    () = call Helpers.AssertNotEqRef(r1,r2);
 };
 
-signed(A) transaction{
-   T1 = new;
-   u1 = call IndexOps.ToUnique[T1](T1);
+signed(A) new(T1) transaction{
+   t1 = token T1;
+   u1 = call IndexOps.ToUnique[T1](t1);
    i1 = call IndexOps.GenIndex(u1);
    r1 = call IndexOps.ToRef(i1);
    r2 = call IndexOps.ToRef(i1);
    () = call Helpers.AssertEqRef(r1,r2);
 };
 
-signed(A) transaction{
-   T1 = new;
-   T2 = new;
-   u1 = call IndexOps.ToUnique[T1](T1);
-   u2 = call IndexOps.ToUnique[T2](T2);
+signed(A) new(T1,T2) transaction{
+   t1 = token T1;
+   t2 = token T2;
+   u1 = call IndexOps.ToUnique[T1](t1);
+   u2 = call IndexOps.ToUnique[T2](t2);
    i1 = call IndexOps.GenIndex(u1);
    i2 = call IndexOps.GenIndex(u2);
    i3 = call IndexOps.DeriveIndex(i1,i2);
@@ -49,11 +49,11 @@ signed(A) transaction{
    () = call Helpers.AssertNotEqIndex(i3,i4);
 };
 
-signed(A) transaction{
-   T1 = new;
-   T2 = new;
-   u1 = call IndexOps.ToUnique[T1](T1);
-   u2 = call IndexOps.ToUnique[T2](T2);
+signed(A) new(T1,T2) transaction{
+   t1 = token T1;
+   t2 = token T2;
+   u1 = call IndexOps.ToUnique[T1](t1);
+   u2 = call IndexOps.ToUnique[T2](t2);
    i1 = call IndexOps.GenIndex(u1);
    i2 = call IndexOps.GenIndex(u2);
    i3 = call IndexOps.DeriveIndex(i1,i2);
@@ -65,9 +65,9 @@ signed(A) transaction{
 };
 
 
-signed(A) transaction{
-   T1 = new;
-   u1 = call IndexOps.ToUnique[T1](T1);
+signed(A) new(T1) transaction{
+   t1 = token T1;
+   u1 = call IndexOps.ToUnique[T1](t1);
    i1 = call IndexOps.GenIndex(u1);
    r1 = call IndexOps.ToRef(i1);
    d1 = call IndexOps.ToData(r1);
@@ -75,12 +75,26 @@ signed(A) transaction{
    () = call Helpers.AssertNotEqRef(r1,r2);
 };
 
-signed(A) transaction{
-   T1 = new;
-   u1 = call IndexOps.ToUnique[T1](T1);
+signed(A) new(T1) transaction{
+   t1 = token T1;
+   u1 = call IndexOps.ToUnique[T1](t1);
    i1 = call IndexOps.GenIndex(u1);
    r1 = call IndexOps.ToRef(i1);
    d1 = call IndexOps.ToData(r1);
    d2 = call IndexOps.ToData2(i1);
    () = call Helpers.AssertEqData20(d1,d2);
+};
+
+signed(A) transaction{
+   i1 = call IndexOps.ModIndex();
+   i2 = call IndexOps.ModIndex();
+   i3 = call IndexOps.ModIndex2();
+   () = call Helpers.AssertEqIndex(i1,i2);
+   () = call Helpers.AssertEqIndex(i3,i2);
+};
+
+signed(A) transaction{
+   i1 = call IndexOps.ModIndex();
+   i2 = call Helpers.ModIndex();
+   () = call Helpers.AssertNotEqIndex(i1,i2);
 };

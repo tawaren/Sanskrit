@@ -42,7 +42,7 @@ impl Heap {
     }
 
     pub fn new_arena(&self, size: usize) -> HeapArena {
-        let ptr = unsafe { self.buffer.borrow().as_ptr().offset(self.pos.get() as isize) };
+        let ptr = unsafe { self.buffer.borrow().as_ptr().add(self.pos.get()) };
         let align_offset = align_address(ptr, mem::align_of::<usize>());
         let start = self.pos.get();
         let end = start + size + align_offset;
@@ -127,11 +127,11 @@ impl<'h> HeapArena<'h> {
         let size = mem::size_of::<T>();
         let pos = self.pos.get();
         unsafe {
-            let ptr = self.buffer.borrow_mut().as_mut_ptr().offset(pos as isize);
+            let ptr = self.buffer.borrow_mut().as_mut_ptr().add(pos);
             let align_offset = align_address(ptr, mem::align_of::<T>());
             self.pos.set(pos + align_offset + size);
             if self.end >= self.pos.get() {
-                let ptr = ptr.offset(align_offset as isize) as *mut T;
+                let ptr = ptr.add(align_offset) as *mut T;
                 ptr::write(&mut (*ptr), val);
                 Ptr(&*ptr)
             } else {
@@ -140,24 +140,25 @@ impl<'h> HeapArena<'h> {
         }
     }
 
+    #[allow(clippy::mut_from_ref)]
     unsafe fn alloc_raw_slice<T: Sized + Copy>(&self, len: usize) -> &mut [T] {
         if self.locked.get() {panic!()}
         let size = len * mem::size_of::<T>();
         let pos = self.pos.get();
-        let ptr = self.buffer.borrow_mut().as_mut_ptr().offset(pos as isize);
+        let ptr = self.buffer.borrow_mut().as_mut_ptr().add(pos);
         let align_offset = align_address(ptr, mem::align_of::<T>());
         self.pos.set(pos + align_offset + size);
         if self.end >= self.pos.get() {
-            from_raw_parts_mut(ptr.offset(align_offset as isize) as *mut T, len)
+            from_raw_parts_mut(ptr.add(align_offset) as *mut T, len)
         } else {
             panic!();
         }
     }
 
     pub fn repeated_mut_slice<T:Copy+Sized>(&self, val:T, len: usize) -> Result<MutSlicePtr<T>> {
-        let mut slice = unsafe {self.alloc_raw_slice(len)};
-        for i in 0..len {
-            slice[i] = val;
+        let slice = unsafe {self.alloc_raw_slice(len)};
+        for elem in slice.iter_mut() {
+            *elem = val;
         }
         MutSlicePtr::new(slice)
     }
@@ -168,7 +169,7 @@ impl<'h> HeapArena<'h> {
     }
 
     pub fn iter_alloc_slice<T: Sized + Copy>(&self, vals: impl ExactSizeIterator<Item = T>) -> Result<SlicePtr<T>> {
-        let mut slice = unsafe {self.alloc_raw_slice(vals.len())};
+        let slice = unsafe {self.alloc_raw_slice(vals.len())};
         for (i,val) in vals.enumerate() {
             slice[i] = val;
         }
@@ -176,7 +177,7 @@ impl<'h> HeapArena<'h> {
     }
 
     pub fn iter_result_alloc_slice<T: Sized + Copy>(&self, vals: impl ExactSizeIterator<Item=Result<T>>) -> Result<SlicePtr<T>> {
-        let mut slice = unsafe {self.alloc_raw_slice(vals.len())};
+        let slice = unsafe {self.alloc_raw_slice(vals.len())};
         for (i,val) in vals.enumerate() {
             slice[i] = val?;
         }
@@ -241,7 +242,7 @@ impl<'h> HeapArena<'h> {
     }
 
     pub fn alloc_stack<T:Copy+Sized>(&self, size: usize) -> HeapStack<T> {
-        let mut slice = unsafe {self.alloc_raw_slice(size)};
+        let slice = unsafe {self.alloc_raw_slice(size)};
         HeapStack{
             slice,
             pos: 0
@@ -373,6 +374,10 @@ impl<'a, T:Copy + Sized> HeapStack<'a, T>{
 
     pub fn len(&self) -> usize {
         self.pos
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     pub fn get(&self, pos:usize) -> Result<&T> {

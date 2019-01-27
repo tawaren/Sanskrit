@@ -7,7 +7,6 @@ use sanskrit_common::capabilities::CapSet;
 use model::*;
 use ContextEnvironment;
 use sanskrit_common::arena::*;
-use sanskrit_common::encoding::*;
 use CONFIG;
 
 impl<'b> AdtDescriptor<'b> {
@@ -116,7 +115,7 @@ impl<'b> AdtDescriptor<'b> {
         //generate the value
         let new_val = if self.constructors.len() == 1 && fields.len() == 1 {
             //Wrapper Optimisation (Elimination of new type patter)
-            fields[0].clone()
+            fields[0]
         } else {
             alloc.alloc(Object::Adt(t,fields))?
         };
@@ -190,7 +189,7 @@ impl<'b> AdtDescriptor<'b> {
             let type_b = &self.constructors[0][0];
             //change the type but copy the value (wrapper optim)
             temp.copy_alloc_slice(&[StackEntry::new(
-                val.clone(),
+                *val,
                 type_b.execute(applies, alloc)?
             )])?
         } else {
@@ -203,7 +202,7 @@ impl<'b> AdtDescriptor<'b> {
                     let ctr_typs = &self.constructors[t as usize];
                     //for each field build a StackEntry
                     temp.iter_result_alloc_slice(fields.iter().zip(ctr_typs.iter()).map(|(obj, type_b)| Ok(StackEntry::new(
-                        obj.clone(),
+                        *obj,
                         type_b.execute(applies, alloc)?
                     ))))?
                 },
@@ -219,9 +218,8 @@ impl<'b> AdtDescriptor<'b> {
 impl<'b> FunctionDescriptor<'b> {
 
     //Executes a function
+    #[allow(clippy::too_many_arguments)]
     pub fn apply<'a, 'h>(&self, applies:&[(bool, Ptr<'a,RuntimeType<'a>>)], params:&[ValueRef], stack:&mut LinearScriptStack<'a,'h>, env:ContextEnvironment, alloc:&'a VirtualHeapArena<'h>, stack_alloc:&'a HeapArena<'h>, temporary_values:&HeapArena<'h>) -> Result<()> {
-
-
         //chekc that the right amount of type parameters are applied
         if applies.len() != self.generics.len() {
             return num_applied_generics_error()

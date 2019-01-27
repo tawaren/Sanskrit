@@ -148,11 +148,11 @@ impl<'a,'b, S:Store + 'b> Context<'a,'b, S> {
                 },
                 //its a generic, do a substitution
                 Some(Type::Generic(gref)) => match self.subs.get(gref.0 as usize) {
-                    None => return type_does_not_exist_error(),
+                    None => type_does_not_exist_error(),
                     Some(res) => Ok(res.clone()),
                 },
                 //ups no such type
-                None => return type_does_not_exist_error()
+                None => type_does_not_exist_error()
             }
         })
     }

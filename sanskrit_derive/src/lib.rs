@@ -107,12 +107,12 @@ fn impl_serialize_macro(ast:&DeriveInput) -> TokenStream {
                 }
             }
         },
-        Data::Union(ref du) => unimplemented!(),
+        Data::Union(_) => unimplemented!(),
     };
 
     let generics = &ast.generics;
-    let plain = extract_plain_generics(&ast.generics);
-    let argumented = extract_agumented_generics(&ast.generics, quote!{Serializable});
+    let plain = extract_plain_generics(generics);
+    let argumented = extract_agumented_generics(generics, quote!{Serializable});
     quote!{
         impl<#(#argumented),*> Serializable for #prefix<#(#plain),*> {
              fn serialize(&self, s:&mut Serializer) -> Result<()> {
@@ -175,7 +175,7 @@ fn impl_parsable_macro(ast:&DeriveInput) -> TokenStream {
                 })
             }
         },
-        Data::Union(ref du) => unimplemented!()
+        Data::Union(_) => unimplemented!()
     };
     let generics = &ast.generics;
     let alloc_id = extract_alloc_lifetime(generics);
@@ -235,12 +235,12 @@ fn impl_virtual_size_macro(ast:&DeriveInput) -> TokenStream {
             let res = max_all(&mut ed.variants.iter().map(|v|expr(v.fields.iter())).collect());
             quote!{1+#res} //1Byte for the tag
         },
-        Data::Union(ref du) => unimplemented!(),
+        Data::Union(_) => unimplemented!(),
     };
 
     let generics = &ast.generics;
-    let plain = extract_plain_generics(&ast.generics);
-    let argumented = extract_agumented_generics(&ast.generics, quote!{VirtualSize});
+    let plain = extract_plain_generics(generics);
+    let argumented = extract_agumented_generics(generics, quote!{VirtualSize});
 
     quote!{
         impl<#(#argumented),*> VirtualSize for #prefix<#(#plain),*> {
@@ -268,7 +268,7 @@ fn pattern_body_serialize<'a>(fs: impl Iterator<Item=&'a Field>) -> TokenStream 
 fn pattern_body_parse<'a>(fs: impl Iterator<Item=&'a Field>) -> TokenStream {
     let mut named = false;
     let mut body = Vec::new();
-    for (idx,f) in fs.enumerate() {
+    for f in fs {
         body.push(match &f.ident {
             None => quote!{Parsable::parse(p,alloc)?},
             Some(id) => {
@@ -320,7 +320,7 @@ fn extract_alloc_lifetime(generics:&Generics) -> Option<TokenStream> {
             match  a.path.segments.last() {
                 None => {}
                 Some(Pair::Punctuated(p,_)) | Some(Pair::End(p))  => {
-                    if p.ident.to_string() == "AllocLifetime" {
+                    if p.ident == "AllocLifetime" {
                         return Some(l.clone().lifetime.into_token_stream())
                     }
                 }

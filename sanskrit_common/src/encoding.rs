@@ -7,7 +7,6 @@ use errors::*;
 use core::ops::Deref;
 use model::*;
 use arena::*;
-use core::fmt::Debug;
 
 
 pub trait ParserAllocator {
@@ -582,8 +581,7 @@ impl<'a, T:Parsable<'a>+ Copy + VirtualSize> Parsable<'a> for Ptr<'a, T> {
         p.increment_depth()?;
         let res = {T::parse(p,alloc)?};
         p.decrement_depth();
-        let ret = alloc.poly_alloc(res);
-        ret
+        alloc.poly_alloc(res)
     }
 }
 

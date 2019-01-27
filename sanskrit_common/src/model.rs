@@ -46,37 +46,37 @@ pub enum NativeType {
 #[derive(Ord, PartialOrd, Eq, PartialEq, Copy, Clone, Hash, Debug, Parsable, Serializable)]
 #[repr(u8)]
 pub enum NativeFunc {
-    And,        //Deploys a logical and on bools or bitwise on ints
-    Or,         //Deploys a logical or on bools or bitwise on ints
-    Xor,        //Deploys a logical xor on bools or bitwise on ints
-    Not,        //Deploys a logical not on bools or bitwise on ints
-    Extend,     //Increases the size of a int without changing its value
-    Cut,        //Decreases the size of an int without changing its value (throws if not possible)
-    SignCast,   //transforms a signed int to an unsigned and vice versa without changing its value (throws if not possible)
-    Add,        //Does an arithmetic addition of two ints (throws on under or overflow)
-    Sub,        //Does an arithmetic subtraction of two ints (throws on under or overflow)
-    Mul,        //Does an arithmetic multiplication of two ints (throws on under or overflow)
-    Div,        //Does an arithmetic dividation of two ints (throws on a division by zero)
-    Eq,         //Compares two types for equality
-    Hash,       //Calculates the hash of a val is structurally encoded
-    PlainHash,  //Calculates the hash of a plain data primitive without special encoding
-    Lt,         //Compares two values to decide if one is less than the other
-    Gt,         //Compares two values to decide if one is greater than the other
-    Lte,        //Compares two values to decide if one is less than or equal the other
-    Gte,        //Compares two values to decide if one is greater or equal than the other
-    ToData,     //Converts numbers, uniques, singleton, refs, indexes to data
-    Concat,     //Concatenates two data values
-    SetBit,     //Sets a bit in a data value to 1/0
-    GetBit,     //Checks if a bit in a data value is 1/0
-    ToUnique,   //Generates a Unique from a singleton (consuming it in the process)
-    GenUnique,  //Generates a new Unique from the context (generating a new context as well)
-    FullHash,   //Gets the Hash of the full transaction (including the Signatures) - from Context
-    TxTHash,    //Gets the Hash of the transaction (not including te signatures) - from Context
-    CodeHash,   //Gets the Hash of the code only - from Context
-    BlockNo,    //The BlockNo of the block containing the transaction  - from Context
-    GenIndex,   //Generates a index from either a unique or plain data (consumes the value allowing to generate unique indexes)
-    ToRef,      //Generates a ref from either an index or plain data
-    Derive,     //Combines 2 indexes or 2 refs to a new one allowing derive indexes & refs deterministically
+    And,                //Deploys a logical and on bools or bitwise on ints
+    Or,                 //Deploys a logical or on bools or bitwise on ints
+    Xor,                //Deploys a logical xor on bools or bitwise on ints
+    Not,                //Deploys a logical not on bools or bitwise on ints
+    Extend,             //Increases the size of a int without changing its value
+    Cut,                //Decreases the size of an int without changing its value (throws if not possible)
+    SignCast,           //transforms a signed int to an unsigned and vice versa without changing its value (throws if not possible)
+    Add,                //Does an arithmetic addition of two ints (throws on under or overflow)
+    Sub,                //Does an arithmetic subtraction of two ints (throws on under or overflow)
+    Mul,                //Does an arithmetic multiplication of two ints (throws on under or overflow)
+    Div,                //Does an arithmetic dividation of two ints (throws on a division by zero)
+    Eq,                 //Compares two types for equality
+    Hash,               //Calculates the hash of a val is structurally encoded
+    PlainHash,          //Calculates the hash of a plain data primitive without special encoding
+    Lt,                 //Compares two values to decide if one is less than the other
+    Gt,                 //Compares two values to decide if one is greater than the other
+    Lte,                //Compares two values to decide if one is less than or equal the other
+    Gte,                //Compares two values to decide if one is greater or equal than the other
+    ToData,             //Converts numbers, uniques, singleton, refs, indexes to data
+    Concat,             //Concatenates two data values
+    SetBit,             //Sets a bit in a data value to 1/0
+    GetBit,             //Checks if a bit in a data value is 1/0
+    ToUnique,           //Generates a Unique from a singleton (consuming it in the process)
+    GenUnique,          //Generates a new Unique from the context (generating a new context as well)
+    FullHash,           //Gets the Hash of the full transaction (including the Signatures) - from Context
+    TxTHash,            //Gets the Hash of the transaction (not including te signatures) - from Context
+    CodeHash,           //Gets the Hash of the code only - from Context
+    BlockNo,            //The BlockNo of the block containing the transaction  - from Context
+    GenIndex,           //Generates a index from either a unique or plain data (consumes the value allowing to generate unique indexes)
+    ToRef,              //Generates a ref from either an index or plain data
+    Derive,             //Combines 2 indexes or 2 refs to a new one allowing derive indexes & refs deterministically
 }
 
 //All the Available Native Errors

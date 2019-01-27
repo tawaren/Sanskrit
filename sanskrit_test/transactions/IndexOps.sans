@@ -38,4 +38,14 @@ module IndexOps {
         c = call $Derive[$ref](a,b);
         return c;
     };
+
+    public fun ModIndex():(a:$index){
+       a = moduleIndex;
+       return a;
+    };
+
+    public fun ModIndex2():(b:$index){
+       b = moduleIndex;
+       return b;
+    };
 }

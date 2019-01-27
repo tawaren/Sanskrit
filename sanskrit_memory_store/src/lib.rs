@@ -145,7 +145,7 @@ impl Store for BTreeMapStore {
     fn list(&self, class: StorageClass) -> Vec<(Hash, Vec<u8>)> {
         fn process(map:&BTreeMap<Hash, Vec<u8>>) -> Vec<(Hash, Vec<u8>)> {
             //clone everithing into mem
-            map.iter().map(|(h,v)|(h.clone(),v.clone())).collect()
+            map.iter().map(|(h,v)|(*h,v.clone())).collect()
         }
         //select the right map
         match class {

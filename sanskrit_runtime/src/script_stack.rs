@@ -7,7 +7,8 @@ use model::*;
 use elem_store::ElemStore;
 use sanskrit_common::store::Store;
 use sanskrit_common::arena::*;
-use sanskrit_common::encoding::*;
+use script_interpreter::unique_hash;
+use script_interpreter::HashingDomain;
 
 
 #[derive(Clone, Copy, Debug)]
@@ -80,7 +81,8 @@ impl<'a, 'h> LinearStack<StackEntry<'a>,SliceBuilder<'a, usize>> for LinearScrip
 
 impl<'a,'h> LinearScriptStack<'a,'h> {
 
-    pub fn new(alloc:&'a VirtualHeapArena<'h>, stack:HeapStack<'h,Elem<StackEntry<'a>,SlicePtr<'a, usize>>>) -> Result<Self> {
+    //todo: seperate methods per section
+    pub fn new(alloc:&'a VirtualHeapArena<'h>, stack:HeapStack<'h,Elem<StackEntry<'a>,SlicePtr<'a, usize>>>, new:&'a [Ptr<'a, RuntimeType<'a>>]) -> Result<Self> {
         let mut script_stack = LinearScriptStack {
             stack,
             alloc
@@ -99,16 +101,31 @@ impl<'a,'h> LinearScriptStack<'a,'h> {
         //lock it so it is not used by other stuff except for provide_borrowed
         script_stack.get_elem_absolute(0)?.lock(1,true)?;
 
+        //create and push singleton types
+        for n in new {
+            if let RuntimeType::NewType { txt, offset } = &**n {
+                let val = unique_hash(txt, HashingDomain::Singleton, u64::from(*offset), alloc)?;
+                let singleton = StackEntry::new(
+                    alloc.alloc(val)?,
+                    alloc.alloc(RuntimeType::NativeType {
+                        caps: NativeType::Singleton.base_caps(), //ok as n_type is phantom
+                        typ: NativeType::Singleton,
+                        applies: alloc.copy_alloc_slice(&[*n])?
+                    })?
+                );
+                script_stack.provide(singleton)?;
+            }
+        }
+
         //add the context on top -- As the Context has the Drop Cap the clean up wil snap it
-        script_stack.provide(StackEntry{
-            store_borrow: false,
-            val: alloc.alloc(Object::Context(0))?,
-            typ: alloc.alloc(RuntimeType::NativeType{
+        script_stack.provide(StackEntry::new(
+            alloc.alloc(Object::Context(0))?,
+            alloc.alloc(RuntimeType::NativeType{
                 caps: NativeType::Context.base_caps(),
                 typ: NativeType::Context,
                 applies: SlicePtr::empty(),
             })?
-        })?;
+        ))?;
 
         Ok(script_stack)
     }

@@ -22,11 +22,8 @@ use sanskrit_common::model::*;
 use sanskrit_common::store::*;
 use sanskrit_runtime::model::Error;
 use sanskrit_runtime::model::LitDesc;
-use sanskrit_runtime::model::Object;
 use core::mem;
 use sanskrit_common::arena::*;
-use sanskrit_common::encoding::ParserAllocator;
-use sanskrit_common::encoding::VirtualSize;
 use gas_table::gas;
 
 struct State {
@@ -146,7 +143,7 @@ impl State {
     }
 
     fn end_branching(&mut self, (gas, max_gas):BranchPoint) {
-        self.gas = (gas + self.max_gas);
+        self.gas = gas + self.max_gas;
         self.max_gas = self.gas.max(max_gas);
     }
 
@@ -206,7 +203,7 @@ impl<'b,'h> Compactor<'b,'h> {
     //Strip a function from the Module Hash and assign it a number
     // Additionally does compact the function and stores it in the transaction (needed to strip it from Hash)
     pub fn emit_func<S:Store>(&mut self, fun:&FunctionComponent, module:&Hash, offset:u8, context:&Context<S>) -> Result<(u16,u8,CallResources)> {
-        match self.fun_mapping.get(&(module.clone(),offset)) {
+        match self.fun_mapping.get(&(*module,offset)) {
             None => {
                 //find the next free number
                 let next_idx = self.functions.len();
@@ -219,7 +216,7 @@ impl<'b,'h> Compactor<'b,'h> {
                 //get the infos needed during compaction (number, number of returns)
                 let res = (next_idx as u16,fun.returns.len() as u8, resources);
                 //remember the info
-                let old = self.fun_mapping.insert((module.clone(),offset), res);
+                let old = self.fun_mapping.insert((*module,offset), res);
                 //  for the case that someone gets the idea to allow recursion
                 assert_eq!(old,None);
                 //fill the slot with the compacted function
@@ -316,6 +313,7 @@ impl<'b,'h> Compactor<'b,'h> {
             OpCode::CopyPack(typ, tag, ref values) => self.pack(typ, tag,values, context),
             OpCode::Invoke(func, ref values) => self.invoke(func,values, context),
             OpCode::Try(ref try, ref catches) => self.try(try,catches, context),
+            OpCode::ModuleIndex => self.module_index(context),
         }
     }
 
@@ -401,7 +399,7 @@ impl<'b,'h> Compactor<'b,'h> {
                 Some(Tag(t)) => t,
             };
 
-            if r_ctr[tag as usize].len() == 0 {
+            if r_ctr[tag as usize].is_empty() {
                 //eliminate the unpack it produces nothing
                 Ok(None)
             }  else {
@@ -520,6 +518,18 @@ impl<'b,'h> Compactor<'b,'h> {
         //generate the runtime code
         Ok(Some(ROpCode::Try(new_try, new_catches.finish())))
     }
+
+    fn module_index<S:Store>(&mut self,context:&Context<S>) -> Result<Option<ROpCode<'b>>> {
+        //Extract the ModuleHash
+        let data = context.get_mod(ModRef(0))?.to_hash();
+        //process the lit
+        self.state.use_gas(gas::module_index());
+        //push the lit on both stacks
+        self.state.push_real();
+        //create the runtime op
+        //this is not domain hashed, as everithing else is domain hashed at runtime this is ok
+        Ok(Some(ROpCode::Lit(self.alloc.copy_alloc_slice(&data)?,LitDesc::Data)))
+    }
     
     fn invoke<S:Store>(&mut self, fun:FuncRef, vals:&[ValueRef], context:&Context<S>) -> Result<Option<ROpCode<'b>>> {
         //diferentiate between native and Custom
@@ -588,7 +598,7 @@ impl<'b,'h> Compactor<'b,'h> {
                     }
                 },
                 NativeFunc::Concat => (ROpCode::Concat(self.translate_ref(vals[0]), self.translate_ref(vals[1])),1, gas::concat(applies)),
-                NativeFunc::GetBit => (ROpCode::GetBit(self.translate_ref(vals[0]), self.translate_ref(vals[1])),1, gas::get_bit(applies)),
+                NativeFunc::GetBit => (ROpCode::GetBit(self.translate_ref(vals[0]), self.translate_ref(vals[1])),1, gas::get_bit()),
                 NativeFunc::SetBit => (ROpCode::SetBit(self.translate_ref(vals[0]), self.translate_ref(vals[1]),self.translate_ref(vals[2])),1, gas::set_bit(applies)),
                 //is a NoOp, as Unique & Singleton & Manifest & Index & Ref have same repr: Data(20)
                 NativeFunc::ToUnique => {
@@ -598,7 +608,6 @@ impl<'b,'h> Compactor<'b,'h> {
                     //return eliminated indicator
                     return Ok(None)
                 },
-                //todo: Data alloc mem use
                 NativeFunc::GenUnique => (ROpCode::GenUnique(self.translate_ref(vals[0])),2,gas::gen_unique()),
                 NativeFunc::FullHash => (ROpCode::FullHash,1,gas::fetch_env_hash()),
                 NativeFunc::TxTHash => (ROpCode::TxTHash,1,gas::fetch_env_hash()),
@@ -610,8 +619,9 @@ impl<'b,'h> Compactor<'b,'h> {
                     ResolvedType::Native {  typ: NativeType::Data(_), .. } => (ROpCode::GenIndex(self.translate_ref(vals[0])),1, gas::hash_plain(applies)),
                     //these are no ops --  same bit representation -- |Index is for toref, others are for genIndex|
                     ResolvedType::Native {  typ: NativeType::Unique, .. }
-                    | ResolvedType::Native {  typ: NativeType::Singleton, .. } => {
-                        //push the compiletime stack
+                    | ResolvedType::Native {  typ: NativeType::Singleton, .. }
+                    | ResolvedType::Native {  typ: NativeType::Index, .. } => {
+                    //push the compiletime stack
                         let pos = self.get(vals[0]);
                         self.state.push_alias(pos);
                         //return eliminated indicator

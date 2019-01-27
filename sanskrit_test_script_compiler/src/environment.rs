@@ -24,6 +24,7 @@ use sanskrit_runtime::model::NativeAdtType;
 use hex::decode;
 use sanskrit_common::arena::HeapArena;
 use sanskrit_common::encoding::ParserAllocator;
+use sanskrit_runtime::model::ImpRef;
 
 
 pub struct Region(pub HashMap<Id,usize>);
@@ -376,27 +377,45 @@ impl<'a> CodeImportBuilder<'a> {
 
 pub struct ScriptContext<'a,'c, 'h>{
     mapping:&'a HashMap<Id,ModuleEntry>,
+    pub imports: HashMap<Hash,ImpRef>,
+    pub wit: Vec<SlicePtr<'c,u8>>,
     sigs:&'a HashMap<Id,u8>,
-    news:HashMap<Id,u8>,
+    news:&'a HashMap<Id,u8>,
     pub alloc:&'c HeapArena<'h>,
 }
 
 
 impl<'a,'c, 'h> ScriptContext<'a,'c, 'h> {
 
-    pub fn new(mapping:&'a HashMap<Id,ModuleEntry>, sigs:&'a HashMap<Id,u8>, alloc:&'c HeapArena<'h> ) -> Self {
+    pub fn new(mapping:&'a HashMap<Id,ModuleEntry>, sigs:&'a HashMap<Id,u8>, news:&'a HashMap<Id,u8>, alloc:&'c HeapArena<'h> ) -> Self {
         ScriptContext {
             mapping,
+            imports: HashMap::new(),
+            wit: Vec::new(),
             sigs,
-            news:HashMap::new(),
+            news,
             alloc
         }
     }
 
-    pub fn push_new_type(&mut self, id:Id) {
-        let len = self.news.len();
-        assert!(len <= u8::max_value() as usize);
-        self.news.insert(id, len as u8);
+    pub fn get_singleton_offset(&self, new_type:&Id) -> u8 {
+        (self.news.len() as u8)  - self.news[new_type] - 1
+    }
+
+    pub fn generate_imp_ref(&mut self, imp:&Hash) -> ImpRef {
+        if self.imports.contains_key(imp) {
+            return self.imports[imp]
+        }
+
+        let imp_ref = ImpRef(self.imports.len() as u8);
+        self.imports.insert(*imp,imp_ref);
+        imp_ref
+    }
+
+    pub fn generate_wit_ref(&mut self, num:SlicePtr<'c, u8>) -> u8 {
+        let wit_ref = self.wit.len() as u8;
+        self.wit.push(num);
+        wit_ref
     }
 
     pub fn generate_func_ref(&mut self, r:&Ref) -> Result<RFuncRef,String> {
@@ -405,7 +424,10 @@ impl<'a,'c, 'h> ScriptContext<'a,'c, 'h> {
             Ref::Module(ref m_id, ref e_id) => {
                 let module = &self.mapping[m_id];
                 let offset = module.index[e_id].elem_index as u8;
-                Ok(RFuncRef::Ref(store_hash(&[&module.hash.unwrap(),&[offset]])))
+                Ok(RFuncRef{
+                    module: self.generate_imp_ref(&module.hash.unwrap()),
+                    offset
+                })
             },
         }
     }
@@ -416,7 +438,7 @@ impl<'a,'c, 'h> ScriptContext<'a,'c, 'h> {
             Ref::Module(ref m_id, ref e_id) => {
                 let module = &self.mapping[m_id];
                 let offset = module.index[e_id].elem_index as u8;
-                Ok(RAdtRef::Ref(store_hash(&[&module.hash.unwrap(), &[offset]])))
+                Ok(RAdtRef::Ref(self.generate_imp_ref(&module.hash.unwrap()), offset))
             },
             Ref::Native(ref id) => {
                 let bt = match id.0.as_ref() {
@@ -453,7 +475,7 @@ impl<'a,'c, 'h> ScriptContext<'a,'c, 'h> {
                 let module = &self.mapping[m_id];
                 let offset = self.mapping[m_id].index[e_id].elem_index as u8;
                 let applies = self.alloc.iter_result_alloc_slice(t_ref.applies.iter().map(|tar|self.generate_type_ref(tar)))?;
-                TypeApplyRef::Module(store_hash(&[&module.hash.unwrap(), &[offset]]), applies)
+                TypeApplyRef::Module(self.generate_imp_ref(&module.hash.unwrap()), offset, applies)
             },
             Ref::Native(ref id) => {
                 let typ = match id.0.as_ref() {
@@ -532,13 +554,13 @@ impl<'a,'c, 'h> ScriptContext<'a,'c, 'h> {
             Ref::Account(ref addr) => {
                 let decoded = decode(&addr.0[2..42]).unwrap();
                 let hash_data_ref = array_ref!(decoded,0,20);
-                TypeApplyRef::RemoteAccount(hash_data_ref.to_owned())
+                TypeApplyRef::RemoteAccount(self.generate_imp_ref(hash_data_ref))
             }
 
             Ref::Txt(ref txt, ref num) => {
                 let decoded = decode(&txt.0[2..42]).unwrap();
                 let hash_data_ref = array_ref!(decoded,0,20);
-                TypeApplyRef::RemoteNewType(hash_data_ref.to_owned(),num.0.parse::<u8>().unwrap())
+                TypeApplyRef::RemoteNewType(self.generate_imp_ref(hash_data_ref),num.0.parse::<u8>().unwrap())
             }
         }))
     }

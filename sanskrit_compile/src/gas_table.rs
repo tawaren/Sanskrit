@@ -48,14 +48,14 @@ pub mod gas {
                 NativeType::SInt(s)
                 | NativeType::UInt(s) => obj_factor + (s as usize)*byte_factor,
                 NativeType::Bool => obj_factor + byte_factor,
-                NativeType::Tuple(s) => {
+                NativeType::Tuple(_) => {
                     let mut sum = obj_factor;
                     for appl in applies {
                         sum += traversing_statistics(&appl.typ,context,obj_factor,byte_factor)?;
                     }
                     sum
                 },
-                NativeType::Alternative(s) => {
+                NativeType::Alternative(_) => {
                     let mut max = 0;
                     for appl in applies {
                         max = max.max(traversing_statistics(&appl.typ,context,obj_factor,byte_factor)?);
@@ -80,7 +80,7 @@ pub mod gas {
                     let mut sum = obj_factor;
                     for f in &ctr.fields {
                         let typ = f.fetch(&new_context)?;
-                        sum += traversing_statistics(&f.fetch(&new_context)?,&new_context,obj_factor,byte_factor)?;
+                        sum += traversing_statistics(&typ,&new_context,obj_factor,byte_factor)?;
                     }
                     max = max.max(sum);
                 }
@@ -187,7 +187,7 @@ pub mod gas {
         (prim_width(&typ[2]) * BASIC_ALLOC) + 2*STACK_READ + STACK_PUSH + BASIC_ALLOC
     }
 
-    pub fn get_bit(typ:&[Crc<ResolvedType>]) -> usize {
+    pub fn get_bit() -> usize {
         BASIC_OP + 2*STACK_READ + STACK_PUSH + BASIC_ALLOC
     }
 
@@ -227,6 +227,10 @@ pub mod gas {
         } else {
             BASIC_ALLOC + STACK_READ + STACK_PUSH + BASIC_ALLOC
         }
+    }
+
+    pub fn module_index() -> usize {
+        (20 * BASIC_ALLOC) + STACK_READ + STACK_PUSH + BASIC_ALLOC
     }
 
     pub fn unpack(fields:usize) -> usize {

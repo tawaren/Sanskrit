@@ -8,7 +8,6 @@
 //!
 
 use sanskrit_runtime::model::*;
-use alloc::prelude::*;
 use sanskrit_common::store::*;
 use sanskrit_common::model::*;
 use sanskrit_core::model::*;
@@ -22,7 +21,6 @@ use sanskrit_core::model::resolved::ResolvedType;
 use sanskrit_core::model::resolved::ResolvedApply;
 use sanskrit_common::encoding::NoCustomAlloc;
 use sanskrit_common::arena::*;
-use sanskrit_common::encoding::ParserAllocator;
 
 pub trait ComponentProcessor {
     fn process_adt(&mut self, offset:u8, a_desc:&AdtDescriptor) -> Result<()>;
@@ -30,7 +28,7 @@ pub trait ComponentProcessor {
 }
 
 //Entry point that compiles all types and public functions of a module
-pub fn compile<'b, S:Store, P:ComponentProcessor>(module_hash:&Hash, store:&S, proc:&mut P) -> Result<()>{
+pub fn compile<S:Store, P:ComponentProcessor>(module_hash:&Hash, store:&S, proc:&mut P) -> Result<()>{
     //load the module
     let module:Module = store.parsed_get(StorageClass::Module,module_hash, usize::max_value(),&NoCustomAlloc())?;
     let resolver = StorageCache::new_complete(store);
@@ -42,7 +40,7 @@ pub fn compile<'b, S:Store, P:ComponentProcessor>(module_hash:&Hash, store:&S, p
         //Prepare the context
         let context = Context::from_store_adt(adt, *module_hash, &resolver)?;
         //call the generator
-        let adt = generate_adt_descriptor(adt,module_hash.clone(), offset as u8, &context, &alloc)?;
+        let adt = generate_adt_descriptor(adt,*module_hash, offset as u8, &context, &alloc)?;
         proc.process_adt(offset as u8,&adt)?;
         alloc = alloc.reuse();
     }
@@ -162,7 +160,7 @@ fn generate_function_descriptor<'b,'h, S:Store>(fun:&FunctionComponent, module:&
 //Helper to generate a type builder from a type
 pub fn resolved_type_to_builder<'b,'h>(typ:&ResolvedType, alloc:&'b HeapArena<'h>) -> Result<TypeBuilder<'b>> {
     //build an adt type
-    fn build_type<'b, 'h>(caps:CapSet, kind:TypeKind, applies:&Vec<ResolvedApply>, alloc:&'b HeapArena<'h>) -> Result<TypeBuilder<'b>> {
+    fn build_type<'b, 'h>(caps:CapSet, kind:TypeKind, applies:&[ResolvedApply], alloc:&'b HeapArena<'h>) -> Result<TypeBuilder<'b>> {
         //builders for thy applies
         let mut builders = alloc.slice_builder(applies.len())?;
         for ResolvedApply{is_phantom,typ} in applies {

@@ -114,6 +114,8 @@ OpCode:OpCode = {
     <assigs:Assigns> "call" <function:Ref> "[" <generics:Comma<Type>> "]" "(" <vars:Comma<Id>> ")" =>  OpCode::Call(assigs, function, generics, vars),
     <assigs:Assigns> "call" <function:Ref> "(" <vars:Comma<Id>> ")" =>  OpCode::Call(assigs, function, vec![], vars),
     <assigs:Assigns> "try" <b:Block> "catch" "{" <catches:Semi<Catch>> "}" => OpCode::Try(assigs, Box::new(b), catches),
+    <id:Id> "=" "moduleIndex" => OpCode::ModuleIndex(id),
+
 };
 
 Assigns:Vec<Id> = {

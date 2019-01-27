@@ -4,10 +4,16 @@ grammar;
 
 pub Transactions:Vec<Transaction> = <transactions:Semi<Transaction>> => transactions;
 
-Transaction:Transaction = "signed" "(" <sigs:Comma<Id>> ")" "transaction" "{" <codes:Semi<ScriptCode>> "}" => Transaction{sigs,codes};
+Transaction:Transaction = {
+    "signed" "(" <sigs:Comma<Id>> ")" "new" "(" <news:Comma<Id>> ")" "transaction" "{" <codes:Semi<ScriptCode>> "}" => Transaction{sigs,news,codes},
+    "new" "(" <news:Comma<Id>> ")" "transaction" "{" <codes:Semi<ScriptCode>> "}" => Transaction{sigs:vec![], news, codes},
+    "signed" "(" <sigs:Comma<Id>> ")" "transaction" "{" <codes:Semi<ScriptCode>> "}" => Transaction{sigs, news:vec![], codes},
+    "transaction" "{" <codes:Semi<ScriptCode>> "}" => Transaction{sigs:vec![], news:vec![], codes},
+};
 
 ScriptCode:ScriptCode = {
     <id:Id> "=" "lit" <lit:Lit> ":" <typ:Type> => ScriptCode::Lit(id, lit, typ),
+    <id:Id> "=" "wit" <lit:Lit> ":" <typ:Type> => ScriptCode::Lit(id, lit, typ),
     <id:Id> "=" "ref_lit" "'" <val:Id> "'" => ScriptCode::RefGen(id,val),
     <id:Id> "=" "copy" <var:Id> => ScriptCode::Copy(id,var),
     <id:Id> "=" <var:Id> => ScriptCode::Fetch(id,var,false),
@@ -20,11 +26,12 @@ ScriptCode:ScriptCode = {
     <id:Id> "=" "&pack" <typ:Type> "#" <ctr:Id> "(" <vars:Comma<Id>> ")" => ScriptCode::Pack(id,typ,ctr,vars,true),
     <assigs:Assigns> "call" <function:Ref> "[" <generics:Comma<Type>> "]" "(" <vars:Comma<Id>> ")" =>  ScriptCode::Call(assigs, function, generics, vars),
     <assigs:Assigns> "call" <function:Ref> "(" <vars:Comma<Id>> ")" =>  ScriptCode::Call(assigs, function, vec![], vars),
-    <id:Id> "=" "new" => ScriptCode::NewType(id),
+    <id:Id> "=" "token" <var:Id> => ScriptCode::Singleton(id,var,false),
+    <id:Id> "=" "&token" <var:Id> => ScriptCode::Singleton(id,var,true),
     <id:Id> "=" "load" <var:Id> => ScriptCode::Load(id, var, false),
     <id:Id> "=" "&load" <var:Id> => ScriptCode::Load(id, var, true),
     "store" <id:Id> => ScriptCode::Store(id),
-}
+};
 
 Type:Type = {
     <main:Ref> "[" <applies:Comma<Type>> "]" => Type{main,applies},

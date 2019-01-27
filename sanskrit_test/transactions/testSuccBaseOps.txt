@@ -5,7 +5,7 @@ signed(A) transaction{
 };
 
 signed(A) transaction{
-   a = lit 1:$u8;
+   a = wit 1:$u8;
    b = &pack SomeTypes.X[$u8]#Ctr(a);
    c = &unpack b:SomeTypes.X#Ctr;
 };
@@ -17,7 +17,7 @@ signed(A) transaction{
 };
 
 signed(A) transaction{
-   a = lit 1:$u8;
+   a = wit 1:$u8;
    b = copy a;
 };
 
@@ -27,7 +27,7 @@ signed(A) transaction{
 };
 
 signed(A) transaction{
-   a = lit 1:$u8;
+   a = wit 1:$u8;
    b = &a;
    free b;
 };
@@ -46,7 +46,7 @@ signed(A) transaction{
 };
 
 signed(A) transaction{
-   a = lit 1:$u8;
+   a = wit 1:$u8;
    aa = copy a;
    b = call BaseOps.Pack[$u8](aa);
    a2 = unpack b:BaseOps.Wrapper#Ctr;
@@ -62,7 +62,7 @@ signed(A) transaction{
 };
 
 signed(A) transaction{
-   a = lit 1:$u8;
+   a = wit 1:$u8;
    aa = copy a;
    b = pack BaseOps.Wrapper[$u8]#Ctr(aa);
    a2 = call BaseOps.Unpack[$u8](b);
@@ -78,7 +78,7 @@ signed(A) transaction{
 };
 
 signed(A) transaction{
-   a = lit 1:$u8;
+   a = wit 1:$u8;
    aa = copy a;
    b = call BaseOps.BorrowPack[$u8](aa);
    a2 = &unpack b:BaseOps.Wrapper#Ctr;
@@ -94,7 +94,7 @@ signed(A) transaction{
 };
 
 signed(A) transaction{
-   a = lit 1:$u8;
+   a = wit 1:$u8;
    aa = copy a;
    b = &pack BaseOps.Wrapper[$u8]#Ctr(aa);
    a2 = call BaseOps.BorrowUnpack[$u8](b);
@@ -110,8 +110,8 @@ signed(A) transaction{
 };
 
 signed(A) transaction{
-   a = lit 1:$u8;
-   b = lit -100:$i128;
+   a = wit 1:$u8;
+   b = wit -100:$i128;
    aa = copy a;
    bb = copy b;
    w = call BaseOps.Pack2[$u8,$i128](aa,bb);
@@ -132,8 +132,8 @@ signed(A) transaction{
 };
 
 signed(A) transaction{
-   a = lit 1:$u8;
-   b = lit -100:$i128;
+   a = wit 1:$u8;
+   b = wit -100:$i128;
    aa = copy a;
    bb = copy b;
    w = pack BaseOps.TwoOfTwo[$u8,$i128]#Ctr1(aa,bb);
@@ -154,8 +154,8 @@ signed(A) transaction{
 };
 
 signed(A) transaction{
-   a = lit 1:$u8;
-   b = lit -100:$i128;
+   a = wit 1:$u8;
+   b = wit -100:$i128;
    aa = copy a;
    bb = copy b;
    w = call BaseOps.BorrowPack2[$u8,$i128](aa,bb);
@@ -177,8 +177,8 @@ signed(A) transaction{
 };
 
 signed(A) transaction{
-   a = lit 1:$u8;
-   b = lit -100:$i128;
+   a = wit 1:$u8;
+   b = wit -100:$i128;
    aa = copy a;
    bb = copy b;
    w = &pack BaseOps.TwoOfTwo[$u8,$i128]#Ctr1(aa,bb);

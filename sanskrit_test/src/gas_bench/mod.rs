@@ -9,16 +9,24 @@ use sanskrit_runtime::ContextEnvironment;
 use sanskrit_runtime::interpreter::ExecutionContext;
 use sanskrit_common::arena::VirtualHeapArena;
 use sanskrit_runtime::Configuration;
+use sanskrit_runtime::script_stack::StackEntry;
+use sanskrit_common::linear_stack::Elem;
+use sanskrit_runtime::elem_store::CacheSlotMap;
+use sanskrit_runtime::script_stack::LinearScriptStack;
+use sanskrit_runtime::script_interpreter::Executor;
+use sanskrit_memory_store::BTreeMapStore;
+use sanskrit_runtime::elem_store::ElemStore;
+use sanskrit_common::linear_stack::LinearStack;
 
 pub const CONFIG: Configuration = Configuration {
     max_stack_depth:16*1024,
     max_frame_depth:512,
     max_heap_size:1024 * 1024,
-    max_script_stack_size:256,
+    max_script_stack_size:2 * 1024,
     max_code_size:16 * 1024 * 1024,
     max_structural_dept:64,
-    max_transaction_size:128 * 1024,
-    max_store_slots: 32,
+    max_transaction_size:16 * 1024 * 1024,
+    max_store_slots: 4,
     temporary_buffer: 24 * 255 //recalc
 };
 
@@ -163,7 +171,7 @@ fn execute_multi_ret_native<F>(b: &mut Bencher, v_gen:F, ops:&[Operand], rets:us
 }
 
 //i do not like the duplication bur found no otehr way
-fn execute_code<F,O>(b: &mut Bencher, v_gen:F, mut op:O, rets:usize, do_it:bool)
+fn execute_code<F,O>(b: &mut Bencher, v_gen:F, op:O, rets:usize, do_it:bool)
     where F: for <'a> Fn(&'a VirtualHeapArena)->Vec<Vec<Ptr<'a,Object<'a>>>>,
           O: for <'a> FnMut(&'a VirtualHeapArena, SlicePtr<'a,ValueRef>)->OpCode<'a>
 {
@@ -270,6 +278,86 @@ fn tree_obj<'a>(alloc:&'a VirtualHeapArena, leaf:Object<'a>, depth:u8) -> Ptr<'a
     }
 }
 
+fn execute_script<F,O>(b: &mut Bencher, v_gen:F, mut code_gen:O, rets:usize, do_it:bool)
+    where F: for <'a> Fn(&'a VirtualHeapArena)->Vec<Vec<StackEntry<'a>>>,
+          O: for <'a> FnMut(&'a VirtualHeapArena, SlicePtr<'a,ValueRef>)->ScriptCode<'a>
+{
+
+    let store = BTreeMapStore::new();
+    let heap = Heap::new(CONFIG.calc_heap_size(2), 2.0);
+    //Create Allocator
+    let size_script_stack = Heap::elems::<Elem<StackEntry,SlicePtr<usize>>>(CONFIG.max_script_stack_size);
+    let size_code_alloc = CONFIG.max_code_size;
+    let size_alloc = CONFIG.max_heap_size;
+    let size_interpreter_stack = Heap::elems::<Ptr<Object>>(CONFIG.max_stack_depth);
+    let size_frame_stack = Heap::elems::<Frame>(CONFIG.max_frame_depth);
+
+    let txt_alloc = heap.new_virtual_arena(CONFIG.max_transaction_size); //todo: will be static conf later (or block consensus)
+    let temporary_values = heap.new_arena(CONFIG.temporary_buffer);
+    let alloc = heap.new_virtual_arena(size_alloc);
+    let code_alloc = heap.new_virtual_arena(size_code_alloc);
+    let structural_arena = heap.new_arena(size_interpreter_stack + size_frame_stack + size_script_stack);
+
+    let env = ContextEnvironment {
+        block_no:0,
+        full_hash:[0;20],
+        txt_hash:[0;20],
+        code_hash:[0;20]
+    };
+    let vals_sets = v_gen(&alloc);
+    let first = vals_sets[0].len();
+    assert!(vals_sets.iter().all(|s|s.len() == first));
+
+    let stack = 1000*rets;
+    let mut script_code = txt_alloc.slice_builder(1000).unwrap();
+    let mut elems = 0;
+    'outer: for _ in 0..1000 { //do at most 1000 (necessary if rets == 0)
+        for (s1,vals) in vals_sets.iter().enumerate() {
+            let mut ins = code_alloc.slice_builder(vals.len()).unwrap();
+            for a in 0..vals.len() {
+                ins.push(ValueRef((elems+s1*vals.len()+vals.len() - a - 1) as u16));
+            }
+            let ins = ins.finish();
+            script_code.push(txt_alloc.alloc( code_gen(&txt_alloc, ins)).unwrap());
+            elems+=rets;
+            if elems >= stack && rets != 0 {break 'outer} //rets != 0 necessary or we can not test that
+        }
+    }
+    let script_code = script_code.finish();
+    b.iter(||{
+        let sub_alloc = alloc.temp_arena().unwrap();
+        let sub_structural = structural_arena.temp_arena();
+        let slot_map = CacheSlotMap::new(&sub_structural, CONFIG.max_store_slots,(0,0,0)).unwrap();
+        let script_stack = sub_structural.alloc_stack(CONFIG.max_script_stack_size);
+
+        let mut stack = LinearScriptStack::new(&sub_alloc,script_stack,&[]).unwrap();
+
+        for vals in &vals_sets {
+            for v in vals {
+                stack.provide(*v).unwrap();
+            }
+        }
+
+        let mut exec = Executor{
+            accounts: SlicePtr::empty(),
+            witness: SlicePtr::empty(),
+            newtypes: SlicePtr::empty(),
+            imports: SlicePtr::empty(),
+            stack,
+            env,
+            store:ElemStore::new(&store, slot_map),
+            alloc: &sub_alloc,
+            code_alloc: &code_alloc,
+            stack_alloc: &structural_arena,
+        };
+        //execute the transaction
+        if do_it {
+            exec.execute(&script_code, &temporary_values).unwrap();
+        };
+    })
+}
+
+
 mod add;
 mod sub;
 mod div;
@@ -305,3 +393,5 @@ mod _let;
 mod try;
 mod invoke;
 mod switch;
+
+mod script_lit;

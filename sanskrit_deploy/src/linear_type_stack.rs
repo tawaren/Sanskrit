@@ -39,11 +39,10 @@ struct Frame{
 //it is a route through
 #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone, Debug)]
 pub struct BlockInfo(usize);                                    // usize is Block Start Index
+type PreviousReturns = Vec<Elem<Crc<ResolvedType>,Vec<usize>>>; // Vec<Elem> are the elems returned from a previous branch
+
 pub struct BranchInfo{
-    results:Option<(
-        Vec<Elem<Crc<ResolvedType>,Vec<usize>>>,              // Vec<Elem> are the elems returned from a previous branch
-        BTreeSet<usize>         // BTreeSet<usize> are the cross frame consumes from a previous branch (absolute indexes)
-    )>
+    results:Option<(PreviousReturns, BTreeSet<usize>)>         // BTreeSet<usize> are the cross frame consumes from a previous branch (absolute indexes)
 }
 
 //migration structure
@@ -344,7 +343,7 @@ impl LinearTypeStack {
                     )),
                     BranchInfo{results:Some((old_res, old_captures)), ..} => {
                         //Compare the old elems with the new one
-                        for (old, new) in old_res.into_iter().zip((0..res.len()).rev()) {
+                        for (old, new) in old_res.iter().zip((0..res.len()).rev()) {
                             //Note: The Vec<usize>s in the were sorted by steal ret  -- so this is ok
                             if old != self.get_elem(ValueRef(new as u16))? {
                                 return branch_ret_mismatch();
@@ -465,7 +464,7 @@ impl LinearTypeStack {
                 return fun_sig_mismatch();
             }
 
-            let bor_set = elem.status.borrowing.slice().into_iter().map(|c|*c).collect::<BTreeSet<usize>>();
+            let bor_set = elem.status.borrowing.slice().iter().cloned().collect::<BTreeSet<usize>>();
 
             //check len beforehand to ensure borrows has no duplicates (if it has the eq check afterward would fail=
             if bor_set.len() != borrows.len() {

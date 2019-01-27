@@ -4,12 +4,11 @@ use utils::Crc;
 use utils::build_set;
 use alloc::rc::Rc;
 use native::base::resolved_native_type;
-use alloc::prelude::*;
 use sanskrit_common::model::*;
 
 
 //Produces a resolved function
-pub fn resolved_native_function(fun: NativeFunc, base_applies:&Vec<Crc<ResolvedType>>) -> Result<ResolvedSignature> {
+pub fn resolved_native_function(fun: NativeFunc, base_applies:&[Crc<ResolvedType>]) -> Result<ResolvedSignature> {
     Ok(match fun {
         //And, Or, Xor have no risks and 2 borrow parameter and one return (all of the same type)
         NativeFunc::And | NativeFunc::Or | NativeFunc::Xor => {
@@ -284,9 +283,9 @@ pub fn check_native_function_constraints(fun: NativeFunc, types:&[Crc<ResolvedTy
         };
 
         Ok(match **typ1 {
-            ResolvedType::Native{ typ: NativeType::UInt(s), .. } => s as u16 == width,
-            ResolvedType::Native{ typ: NativeType::SInt(s), .. } => s as u16 == width,
-            ResolvedType::Native{ typ: NativeType::Data(s), .. } => s as u16 == width,
+            ResolvedType::Native{ typ: NativeType::UInt(s), .. } => u16::from(s) == width,
+            ResolvedType::Native{ typ: NativeType::SInt(s), .. } => u16::from(s) == width,
+            ResolvedType::Native{ typ: NativeType::Data(s), .. } => s == width,
             ResolvedType::Native{ typ: NativeType::Ref, .. } => 20 == width,
             ResolvedType::Native{ typ: NativeType::Index, .. } => 20 == width,
             ResolvedType::Native{ typ: NativeType::Unique, .. } => 20 == width,
@@ -311,9 +310,9 @@ pub fn check_native_function_constraints(fun: NativeFunc, types:&[Crc<ResolvedTy
             true
         }
         match **typ {
-            ResolvedType::Generic { .. } => return false,
+            ResolvedType::Generic { .. } => false,
             ResolvedType::Import { ref applies, .. }
-            | ResolvedType::Native { ref applies, .. } => return are_args_sized(applies),
+            | ResolvedType::Native { ref applies, .. } => are_args_sized(applies),
         }
     }
 
@@ -387,7 +386,7 @@ pub fn check_native_function_constraints(fun: NativeFunc, types:&[Crc<ResolvedTy
         //toUnique has 1 type param which is the param of the Singleton
         NativeFunc::ToUnique => true_or_err(types.len() == 1),
         //genUnique & Context infos have 0 type param which is the param of the Singleton
-        NativeFunc::GenUnique | NativeFunc::FullHash | NativeFunc::TxTHash | NativeFunc::CodeHash | NativeFunc::BlockNo => true_or_err(types.len() == 0),
+        NativeFunc::GenUnique | NativeFunc::FullHash | NativeFunc::TxTHash | NativeFunc::CodeHash | NativeFunc::BlockNo => true_or_err(types.is_empty()),
         //Gen a Key has one type pram that can be a unique/singleton/data
         NativeFunc::GenIndex => true_or_err(types.len() == 1 && is_key_source(&types[0])?),
         //Derives a new Key from two existing ones (or a ref from 2 Refs)

@@ -88,6 +88,13 @@ module Helpers {
         return;
     };
 
+    public risky<.ValidationError> fun AssertEqIndex(v1:$index,v2:$index):() {
+        r = call $Eq[$index](v1,v2);
+        () = call .AssertTrue(r);
+        drop r;
+        return;
+    };
+
     public risky<.ValidationError> fun AssertEqRef(v1:$ref,v2:$ref):() {
         r = call $Eq[$ref](v1,v2);
         () = call .AssertTrue(r);
@@ -133,5 +140,10 @@ module Helpers {
 
     public fun EnforceType[A](a:A):() {
         return;
+    };
+
+    public fun ModIndex():(a:$index){
+       a = moduleIndex;
+       return a;
     };
 }

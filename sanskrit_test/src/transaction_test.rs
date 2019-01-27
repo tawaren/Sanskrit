@@ -218,6 +218,24 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected="Required capability is missing")]
+    fn create_fail5() {
+        parse_and_compile_and_run("testFailCreate5").unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected="Required capability is missing")]
+    fn create_fail6() {
+        parse_and_compile_and_run("testFailCreate6").unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected="Required capability is missing")]
+    fn create_fail7() {
+        parse_and_compile_and_run("testFailCreate7").unwrap();
+    }
+
+    #[test]
     #[should_panic(expected="Can not access already moved slot")]
     fn same_arg() {
         parse_and_compile_and_run("testFailDualArg").unwrap();

@@ -106,6 +106,7 @@ pub enum OpCode {
     Pack(Id, Type, Id, Vec<Id>, bool),
     Call(Vec<Id>, Ref, Vec<Type>, Vec<Id>),
     Try(Vec<Id>, Box<Block>, Vec<Catch>),
+    ModuleIndex(Id),
 }
 
 
@@ -249,12 +250,14 @@ impl Block {
 
 pub struct Transaction {
     pub sigs:Vec<Id>,
+    pub news:Vec<Id>,
     pub codes:Vec<ScriptCode>
 }
 
 
 pub enum ScriptCode {
     Lit(Id, Lit, Type),
+    Wit(Id, Lit, Type),
     RefGen(Id,Id),
     Copy(Id,Id),
     Fetch(Id,Id,bool),
@@ -263,7 +266,7 @@ pub enum ScriptCode {
     Unpack(Vec<Id>, Id, Ref, Id, bool),
     Pack(Id, Type, Id, Vec<Id>, bool),
     Call(Vec<Id>, Ref, Vec<Type>, Vec<Id>),
-    NewType(Id),
+    Singleton(Id, Id, bool),
     Load(Id, Id, bool),
     Store(Id),
 }
