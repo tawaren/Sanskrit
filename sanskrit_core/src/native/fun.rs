@@ -302,8 +302,9 @@ pub fn check_native_function_constraints(fun: NativeFunc, types:&[Crc<ResolvedTy
                 if !a.is_phantom {
                     match *a.typ {
                         ResolvedType::Generic { is_phantom:false, ..} => return false,
-                        ResolvedType::Import { ref applies, .. } => if !are_args_sized(applies) { return false },
-                        _ => {},
+                        ResolvedType::Import { ref applies, .. }
+                        | ResolvedType::Native { ref applies, .. } => if !are_args_sized(applies) { return false },
+                        _ => {}
                     }
                 }
             }
@@ -311,6 +312,7 @@ pub fn check_native_function_constraints(fun: NativeFunc, types:&[Crc<ResolvedTy
         }
         match **typ {
             ResolvedType::Generic { .. } => false,
+            ResolvedType::Image { ref typ } => is_sized(typ),
             ResolvedType::Import { ref applies, .. }
             | ResolvedType::Native { ref applies, .. } => are_args_sized(applies),
         }
@@ -321,6 +323,7 @@ pub fn check_native_function_constraints(fun: NativeFunc, types:&[Crc<ResolvedTy
         Ok(match **typ {
             ResolvedType::Native{ typ: NativeType::Unique, .. } => true,
             ResolvedType::Native{ typ: NativeType::Singleton, .. } => true,
+            ResolvedType::Native{ typ: NativeType::Account, .. } => true,
             ResolvedType::Native{ typ: NativeType::Data(_), .. } => true,
             _ => false,
         })

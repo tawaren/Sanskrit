@@ -25,6 +25,7 @@ pub fn get_native_type_constructors(typ: NativeType, base_applies:&[ResolvedAppl
         | NativeType::UInt(_)
         | NativeType::Data(_)
         | NativeType::Singleton
+        | NativeType::Account
         | NativeType::Unique
         | NativeType::Index
         | NativeType::Ref
@@ -60,7 +61,7 @@ pub fn resolved_native_type(typ: NativeType, base_applies:&[Crc<ResolvedType>]) 
             applies: vec![]
         },
         //these have a phantom generic (does not influence caps)
-        NativeType::Singleton => ResolvedType::Native {
+        NativeType::Account | NativeType::Singleton => ResolvedType::Native {
             //In the absence of (non-phantom) generics all the caps are the same
             base_caps,
             caps:base_caps,
@@ -158,7 +159,7 @@ pub fn check_native_type_constraints(typ: NativeType, types:&[Crc<ResolvedType>]
         },
 
         //These have 1 param
-        NativeType::Singleton => {
+        NativeType::Account | NativeType::Singleton => {
             //These have 1 generic type
             if types.len() == 1 {
                 Ok(())

@@ -16,7 +16,6 @@ use sanskrit_core::model::BaseType;
 use sanskrit_core::model::AdtLink;
 use sanskrit_core::model::PublicImport;
 use sanskrit_core::model::BodyImport;
-use sanskrit_common::store::store_hash;
 use sanskrit_runtime::model::TypeApplyRef;
 use sanskrit_runtime::model::FuncRef as RFuncRef;
 use sanskrit_runtime::model::AdtRef as RAdtRef;
@@ -398,8 +397,12 @@ impl<'a,'c, 'h> ScriptContext<'a,'c, 'h> {
         }
     }
 
-    pub fn get_singleton_offset(&self, new_type:&Id) -> u8 {
-        (self.news.len() as u8)  - self.news[new_type] - 1
+    pub fn get_token_offset(&self, new_type:&Id) -> u8 {
+        if self.news.contains_key(new_type){
+            self.news.len()  - self.news[new_type] as usize - 1
+        } else {
+            self.sigs.len()  - self.sigs[new_type] as usize - 1 + self.news.len() as usize
+        } as u8
     }
 
     pub fn generate_imp_ref(&mut self, imp:&Hash) -> ImpRef {
@@ -540,7 +543,6 @@ impl<'a,'c, 'h> ScriptContext<'a,'c, 'h> {
                 TypeApplyRef::Native(typ,applies)
             },
 
-            //todo: Stack??
             Ref::This(ref id) => {
                 match self.news.get(id) {
                     Some(idx) => TypeApplyRef::NewType(*idx),

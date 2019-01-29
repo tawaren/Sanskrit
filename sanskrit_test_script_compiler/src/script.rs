@@ -127,10 +127,10 @@ impl<'a> Compiler<'a> {
             };
             for comp in &self.parsed[&id].module.components {
                 match *comp {
-                    Component::Adt { caps, ref generics, ref ctrs, ref name,  .. } => {
+                    Component::Adt { caps, ref generics, ref ctrs,  .. } => {
                         let mut imp = CodeImportBuilder::new(&self.parsed[&id], generics, &self.parsed);
 
-                        let generics = generics.iter().map(|g|g.compile(&mut imp)).collect();
+                        let generics = generics.iter().map(|g|g.compile()).collect();
                         let constructors =  ctrs.iter().map(|p|p.compile(&mut imp)).collect::<Result<_,_>>()?;
                         let import = imp.generate_import();
 
@@ -145,8 +145,8 @@ impl<'a> Compiler<'a> {
                     Component::Fun { ref vis, ref risks, ref generics, ref params, ref returns ,ref code, .. } => {
                         let mut imp = CodeImportBuilder::new(&self.parsed[&id], generics, &self.parsed);
 
-                        let visibility = vis.compile(&generics,&mut imp);
-                        let generics = generics.iter().map(|g|g.compile(&mut imp)).collect();
+                        let visibility = vis.compile(&generics);
+                        let generics = generics.iter().map(|g|g.compile()).collect();
                         let risk = risks.iter().map(|r|imp.import_err_ref(r)).collect::<Result<_,_>>()?;
 
                         let alloc = NoCustomAlloc();

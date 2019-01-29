@@ -266,7 +266,7 @@ pub enum ScriptCode {
     Unpack(Vec<Id>, Id, Ref, Id, bool),
     Pack(Id, Type, Id, Vec<Id>, bool),
     Call(Vec<Id>, Ref, Vec<Type>, Vec<Id>),
-    Singleton(Id, Id, bool),
+    Token(Id, Id, bool),
     Load(Id, Id, bool),
     Store(Id),
 }

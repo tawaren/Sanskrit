@@ -25,6 +25,7 @@ impl ModuleLink {
     }
 }
 
+//todo: can we move to core??
 //All the Available Native types
 #[derive(Ord, PartialOrd, Eq, PartialEq, Copy, Clone, Hash, Debug, Parsable, Serializable, VirtualSize)]
 pub enum NativeType {
@@ -37,11 +38,12 @@ pub enum NativeType {
     Context,            // A Context gives access to blockchain constants and allows to generate unique numbers
     Unique,             // A Unique value (exist only once as it is linear so Eq always returns false)
     Singleton,          // A Unique value that is assosiated wit a new type (meaning only one Singleton[T] exists per T)
+    Account,            // A Token assosiated with an Account that can only be produces over a vallid signature
     Index,              // A Index that represents a storage slot on the blockchain
     Ref,                // A references that points ot  a storage slot on the blockchain
 }
 
-
+//todo: can we move to core??
 //All the Available Native Funcitions
 #[derive(Ord, PartialOrd, Eq, PartialEq, Copy, Clone, Hash, Debug, Parsable, Serializable)]
 #[repr(u8)]

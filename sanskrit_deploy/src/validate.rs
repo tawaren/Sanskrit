@@ -168,7 +168,9 @@ fn check_ctr_fields<S:Store>(adt:&AdtComponent, context:&Context<S>) -> Result<(
                 },
                 //if a regular type check that it does support the caps
                 ResolvedType::Import { extended_caps, .. }
-                | ResolvedType::Native { extended_caps, .. } => check_cap_constraints(must_have_caps,extended_caps)?
+                | ResolvedType::Native { extended_caps, .. } => check_cap_constraints(must_have_caps,extended_caps)?,
+                //Image full fill all constraints by definition
+                ResolvedType::Image { .. } => {}
             }
         }
     }
@@ -196,8 +198,8 @@ fn check_function_import_visibility<S:Store>(fun:&FunctionComponent, context:&Co
     // is seperate for readability purposes
     fn check_typ_protection(fun:&FunctionComponent, typ:&Crc<ResolvedType>) -> Result<()> {
         match &**typ {
-            //Natives are primitive and owned collectively
-            ResolvedType::Native{ .. } => visibility_violation(),
+            //Natives & Images are owned collectively
+            ResolvedType::Image {..} | ResolvedType::Native{ .. } => visibility_violation(),
             //Imported ones must be from this Module
             ResolvedType::Import { module, .. } => {
                 //We must own the type to use it under protection (shared types are collectively owned)

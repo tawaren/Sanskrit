@@ -8,6 +8,7 @@ use sanskrit_common::arena::*;
 impl<'a> RuntimeType<'a> {
     pub fn get_caps(&self) -> CapSet {
         match *self {
+            RuntimeType::Image { .. } => CapSet::open(),
             RuntimeType::Custom { caps, .. } => caps,
             RuntimeType::NativeType { caps, .. } => caps,
             RuntimeType::NewType { .. } => CapSet::empty(),
@@ -22,6 +23,9 @@ impl<'b> TypeBuilder<'b> {
         fn execute_rec<'a,'b,'h>(cur:&TypeBuilder<'b>, refs:&[Ptr<'a,RuntimeType<'a>>], alloc:&'a VirtualHeapArena<'h>) -> Result<Ptr<'a,RuntimeType<'a>>> {
             match &*cur {
                 TypeBuilder::Ref(TypeInputRef(idx)) => Ok(refs[*idx as usize]),
+                TypeBuilder::Image(inner_builder) => alloc.alloc(RuntimeType::Image{
+                    typ: execute_rec(inner_builder,refs,alloc)?
+                }),
                 TypeBuilder::Dynamic(base_caps, kind, ref appls) => {
                     let mut caps = *base_caps;
                     let mut applies = alloc.slice_builder(appls.len())?;

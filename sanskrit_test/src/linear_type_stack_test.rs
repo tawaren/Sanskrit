@@ -162,7 +162,7 @@ mod tests {
         test(|stack|{
             stack.provide_new();
             let t = stack.introduce_new();
-            stack.unpack(ValueRef(0), &vec![t], false).unwrap();
+            stack.unpack(ValueRef(0), &vec![t], FetchMode::Consume).unwrap();
             stack.drop(ValueRef(1)).unwrap();
             (vec![stack.consumed(1)], vec![stack.owned(0)])
         });
@@ -175,7 +175,7 @@ mod tests {
             stack.provide_new();
             let t = stack.introduce_new();
             stack.drop(ValueRef(0)).unwrap();
-            stack.unpack(ValueRef(0), &vec![t], false).unwrap();
+            stack.unpack(ValueRef(0), &vec![t], FetchMode::Consume).unwrap();
             (vec![stack.consumed(1)], vec![stack.owned(0)])
         });
     }
@@ -245,7 +245,7 @@ mod tests {
         test(|stack|{
             stack.provide_new();
             let t = stack.introduce_new();
-            stack.unpack(ValueRef(0), &vec![t], true).unwrap();
+            stack.unpack(ValueRef(0), &vec![t], FetchMode::Borrow).unwrap();
             stack.drop(ValueRef(1)).unwrap();
             (vec![stack.untouched(1)], vec![stack.borrowed(0, vec![ValueRef(0)])])
         });
@@ -282,7 +282,7 @@ mod tests {
         test(|stack|{
             stack.provide_new();
             let t = stack.introduce_new();
-            stack.unpack(ValueRef(0), &vec![t], true).unwrap();
+            stack.unpack(ValueRef(0), &vec![t], FetchMode::Borrow).unwrap();
             stack.drop(ValueRef(0)).unwrap();
             (vec![stack.untouched(1)], vec![stack.borrowed(0, vec![ValueRef(0)])])
         });
@@ -334,7 +334,7 @@ mod tests {
             stack.provide_new();
             let t = stack.introduce_new();
             stack.drop(ValueRef(0)).unwrap();
-            stack.unpack(ValueRef(0), &vec![t], true).unwrap();
+            stack.unpack(ValueRef(0), &vec![t], FetchMode::Borrow).unwrap();
             (vec![stack.untouched(1)], vec![stack.borrowed(0, vec![ValueRef(0)])])
         });
     }
@@ -383,7 +383,7 @@ mod tests {
         test(|stack|{
             stack.provide_new();
             let t = stack.introduce_new();
-            stack.unpack(ValueRef(0), &[t], true).unwrap();
+            stack.unpack(ValueRef(0), &[t], FetchMode::Borrow).unwrap();
             stack.free(ValueRef(1)).unwrap();
             (vec![stack.consumed(0)], vec![stack.borrowed(1, vec![ValueRef(0)])])
         });
@@ -458,7 +458,7 @@ mod tests {
             let block = stack.start_block();
             stack.provide_new();
             let t = stack.introduce_new();
-            stack.unpack(ValueRef(0), &[t], false).unwrap();
+            stack.unpack(ValueRef(0), &[t], FetchMode::Consume).unwrap();
             stack.end_block(block, ExprResult::Return(&[ValueRef(1)], &[ValueRef(0)])).unwrap();
             (vec![], vec![stack.owned(0)])
         });
@@ -502,7 +502,7 @@ mod tests {
     fn reach_outside4() {
         test(|stack|{
             let t = stack.introduce_new();
-            stack.unpack(ValueRef(20), &[t], false).unwrap();
+            stack.unpack(ValueRef(20), &[t], FetchMode::Consume).unwrap();
             (vec![], vec![stack.owned(0)])
         });
     }
@@ -512,7 +512,7 @@ mod tests {
     fn reach_outside5() {
         test(|stack|{
             let t = stack.introduce_new();
-            stack.unpack(ValueRef(20), &[t], true).unwrap();
+            stack.unpack(ValueRef(20), &[t], FetchMode::Borrow).unwrap();
             (vec![], vec![stack.borrowed(0, vec![ValueRef(21)])])
         });
     }
@@ -567,7 +567,7 @@ mod tests {
             let block = stack.start_block();
             stack.provide_new();
             let t = stack.introduce_new();
-            stack.unpack(ValueRef(0), &[t], true).unwrap();
+            stack.unpack(ValueRef(0), &[t], FetchMode::Borrow).unwrap();
             stack.end_block(block, ExprResult::Return(&[ValueRef(0)], &[])).unwrap();
             (vec![], vec![stack.borrowed(0, vec![ValueRef(0)])])
         });
@@ -638,7 +638,7 @@ mod tests {
             let block = stack.start_block();
             stack.provide_new();
             let t = stack.introduce_new();
-            stack.unpack(ValueRef(0), &[t], true).unwrap();
+            stack.unpack(ValueRef(0), &[t], FetchMode::Borrow).unwrap();
             stack.end_block(block, ExprResult::Return(&[ValueRef(0),ValueRef(1)], &[])).unwrap();
             (vec![], vec![stack.borrowed(0, vec![ValueRef(0)]),stack.owned(1)])
         });
@@ -991,7 +991,7 @@ mod tests {
         test(|stack|{
             stack.provide_new();
             let t = stack.introduce_new();
-            stack.unpack(ValueRef(0), &[t], false).unwrap();
+            stack.unpack(ValueRef(0), &[t], FetchMode::Consume).unwrap();
             (vec![stack.consumed(1)], vec![stack.owned(0)])
         });
     }
@@ -1003,7 +1003,7 @@ mod tests {
             stack.provide_new();
             let t0 = stack.introduce_new();
             let t1 = stack.introduce_new();
-            stack.unpack(ValueRef(0), &[t0, t1], false).unwrap();
+            stack.unpack(ValueRef(0), &[t0, t1], FetchMode::Consume).unwrap();
             (vec![stack.consumed(2)], vec![stack.owned(1), stack.owned(0)])
         });
     }
@@ -1056,7 +1056,7 @@ mod tests {
         test(|stack|{
             stack.provide_new();
             let t = stack.introduce_new();
-            stack.unpack(ValueRef(0), &[t], true).unwrap();
+            stack.unpack(ValueRef(0), &[t], FetchMode::Borrow).unwrap();
             (vec![stack.untouched(1)], vec![stack.borrowed(0, vec![ValueRef(0)])])
         });
     }
@@ -1068,7 +1068,7 @@ mod tests {
             stack.provide_new();
             let t0 = stack.introduce_new();
             let t1 = stack.introduce_new();
-            stack.unpack(ValueRef(0), &[t0, t1], true).unwrap();
+            stack.unpack(ValueRef(0), &[t0, t1], FetchMode::Borrow).unwrap();
             (vec![stack.untouched(2)], vec![stack.borrowed(1, vec![ValueRef(0)]),stack.borrowed(0, vec![ValueRef(1)])])
         });
     }
@@ -1115,7 +1115,7 @@ mod tests {
         test(|stack|{
             stack.provide_new();
             let t = stack.introduce_new();
-            stack.unpack(ValueRef(0), &[t], false).unwrap();
+            stack.unpack(ValueRef(0), &[t], FetchMode::Consume).unwrap();
             stack.free(ValueRef(1)).unwrap();
             (vec![stack.consumed(1)], vec![stack.owned(0)])
         });
@@ -1172,7 +1172,7 @@ mod tests {
             let block = stack.start_block();
             stack.provide_new();
             let t = stack.introduce_new();
-            stack.unpack(ValueRef(0), &[t], false).unwrap();
+            stack.unpack(ValueRef(0), &[t], FetchMode::Consume).unwrap();
             stack.end_block(block, ExprResult::Return(&[ValueRef(0)], &[])).unwrap();
             (vec![], vec![stack.owned(0)])
         });
@@ -1243,10 +1243,10 @@ mod tests {
             let t1 = stack.introduce_new();
             let mut branching = stack.start_branching();
             stack.provide(t0.clone()).unwrap();
-            stack.unpack(ValueRef(0), &[t1.clone()], false).unwrap();
+            stack.unpack(ValueRef(0), &[t1.clone()], FetchMode::Consume).unwrap();
             stack.next_branch(&mut branching, ExprResult::Return(&[ValueRef(0)], &[])).unwrap();
             stack.provide(t0).unwrap();
-            stack.unpack(ValueRef(0), &[t1], false).unwrap();
+            stack.unpack(ValueRef(0), &[t1], FetchMode::Consume).unwrap();
             stack.end_branching(branching, ExprResult::Return(&[ValueRef(0)], &[])).unwrap();
             (vec![], vec![stack.owned(0)])
         });
@@ -1425,7 +1425,7 @@ mod tests {
             stack.provide_new();
             let block = stack.start_block();
             let t = stack.introduce_new();
-            stack.unpack(ValueRef(0),&[t.clone(),t.clone(),t.clone()],true).unwrap();
+            stack.unpack(ValueRef(0),&[t.clone(),t.clone(),t.clone()],FetchMode::Borrow).unwrap();
             stack.transform(ValueRef(2), t.clone(), FetchMode::Borrow).unwrap();
             stack.transform(ValueRef(2), t.clone(), FetchMode::Borrow).unwrap();
             stack.transform(ValueRef(2), t.clone(), FetchMode::Borrow).unwrap();
@@ -1598,7 +1598,7 @@ mod tests {
         test(|stack|{
             stack.provide_new();
             let t = stack.introduce_new();
-            stack.unpack(ValueRef(0),&[t], true).unwrap();
+            stack.unpack(ValueRef(0),&[t], FetchMode::Borrow).unwrap();
             assert!(stack.is_borrowed(ValueRef(0)).unwrap());
             (vec![stack.untouched(1)], vec![stack.borrowed(0, vec![ValueRef(0)])])
         });
@@ -1863,7 +1863,7 @@ mod tests {
         test(|stack|{
             stack.provide_new();
             let t = stack.introduce_new();
-            stack.unpack(ValueRef(0),&[t],false).unwrap();
+            stack.unpack(ValueRef(0),&[t],FetchMode::Consume).unwrap();
             (vec![stack.consumed(1)], vec![stack.owned(0)])
         });
     }
@@ -1874,7 +1874,7 @@ mod tests {
         test(|stack|{
             stack.provide_new();
             let t = stack.introduce_new();
-            stack.unpack(ValueRef(0),&[t],true).unwrap();
+            stack.unpack(ValueRef(0),&[t],FetchMode::Borrow).unwrap();
             (vec![stack.untouched(1)], vec![stack.borrowed(0, vec![ValueRef(0)])])
         });
     }
@@ -1889,8 +1889,8 @@ mod tests {
             stack.provide_new();
             let t0 = stack.introduce_new();
             let t1 = stack.introduce_new();
-            stack.unpack(ValueRef(3),&[t0],false).unwrap();
-            stack.unpack(ValueRef(2),&[t1],true).unwrap();
+            stack.unpack(ValueRef(3),&[t0],FetchMode::Consume).unwrap();
+            stack.unpack(ValueRef(2),&[t1],FetchMode::Borrow).unwrap();
             (vec![stack.untouched(6),stack.consumed(5),stack.untouched(4),stack.untouched(3),stack.untouched(2)],
              vec![stack.owned(1),stack.borrowed(0, vec![ValueRef(2)])])
         });
@@ -1903,7 +1903,7 @@ mod tests {
             let t0 = stack.introduce_new();
             let t1 = stack.introduce_new();
             let t2 = stack.introduce_new();
-            stack.unpack(ValueRef(0),&[t0,t1,t2],false).unwrap();
+            stack.unpack(ValueRef(0),&[t0,t1,t2],FetchMode::Consume).unwrap();
             (vec![stack.consumed(3)], vec![stack.owned(2),stack.owned(1),stack.owned(0)])
         });
     }
@@ -1915,7 +1915,7 @@ mod tests {
             let t0 = stack.introduce_new();
             let t1 = stack.introduce_new();
             let t2 = stack.introduce_new();
-            stack.unpack(ValueRef(0),&[t0,t1,t2],true).unwrap();
+            stack.unpack(ValueRef(0),&[t0,t1,t2],FetchMode::Borrow).unwrap();
             (vec![stack.untouched(3)],
              vec![stack.borrowed(2, vec![ValueRef(0)]),stack.borrowed(1, vec![ValueRef(1)]),stack.borrowed(0, vec![ValueRef(2)])])
         });
@@ -2368,7 +2368,7 @@ mod tests {
             let t0 = stack.introduce_new();
             let t1 = stack.introduce_new();
             let block = stack.start_block();
-                stack.unpack(ValueRef(0), &[t1.clone(), t1.clone()], true).unwrap();
+                stack.unpack(ValueRef(0), &[t1.clone(), t1.clone()], FetchMode::Borrow).unwrap();
                 stack.pack(&[ValueRef(0), ValueRef(1)], t0.clone(), FetchMode::Borrow).unwrap();
             stack.end_block(block, ExprResult::Return(&[ValueRef(0)], &[])).unwrap();
             (vec![stack.untouched(2)], vec![stack.borrowed(1, vec![ValueRef(0)])])
@@ -2382,7 +2382,7 @@ mod tests {
             let t0 = stack.introduce_new();
             let t1 = stack.introduce_new();
             let block = stack.start_block();
-                stack.unpack(ValueRef(0), &[t1.clone(), t1.clone()], true).unwrap();
+                stack.unpack(ValueRef(0), &[t1.clone(), t1.clone()], FetchMode::Borrow).unwrap();
                 stack.pack(&[ValueRef(1), ValueRef(0)], t0.clone(), FetchMode::Borrow).unwrap();
             stack.end_block(block, ExprResult::Return(&[ValueRef(0)], &[])).unwrap();
             (vec![stack.untouched(2)], vec![stack.borrowed(1, vec![ValueRef(0)])])
@@ -2397,7 +2397,7 @@ mod tests {
             let t0 = stack.introduce_new();
             let t1 = stack.introduce_new();
             let block = stack.start_block();
-                stack.unpack(ValueRef(0), &[t1.clone(), t1.clone()], true).unwrap();
+                stack.unpack(ValueRef(0), &[t1.clone(), t1.clone()], FetchMode::Borrow).unwrap();
                 stack.pack(&[ValueRef(0), ValueRef(0)], t0.clone(), FetchMode::Borrow).unwrap();
             stack.end_block(block, ExprResult::Return(&[ValueRef(0)], &[])).unwrap();
             (vec![stack.untouched(2)], vec![stack.borrowed(1, vec![ValueRef(0)])])
@@ -2412,7 +2412,7 @@ mod tests {
             let t0 = stack.introduce_new();
             let t1 = stack.introduce_new();
             let block = stack.start_block();
-            stack.unpack(ValueRef(0), &[t1.clone(), t1.clone()], true).unwrap();
+            stack.unpack(ValueRef(0), &[t1.clone(), t1.clone()], FetchMode::Borrow).unwrap();
             stack.pack(&[ValueRef(1), ValueRef(1)], t0.clone(), FetchMode::Borrow).unwrap();
             stack.end_block(block, ExprResult::Return(&[ValueRef(0)], &[])).unwrap();
             (vec![stack.untouched(2)], vec![stack.borrowed(1, vec![ValueRef(0)])])

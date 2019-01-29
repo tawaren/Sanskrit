@@ -431,7 +431,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected="borrow declaration mismatch")]
+    #[should_panic(expected="Input not allowed to be borrowed")]
     fn borrow_unpack_fail() {
         parse_and_compile("testFailBorrowUnpack").unwrap();
     }

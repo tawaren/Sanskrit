@@ -194,7 +194,7 @@ impl OpCode {
 }
 
 impl Visibility {
-    pub fn compile(&self, generics: &[Generic], imp: &mut CodeImportBuilder) -> RVisibility {
+    pub fn compile(&self, generics: &[Generic]) -> RVisibility {
         match *self {
             Visibility::Private => RVisibility::Private,
             Visibility::Public => RVisibility::Public,
@@ -211,7 +211,7 @@ impl Visibility {
 }
 
 impl Generic {
-    pub fn compile(&self, imp: &mut CodeImportBuilder) -> RGeneric {
+    pub fn compile(&self) -> RGeneric {
         if self.phantom {
             RGeneric::Phantom
         } else {
@@ -333,8 +333,8 @@ impl ScriptCode {
                 RScriptCode::Invoke(f_ref, types,inputs)
             },
 
-            ScriptCode::Singleton(ref assig, ref param, borrow) => {
-                let pos = imp.get_singleton_offset(param);
+            ScriptCode::Token(ref assig, ref param, borrow) => {
+                let pos = imp.get_token_offset(param);
                 let from_v = ValueRef((env.stack_depth + pos as usize) as u16 );
                 env.push_new(assig.clone());
                 if borrow {

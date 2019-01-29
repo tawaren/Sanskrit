@@ -6,8 +6,6 @@ use model::Hash;
 
 //Trait representing a store
 //Allows it to be flexible from Temporary in Memeory, over stateless in Memeory to persistent
-//todo: remove the Parser requirement from store
-//todo: add helper implements: serialized_store, parsed_get
 pub trait Store {
     //Check if something is their
     fn contains(&self, class:StorageClass, key: &Hash) -> bool;

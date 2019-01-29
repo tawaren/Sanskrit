@@ -31,6 +31,8 @@ pub struct ResolvedApply{
 pub enum ResolvedType {
     //A generic import that was not substituted (happens only if it is a top level generic)
     Generic { extended_caps: CapSet, caps:CapSet, offset:u8, is_phantom:bool },
+    //An Image type capturing the information of another type
+    Image { typ: Crc<ResolvedType> },
     //An imported type (can be from same module if Module == This)
     Import { extended_caps: CapSet, caps: CapSet, base_caps:CapSet, module:Rc<ModuleLink> , offset:u8, applies: Vec<ResolvedApply>},
     //A Native type
@@ -78,6 +80,7 @@ impl Crc<ResolvedType> {
             ResolvedType::Generic { extended_caps, .. }
             | ResolvedType::Native { extended_caps, .. }
             | ResolvedType::Import { extended_caps, .. } => extended_caps,
+            ResolvedType::Image { .. } => CapSet::open(),
         }
     }
 
@@ -92,22 +95,14 @@ impl Crc<ResolvedType> {
             ResolvedType::Generic { caps, .. }
             | ResolvedType::Native { caps, .. }
             | ResolvedType::Import { caps, .. } => caps,
-        }
-    }
-
-    //checks if it is not a phantom
-    pub fn is_real(&self) -> bool {
-        match **self {
-            ResolvedType::Generic { is_phantom,  .. } => !is_phantom,
-            ResolvedType::Import { .. }
-            | ResolvedType::Native { .. } => true,
+            ResolvedType::Image { .. } => CapSet::open()
         }
     }
 
     //checks if this type is a literal
     pub fn is_literal(&self) -> bool {
         match **self {
-            ResolvedType::Generic { .. } | ResolvedType::Import { .. } => false,
+            ResolvedType::Image { .. } | ResolvedType::Generic { .. } | ResolvedType::Import { .. } => false,
             ResolvedType::Native { typ, .. } => is_native_literal(typ),
         }
     }
@@ -119,7 +114,7 @@ impl Crc<ResolvedType> {
                 ModuleLink::This(_) => true,
                 _ => false
             },
-            ResolvedType::Native { .. } | ResolvedType::Generic { .. }  => false,
+            ResolvedType::Image { .. } |  ResolvedType::Native { .. } | ResolvedType::Generic { .. }  => false,
         }
     }
 }

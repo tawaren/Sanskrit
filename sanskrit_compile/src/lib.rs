@@ -53,7 +53,6 @@ impl<'a, S:Store> ComponentProcessor for StoreDescriptorProcessor<'a, S> {
 //compiles a whole module
 pub fn compile_module<S:Store>(store:&S, module_hash:Hash) -> Result<()>{
     //todo: ensure that the store makes only a single transaction or stuff may be partially stored
-    //todo: Alternative: collect in Vector & store at end
 
     let mut proc = StoreDescriptorProcessor {module_hash, store};
 

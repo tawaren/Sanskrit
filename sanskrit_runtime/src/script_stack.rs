@@ -15,7 +15,7 @@ use script_interpreter::HashingDomain;
 pub struct StackEntry<'a> {
     pub store_borrow: bool,
     pub val: Ptr<'a, Object<'a>>,
-    pub typ: Ptr<'a, RuntimeType<'a>>, //todo: when becomes copy look for other that could become now
+    pub typ: Ptr<'a, RuntimeType<'a>>,
 }
 
 impl<'a> StackEntry<'a> {
@@ -82,7 +82,8 @@ impl<'a, 'h> LinearStack<StackEntry<'a>,SliceBuilder<'a, usize>> for LinearScrip
 impl<'a,'h> LinearScriptStack<'a,'h> {
 
     //todo: seperate methods per section
-    pub fn new(alloc:&'a VirtualHeapArena<'h>, stack:HeapStack<'h,Elem<StackEntry<'a>,SlicePtr<'a, usize>>>, new:&'a [Ptr<'a, RuntimeType<'a>>]) -> Result<Self> {
+    //todo can we merge with executor gen
+    pub fn new(alloc:&'a VirtualHeapArena<'h>, stack:HeapStack<'h,Elem<StackEntry<'a>,SlicePtr<'a, usize>>>, account:&'a [Ptr<'a, RuntimeType<'a>>] , new:&'a [Ptr<'a, RuntimeType<'a>>]) -> Result<Self> {
         let mut script_stack = LinearScriptStack {
             stack,
             alloc
@@ -100,6 +101,22 @@ impl<'a,'h> LinearScriptStack<'a,'h> {
         })?;
         //lock it so it is not used by other stuff except for provide_borrowed
         script_stack.get_elem_absolute(0)?.lock(1,true)?;
+
+        //create and push account types
+        for n in account {
+            if let RuntimeType::AccountType { address} = &**n {
+                let val = Object::Data(alloc.copy_alloc_slice(address)?);
+                let singleton = StackEntry::new(
+                    alloc.alloc(val)?,
+                    alloc.alloc(RuntimeType::NativeType {
+                        caps: NativeType::Account.base_caps(), //ok as n_type is phantom
+                        typ: NativeType::Account,
+                        applies: alloc.copy_alloc_slice(&[*n])?
+                    })?
+                );
+                script_stack.provide(singleton)?;
+            }
+        }
 
         //create and push singleton types
         for n in new {

@@ -395,26 +395,32 @@ pub trait LinearStack<T:Clone, V:MicroVecBuilder<usize>>  {
 
     //Takes a value and returns its content
     // it consumes the old value unless it is burrowed in that case the results are burrowing fro, it
-    fn unpack(&mut self, index:ValueRef, results: &[T], is_borrow:bool) -> Result<()> {
-        //check if the input is burrowed and create the status usable for the returns
-        let new_status = if is_borrow {
-            //if borrowed we only lock (so it is unlocked when the borrowed contained values leave scope)
-            assert!(results.len() <= u8::max_value() as usize);
-            //if their are no fields, the value is basically immediately released
-            // This implies that tag is not linear in case of switch
-            if !results.is_empty() {
-                self.borrow(index, results.len() as u8)?.status
-            } else {
-                //Any return status goes as it is not used
-                Status { consumed: false, locked: 0, borrowing: V::MicroVec::zero()}
-            }
-        } else {
-            //if not borrowed it is consumed
-            //Fetch elem as consume in contrast to borrow not returns the element
-            let status = self.get_elem(index)?.status.clone();
-            self.consume(index)?;
-            status
+    fn unpack(&mut self, index:ValueRef, results: &[T],  mode:FetchMode) -> Result<()> {
+        assert!(results.len() <= u8::max_value() as usize);
+        //fetches the input an extract the status
+        let new_status = match mode {
+            //it is consumed
+            FetchMode::Consume => {
+                let status = self.get_elem(index)?.status.clone();
+                self.consume(index)?;
+                status
+            },
+            //it is copied
+            FetchMode::Copy => self.non_consuming_fetch(index)?.status.clone(),
+            //it is borrowed
+            FetchMode::Borrow => {
+                //if borrowed we only lock (so it is unlocked when the borrowed contained values leave scope)
+                //if their are no fields, the value is basically immediately released
+                // This implies that tag is not linear in case of switch
+                if !results.is_empty() {
+                    self.borrow(index, results.len() as u8)?.status
+                } else {
+                    //Any return status goes as it is not used
+                    Status { consumed: false, locked: 0, borrowing: V::MicroVec::zero()}
+                }
+            },
         };
+
         // the unpacked values but preserve the status of the original
         for typ in results {
             //put each unpacked value on the stack

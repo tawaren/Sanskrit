@@ -35,22 +35,28 @@ pub enum HashingDomain {
     Index,
     Derive,
     Object,
+    Account
 }
 
 impl HashingDomain {
-    pub fn get_domain_hasher(&self, input_len:i32) -> Blake2b {
-        let dom =  match *self {
+
+    pub fn get_domain_code(&self) -> u8 {
+        match *self {
             HashingDomain::Unique => 0,
             HashingDomain::Singleton => 1,
             HashingDomain::Index => 2,
             HashingDomain::Derive => 3,
             HashingDomain::Object => 4,
-        };
+            HashingDomain::Account => 5,
+        }
+    }
+
+    pub fn get_domain_hasher(&self, input_len:i32) -> Blake2b {
         let mut context = Blake2b::new(20);
         //prepare the counter
         let mut input = [0u8; 4];
         LittleEndian::write_i32(&mut input, input_len);
-        context.update(&[dom]);
+        context.update(&[self.get_domain_code()]);
         context.update(&input);
         context
     }

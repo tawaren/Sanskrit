@@ -126,11 +126,6 @@ impl State {
         self.max_frames = self.max_frames.max(self.frames + res.max_frames)
     }
 
-    //todo: how to do for gas and mem, it is not that easy as it must be reapplied
-    // idea: basically make a new one like fun call - then at the end: apply the max back into the original
-    // needs something like return point but setting original to 0 & then on reapply reverses the role and applies the current to the captured and make the combined the new one
-    // is done for catches and switches but not over the let & try
-
     fn start_branching(&mut self) -> BranchPoint {
         let res = (self.gas, self.max_gas);
         self.gas = 0;
@@ -299,15 +294,19 @@ impl<'b,'h> Compactor<'b,'h> {
             OpCode::CopyFetch(val) => self.copy(val),
             OpCode::Fetch(val) =>  self.copy(val),
             OpCode::BorrowFetch(val) => self.copy(val),
+            OpCode::Image(val) => self.copy(val),
+            OpCode::ExtractImage(val) => self.copy(val),
             OpCode::Free(_) => Ok(None),
             OpCode::Drop(_) => Ok(None),
             OpCode::BorrowUnpack(val, typ) => self.unpack(val,typ,None, context),
             OpCode::Unpack(val, typ) => self.unpack(val,typ,None, context),
+            OpCode::CopyUnpack(val, typ) => self.unpack(val,typ,None, context),
             OpCode::Field(val, typ, field) => self.get_field(val, typ, field, context),
             OpCode::CopyField(val, typ, field) => self.get_field(val,typ,field, context),
             OpCode::BorrowField(val, typ, field) => self.get_field(val,typ,field, context),
             OpCode::BorrowSwitch(val, typ, ref exps) => self.switch(val, typ, exps, context),
             OpCode::Switch(val, typ, ref exps) => self.switch(val, typ, exps, context),
+            OpCode::CopySwitch(val, typ, ref exps) => self.switch(val, typ, exps, context),
             OpCode::BorrowPack(typ, tag, ref values) => self.pack(typ, tag,values, context),
             OpCode::Pack(typ, tag, ref values) => self.pack(typ, tag,values, context),
             OpCode::CopyPack(typ, tag, ref values) => self.pack(typ, tag,values, context),
@@ -395,7 +394,7 @@ impl<'b,'h> Compactor<'b,'h> {
             let new_ref = self.translate_ref(val);
             //find the tag
             let tag = match tag {
-                None => 0 as u8,        //todo: maybe have a special struct for these later that spare the tag
+                None => 0 as u8,
                 Some(Tag(t)) => t,
             };
 
@@ -620,6 +619,7 @@ impl<'b,'h> Compactor<'b,'h> {
                     //these are no ops --  same bit representation -- |Index is for toref, others are for genIndex|
                     ResolvedType::Native {  typ: NativeType::Unique, .. }
                     | ResolvedType::Native {  typ: NativeType::Singleton, .. }
+                    | ResolvedType::Native {  typ: NativeType::Account, .. }
                     | ResolvedType::Native {  typ: NativeType::Index, .. } => {
                     //push the compiletime stack
                         let pos = self.get(vals[0]);

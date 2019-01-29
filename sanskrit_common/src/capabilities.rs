@@ -140,6 +140,7 @@ impl NativeType {
             NativeType::SInt(_)
             | NativeType::UInt(_)
             | NativeType::Data(_)
+            | NativeType::Account
             | NativeType::Ref => CapSet::opaque(),
             NativeType::Bool
             | NativeType::Tuple(_)

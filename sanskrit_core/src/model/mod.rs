@@ -117,7 +117,8 @@ pub enum BaseType {
 #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Parsable, Serializable)]
 pub enum Type {
     Real(BaseType, Vec<TypeRef>),                  //A type consisting of a base and some capabilities
-    Generic(GenRef)                                        //A type consisting of a generic base and some capabilities
+    Image(TypeRef),                                //A Wrapper Type that captures the information of another type but not the value
+    Generic(GenRef)                                //A type consisting of a generic base and some capabilities
 }
 
 //References that point to components in the input
@@ -168,17 +169,21 @@ pub enum OpCode {
     Drop(ValueRef),                                     //Drops a value (Needs Drop Capability or a Field Less Leave type with Consume cap)
     BorrowUnpack(ValueRef, TypeRef),                    //Inspects a value to produce its fields (single Ctr only) (Needs Consume or Inspect Cap)
     Unpack(ValueRef, TypeRef),                          //Consumes a value to produce its fields (single Ctr only) (Needs Consume or Inspect Cap)
+    CopyUnpack(ValueRef, TypeRef),                      //Copies a value to produce its fields (single Ctr only) (Needs Consume or Inspect Cap)
     Field(ValueRef, TypeRef, u8),                       //<-- requires Consume & others to have Drop
     CopyField(ValueRef, TypeRef, u8),                   //<-- requires Inspect & Field to have Copy
     BorrowField(ValueRef, TypeRef, u8),                 //<-- requires Inspect
-    BorrowSwitch(ValueRef, TypeRef, Vec<Exp>),          //Branches on a type that has multiple ctrs where each branch corresponds to 1 Ctr (Does an implicit Unpack)
+    BorrowSwitch(ValueRef, TypeRef, Vec<Exp>),          //Branches on a type that has multiple ctrs where each branch corresponds to 1 Ctr (Does an implicit BorrowUnpack)
     Switch(ValueRef, TypeRef, Vec<Exp>),                //Branches on a type that has multiple ctrs where each branch corresponds to 1 Ctr (Does an implicit Unpack)
+    CopySwitch(ValueRef, TypeRef, Vec<Exp>),            //Branches on a type that has multiple ctrs where each branch corresponds to 1 Ctr (Does an implicit CopyUnpack)
     BorrowPack(TypeRef, Tag, Vec<ValueRef>),            //Generates a value for a multi ctr mutli field type (which is immideately borrowed)
     Pack(TypeRef, Tag, Vec<ValueRef>),                  //Generates a value for a multi ctr mutli field type
     CopyPack(TypeRef, Tag, Vec<ValueRef>),              //Generates a value for a multi ctr mutli field type by coping the inputs (requieres copy cap for them)
     Invoke(FuncRef, Vec<ValueRef>),                     //Invokes a Function
     Try(Exp, Vec<(ErrorRef, Exp)>),                     //Executes a try block and on error reverts to execute the corresponding catch Block
-    ModuleIndex                                         //A private constant index associated with each module (it returns the one of the current Module)
+    ModuleIndex,                                        //A private constant index associated with each module (it returns the one of the current Module)
+    Image(ValueRef),                                    //Produces the Image of the input withoutconsuming it
+    ExtractImage(ValueRef),                             //Removes a layer from a nested Image: Image[Image[T]] => Image[T]
 }
 
 

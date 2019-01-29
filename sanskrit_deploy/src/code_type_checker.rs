@@ -24,6 +24,7 @@ use sanskrit_core::resolver::Context;
 use sanskrit_common::model::*;
 use native::check_valid_literal_construction;
 use sanskrit_core::native::base::resolved_native_type;
+use sanskrit_core::utils::Crc;
 
 
 pub struct TypeCheckerContext<'a,'b, S:Store + 'b> {
@@ -139,10 +140,12 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
             OpCode::BorrowFetch(value) => self.fetch(value, FetchMode::Borrow),
             OpCode::Free(value) => self.free(value),
             OpCode::Drop(value) => self.drop_(value),
-            OpCode::BorrowUnpack(value, base_ref) => self.unpack(value, base_ref, true, None),
-            OpCode::Unpack(value, base_ref) => self.unpack(value, base_ref, false, None),
-            OpCode::BorrowSwitch(value, typ, ref cases) => self.switch(value, typ,cases, true),
-            OpCode::Switch(value, typ, ref cases) => self.switch(value, typ, cases, false),
+            OpCode::BorrowUnpack(value, base_ref) => self.unpack(value, base_ref, FetchMode::Borrow, None),
+            OpCode::Unpack(value, base_ref) => self.unpack(value, base_ref, FetchMode::Consume, None),
+            OpCode::CopyUnpack(value, base_ref) => self.unpack(value, base_ref, FetchMode::Copy, None),
+            OpCode::BorrowSwitch(value, typ, ref cases) => self.switch(value, typ,cases, FetchMode::Borrow),
+            OpCode::Switch(value, typ, ref cases) => self.switch(value, typ, cases, FetchMode::Consume),
+            OpCode::CopySwitch(value, typ, ref cases) => self.switch(value, typ, cases, FetchMode::Copy),
             OpCode::BorrowPack(typ, tag, ref values) => self.pack(typ, tag, values, FetchMode::Borrow),
             OpCode::Pack(typ, tag, ref values) => self.pack(typ, tag, values, FetchMode::Consume),
             OpCode::CopyPack(typ, tag, ref values) => self.pack(typ, tag, values, FetchMode::Copy),
@@ -152,6 +155,9 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
             OpCode::CopyField(value, base_ref, field) => self.field(value, base_ref, field, FetchMode::Copy),
             OpCode::BorrowField(value, base_ref, field) => self.field(value, base_ref, field, FetchMode::Borrow),
             OpCode::ModuleIndex => self.module_index(),
+            OpCode::Image(val) =>  self.image(val),
+            OpCode::ExtractImage(val) =>  self.unwrap_image(val),
+
         }
     }
 
@@ -193,6 +199,28 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
         self.stack.fetch(value,mode)
     }
 
+    fn image(&mut self, value:ValueRef) -> Result<()> {
+        //get the input type
+        let v_typ = self.stack.value_of(value)?;
+        //wrap the type into an image
+        let n_typ = Crc::new(ResolvedType::Image { typ:v_typ });
+        //Copy the value on top with another type
+        self.stack.transform(value, n_typ,FetchMode::Copy)
+    }
+
+    fn unwrap_image(&mut self, value:ValueRef) -> Result<()> {
+        //get the input type
+        let v_typ = self.stack.value_of(value)?;
+        //check that it is a nested image
+        if let ResolvedType::Image {typ:ref n_typ} = *v_typ {
+            if let ResolvedType::Image { .. } = **n_typ {
+                //Copy the value on top with another type
+                return self.stack.transform(value, n_typ.clone(),FetchMode::Copy)
+            }
+        }
+        type_mismatch()
+    }
+
     fn free(&mut self, value:ValueRef) -> Result<()> {
         //Check tha it is accessible and borrowed
         if !self.stack.is_borrowed(value)? {
@@ -213,7 +241,7 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
         self.stack.drop(value)
     }
 
-    fn unpack(&mut self, value:ValueRef, typ:TypeRef, is_borrow:bool, tag:Option<Tag>) -> Result<()>{
+    fn unpack(&mut self, value:ValueRef, typ:TypeRef, mode:FetchMode, tag:Option<Tag>) -> Result<()>{
         //Fetch the base
         let e_typ = typ.fetch(&self.context)?;
         //Get the Resolved Type of the value
@@ -244,25 +272,40 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
             Some(Tag(t)) => t,
         };
 
+
         //check that we do not use Unpack on a borrowed value
-        if self.stack.is_borrowed(value)? && !is_borrow {
-            return borrow_input_error()
+        if self.stack.is_borrowed(value)? && mode == FetchMode::Consume {
+            return cannot_be_borrowed()
         }
 
         //Decide if we have to make an inspect or a consume (borrowed values are inspected, rest consumed)
         //Check that the correct capability is available
-        if is_borrow {
-            //Borrowed values need the inspect capability
-            if !e_typ.get_caps().contains(NativeCap::Inspect) && !e_typ.is_local() {
-                return capability_missing_error()
-            }
-            //Consumed values need the consume capability
-        } else if !e_typ.get_caps().contains(NativeCap::Consume) && !e_typ.is_local() {
-            return capability_missing_error()
+        match mode {
+            FetchMode::Consume => {
+                //Consumed values need the consume capability
+                if !e_typ.get_caps().contains(NativeCap::Consume) && !e_typ.is_local() {
+                    return capability_missing_error()
+                }
+            },
+            FetchMode::Copy => {
+                //Copied values need the copy capability
+                if !e_typ.get_caps().contains(NativeCap::Copy) {
+                    return capability_missing_error()
+                }
+                //Copied values need the inspect capability
+                if !e_typ.get_caps().contains(NativeCap::Inspect) && !e_typ.is_local() {
+                    return capability_missing_error()
+                }
+            },
+            FetchMode::Borrow => {
+                //Borrowed values need the inspect capability
+                if !e_typ.get_caps().contains(NativeCap::Inspect) && !e_typ.is_local() {
+                    return capability_missing_error()
+                }
+            },
         }
-
         //Tell the stack to execute the operation (will take care of borrow vs consume)
-        self.stack.unpack(value, &r_ctr[tag as usize],is_borrow)
+        self.stack.unpack(value, &r_ctr[tag as usize],mode)
     }
 
     fn field(&mut self, value:ValueRef, typ:TypeRef, field:u8, mode:FetchMode) -> Result<()>{
@@ -317,7 +360,7 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
                 }
             },
             FetchMode::Copy => {
-                //Borrowed values need the inspect capability
+                //Borrowed values need the copy capability
                 if !typ.get_caps().contains(NativeCap::Copy) {
                     return capability_missing_error()
                 }
@@ -330,14 +373,14 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
     }
 
 
-    fn switch(&mut self, value:ValueRef, typ:TypeRef, cases:&[Exp], is_borrow:bool) -> Result<()> {
+    fn switch(&mut self, value:ValueRef, typ:TypeRef, cases:&[Exp], mode:FetchMode) -> Result<()> {
         //switch makes only sense itf their are 2 or more ctrs
         if cases.len() <= 1 {
             return wrong_opcode()
         };
 
         //Get the Resolved Type of the value
-        let r_typ= self.stack.value_of(value)?;
+        let r_typ = self.stack.value_of(value)?;
         //Get the resolved constructors
         let r_ctr = self.context.get_ctrs(typ, self.context.store)?;
 
@@ -351,11 +394,6 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
             return requested_ctr_missing()
         };
 
-        //check that we do not use Switch on a borrowed value
-        if self.stack.is_borrowed(value)? && !is_borrow {
-            return cannot_be_borrowed()
-        }
-
         //just a helper to make the loop simpler -- represents the types from the previous case (loop iter)
         let mut loop_res = None;
         //Tell the stack that a the control flow branches
@@ -368,7 +406,7 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
                 self.stack.next_branch( &mut branching, res)?;
             }
             //unpack the elements into the branch
-            self.unpack(value, typ, is_borrow, Some(Tag(i as u8)))?;
+            self.unpack(value, typ, mode, Some(Tag(i as u8)))?;
             //remaining operations are specified by branch code and now type checked
             let res = self.type_check_exp(case)?;
             //pass intermediary result to next iter
@@ -436,7 +474,6 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
 
     fn try(&mut self, try:&Exp, catches:&[(ErrorRef, Exp)]) -> Result<()> {
         // Add the risks that the try handles to the allowed risks
-        //todo: find all Set Clones/Merges as they are not linear and look if we can do something about it
         let mut new_risks = self.risk.clone();
         for (err,_) in catches {
             new_risks.insert(err.fetch(&self.context)?);

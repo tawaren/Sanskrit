@@ -38,6 +38,7 @@ use model::Object;
 use interpreter::Frame;
 use elem_store::CacheSlotMap;
 use elem_store::CacheEntry;
+use script_interpreter::HashingDomain;
 
 
 pub mod native;
@@ -141,11 +142,11 @@ pub fn execute<S:Store>(store:&S, txt_data:&[u8], block_no:u64, heap:&Heap) -> R
     let sigs_start = txt_data.len() - witness_size - txt.signatures.len()*64 - 2;  //2 is num sigs
     //hash over everything
     //todo: alloc  & store ptrs
-    let full_hash = hash(&txt_data);
+    let full_hash = hash(&[&txt_data]);
     //hash over everything except signatures
-    let txt_hash = hash(&txt_data[..sigs_start]);
+    let txt_hash = hash(&[&txt_data[..sigs_start]]);
     //hash over the code only
-    let code_hash = hash(&txt_data[code_start..sigs_start]);
+    let code_hash = hash(&[&txt_data[code_start..sigs_start]]);
 
     //todo: check if txt_hash already included in last 100 blocks
 
@@ -170,8 +171,9 @@ pub fn execute<S:Store>(store:&S, txt_data:&[u8], block_no:u64, heap:&Heap) -> R
         }
         //hash the pk to get the address
 
-        accounts.push(alloc.alloc(RuntimeType::AccountType { address: hash(pk) })?)
+        accounts.push(alloc.alloc(RuntimeType::AccountType { address: hash(&[&[HashingDomain::Account.get_domain_code()],pk]) })?)
     }
+    let accounts = accounts.finish();
 
     let mut newtypes = alloc.slice_builder(txt.new_types as usize)?;
     for offset in 0..txt.new_types {
@@ -184,9 +186,9 @@ pub fn execute<S:Store>(store:&S, txt_data:&[u8], block_no:u64, heap:&Heap) -> R
     let newtypes = newtypes.finish();
 
     //create the transaction executor
-    let stack = LinearScriptStack::new(&alloc,script_stack,&newtypes)?;
+    let stack = LinearScriptStack::new(&alloc,script_stack,&accounts,&newtypes)?;
     let mut exec = Executor{
-        accounts: accounts.finish(),
+        accounts,
         witness: txt.witness,
         newtypes,
         imports: txt.imports,
@@ -210,11 +212,13 @@ pub fn execute<S:Store>(store:&S, txt_data:&[u8], block_no:u64, heap:&Heap) -> R
 
 
 //Helper to calc the input hash
-fn hash(data:&[u8]) -> Hash {
+fn hash(data:&[&[u8]]) -> Hash {
     //Make a 20 byte digest hascher
     let mut context = Blake2b::new(20);
     //push the data into it
-    context.update(data);
+    for d in data {
+        context.update(*d);
+    }
     //calc the Hash
     let hash = context.finalize();
     //generate a array to the hash

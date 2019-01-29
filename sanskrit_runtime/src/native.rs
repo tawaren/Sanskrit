@@ -34,7 +34,7 @@ pub fn to_runtime_type<'a,'b,'h>(typ:NativeType, applies:SlicePtr<'a,Ptr<'a,Runt
                 resolve_runtime_leaf_type(typ, applies, alloc)
             }
         },
-        NativeType::Singleton  => {
+        NativeType::Account | NativeType::Singleton  => {
             //singleton has one generic but it phantom
             if applies.len() != 1 {
                 generic_args_mismatch()

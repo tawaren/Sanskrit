@@ -65,6 +65,7 @@ pub mod gas {
                 NativeType::Context => obj_factor + 8*byte_factor,
                 NativeType::Unique
                 | NativeType::Singleton
+                | NativeType::Account
                 | NativeType::Index
                 | NativeType::Ref => obj_factor + 20*byte_factor,
             },

@@ -330,7 +330,7 @@ fn execute_script<F,O>(b: &mut Bencher, v_gen:F, mut code_gen:O, rets:usize, do_
         let slot_map = CacheSlotMap::new(&sub_structural, CONFIG.max_store_slots,(0,0,0)).unwrap();
         let script_stack = sub_structural.alloc_stack(CONFIG.max_script_stack_size);
 
-        let mut stack = LinearScriptStack::new(&sub_alloc,script_stack,&[]).unwrap();
+        let mut stack = LinearScriptStack::new(&sub_alloc,script_stack,&[], &[]).unwrap();
 
         for vals in &vals_sets {
             for v in vals {

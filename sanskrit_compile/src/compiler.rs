@@ -177,6 +177,10 @@ pub fn resolved_type_to_builder<'b,'h>(typ:&ResolvedType, alloc:&'b HeapArena<'h
     Ok(match *typ {
         //generics ned to fetch the type at runtime
         ResolvedType::Generic { offset, .. } => TypeBuilder::Ref(TypeInputRef(offset)),
+        ResolvedType::Image { ref typ } => {
+            let inner = resolved_type_to_builder(&**typ, alloc)?;
+            TypeBuilder::Image(alloc.alloc(inner))
+        },
         //Import & Natives can use the build_type
         ResolvedType::Import { base_caps, ref module, offset, ref applies, .. } => build_type(base_caps,TypeKind::Custom { module:module.to_hash(), offset },applies, alloc)?,
         ResolvedType::Native { base_caps, typ, ref applies , ..} => build_type(base_caps, TypeKind::Native { typ }, applies, alloc)?,

@@ -27,9 +27,9 @@ impl<'b> AdtDescriptor<'b> {
             if !*is_phantom {
                 //if not phantom eliminate non supported recursive caps (non-recursives will be added in again later)
                 caps = caps.intersect(cap_set);
-                // check that no phantom type is a Applied to non-phantom
+                // check that no phantom type is Applied to non-phantom
                 match **appl {
-                    RuntimeType::Custom { .. } | RuntimeType::NativeType { .. } => {},
+                    RuntimeType::Image { .. } | RuntimeType::Custom { .. } | RuntimeType::NativeType { .. } => {},
                     RuntimeType::NewType { .. } | RuntimeType::AccountType { .. } => return can_not_apply_phantom_to_physical_error(),
                 }
             }
@@ -130,6 +130,7 @@ impl<'b> AdtDescriptor<'b> {
         }
     }
 
+    //todo: can we have the fetchMode::Copy as well (would need check that can Copy)
     //executes an unpack for the descriptor on value and type level
     pub fn unpack<'a,'h>(&self, packed:ValueRef, Tag(expected_tag):Tag, is_borrow:bool, stack:&mut LinearScriptStack<'a,'h>, alloc:&'a VirtualHeapArena<'h>, temporary_values:&HeapArena<'h>) -> Result<()> {
         //get the input
@@ -209,8 +210,13 @@ impl<'b> AdtDescriptor<'b> {
                 _ => return requested_ctr_missing()
             }
         };
+
         //apply the unpack to the stack
-        stack.unpack(packed,&elems, is_borrow)
+        if is_borrow {
+            stack.unpack(packed,&elems, FetchMode::Borrow)
+        } else {
+            stack.unpack(packed,&elems, FetchMode::Consume)
+        }
     }
 
 }
@@ -242,7 +248,7 @@ impl<'b> FunctionDescriptor<'b> {
             if !is_phantom {
                 // check that no phantom type is a Applied to non-phantom
                 match **typ {
-                    RuntimeType::Custom { .. } | RuntimeType::NativeType { .. } => {},
+                    RuntimeType::Image { .. } | RuntimeType::Custom { .. } | RuntimeType::NativeType { .. } => {},
                     RuntimeType::NewType { .. } | RuntimeType::AccountType { .. } => return can_not_apply_phantom_to_physical_error(),
                 }
             }

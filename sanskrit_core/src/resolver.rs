@@ -146,6 +146,8 @@ impl<'a,'b, S:Store + 'b> Context<'a,'b, S> {
                         }
                     }
                 },
+                //its an image type
+                Some(Type::Image(inner)) => Ok(Crc::new(ResolvedType::Image { typ: self.get_type(*inner)? })),
                 //its a generic, do a substitution
                 Some(Type::Generic(gref)) => match self.subs.get(gref.0 as usize) {
                     None => type_does_not_exist_error(),
@@ -267,13 +269,19 @@ impl<'a,'b, S:Store + 'b> Context<'a,'b, S> {
 
     //Gets and resolves an Adt Constructor from the local context
     pub fn get_ctrs(&self, tref:TypeRef, store:&StorageCache<S>) -> Result<Rc<Vec<Vec<Crc<ResolvedType>>>>> {
-        //only do this once and then cache it (detects cycles as well)
-        self.cache.ctr_cache.cached(tref, ||{
-            //Get the Input Type
-            Ok(Rc::new(match *self.get_type(tref)? {
+        //helper so that the image case can share this code
+        fn get_ctrs<S:Store>(typ:&Crc<ResolvedType>, store:&StorageCache<S>) -> Result<Vec<Vec<Crc<ResolvedType>>>> {
+            Ok(match **typ {
                 ResolvedType::Generic { .. } => return generics_dont_have_ctrs_error(),
                 //Forward to the native module
-                ResolvedType::Native { typ, ref applies, .. } =>  get_native_type_constructors(typ,applies)?,
+                ResolvedType::Native { typ, ref applies, .. } => get_native_type_constructors(typ,applies)?,
+                //If an image then its ctr is the ctr of the inner but with image fields
+                ResolvedType::Image { ref typ} => {
+                    //get the inners Ctr
+                    let inner = get_ctrs(typ,store)?;
+                    //wrap the fields in Images
+                    inner.into_iter().map(|ctr|ctr.into_iter().map(|field|Crc::new(ResolvedType::Image {typ:field})).collect()).collect()
+                }
                 //If an import we have to import it
                 ResolvedType::Import { ref module , offset, ref applies, .. } => {
                     //Get the cache
@@ -287,7 +295,14 @@ impl<'a,'b, S:Store + 'b> Context<'a,'b, S> {
                         c.fields.iter().map(|t|context.get_type(*t)).collect::<Result<_>>()
                     }).collect::<Result<_>>()?
                 }
-            }))
+            })
+        }
+
+
+        //only do this once and then cache it (detects cycles as well)
+        self.cache.ctr_cache.cached(tref, ||{
+            //Get the Input Type and extract ctrs
+            Ok(Rc::new(get_ctrs(&self.get_type(tref)?, store)?))
         })
     }
 

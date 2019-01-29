@@ -17,7 +17,6 @@ use std::mem;
 use sanskrit_common::arena::HeapArena;
 use sanskrit_common::model::SlicePtr;
 use sanskrit_common::arena::Heap;
-use sanskrit_runtime::CONFIG;
 use sanskrit_runtime::model::ImpRef;
 //Process text -> Adt -> Adt + Index (allows to get stuff by Id) -> EAst (has stuff like captures) -> Final
 //All involved file go seq:
@@ -126,7 +125,7 @@ impl<'a> Compiler<'a> {
 
             let mut s = Serializer::new(usize::max_value());
             r_txt.serialize(&mut s)?;
-            let mut txt_data = s.extract();
+            let txt_data = s.extract();
             //Serialization Specific
             r_txt.signatures =  txt_alloc.iter_alloc_slice(txt.sigs.iter().map(|id|{
                 sks[id].sign::<Sha512>(&txt_data[0..(txt_data.len()-4)]).to_bytes() //-4 are the 4 bytes serialized for signatures & witness

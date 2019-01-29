@@ -35,7 +35,7 @@ pub struct ExecutionContext<'script,'code, 'interpreter, 'execution, 'heap> {
     frames: &'execution mut HeapStack<'interpreter,Frame<'code>>,
     stack: &'execution mut HeapStack<'interpreter,Ptr<'script ,Object<'script>>>,       //The current stack
     alloc: &'script VirtualHeapArena<'heap>,
-    temporary_values: &'interpreter HeapArena<'heap>,                   // helper to spare allocations, todo: use temporary
+    temporary_values: &'interpreter HeapArena<'heap>,                   // helper to spare allocations
 
 }
 

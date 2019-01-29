@@ -117,14 +117,18 @@ pub enum TypeApplyRef<#[AllocLifetime] 'c> {
 pub enum ScriptCode<#[AllocLifetime] 'c> {
     Pack(AdtRef, SlicePtr<'c, Ptr<'c,TypeApplyRef<'c>>>, Tag, SlicePtr<'c,ValueRef>),           //Packs an adt
     BorrowPack(AdtRef, SlicePtr<'c, Ptr<'c,TypeApplyRef<'c>>>, Tag, SlicePtr<'c,ValueRef>),     //Generate an adt by borrowing the fields
+    //todo: ImagePack
     Unpack(AdtRef, Tag, ValueRef),                                                              //Unpack an adt
     BorrowUnpack(AdtRef, Tag, ValueRef),                                                        //Borrow the fields of an adt
+    //todo: ImageUnpack
     Invoke(FuncRef, SlicePtr<'c,Ptr<'c,TypeApplyRef<'c>>>, SlicePtr<'c,ValueRef>),              //Call a function
     Lit(SlicePtr<'c, u8>, LitDesc),                                                             //Generate a literal
     Wit(u8, LitDesc),                                                                           //Generate a literal from a Witness
     Copy(ValueRef),                                                                             //Copy a stack value
     Fetch(ValueRef),                                                                            //Move a stack value
-    BorrowFetch(ValueRef),                                                                      //Borrow a stack value
+    BorrowFetch(ValueRef), //Borrow a stack value
+    //todo: ImageFetch
+    //todo: FlattenImage
     Free(ValueRef),                                                                             //Free a borrowed stack value
     Drop(ValueRef),                                                                             //Drop a stack value
     Load(ValueRef),                                                                             //Load a value from the store
@@ -166,8 +170,6 @@ pub enum LitDesc {
 }
 
 #[derive(Copy, Clone, Debug, Parsable, Serializable, VirtualSize)]
-//todo: lift natives on this level -- else we do 2 additional unecessary jumps
-// todo, further we can spare the SlicePtr indirection
 pub enum OpCode<#[AllocLifetime] 'b> {
     Lit(SlicePtr<'b,u8>, LitDesc),                                  //A opcode that produces a literal
     Let(Ptr<'b, Exp<'b>>),                                          //A Subsope that computes some values and returns them (intermidiary values are removed)
@@ -231,6 +233,10 @@ pub enum RuntimeType<#[AllocLifetime] 'a> {
         applies: SlicePtr<'a, Ptr<'a, RuntimeType<'a>>>
     },
 
+    Image {
+        typ:  Ptr<'a, RuntimeType<'a>>
+    },
+
     NewType {
         txt: Hash,
         offset: u8,
@@ -258,6 +264,7 @@ pub enum TypeKind {
 pub enum TypeBuilder<#[AllocLifetime] 'b> {
     Dynamic(CapSet, TypeKind, SlicePtr<'b,(bool, Ptr<'b, TypeBuilder<'b>>)>),
     Ref(TypeInputRef),
+    Image(Ptr<'b, TypeBuilder<'b>>),
 }
 
 //an element in the backing store
