@@ -6,6 +6,7 @@ use model::*;
 use sanskrit_common::arena::*;
 use byteorder::{LittleEndian, ByteOrder};
 use CONFIG;
+use sanskrit_interpreter::model::Object;
 
 //a struct to hold a Slot
 #[derive(Copy, Clone, Debug)]
@@ -102,16 +103,14 @@ impl<'a> CacheSlotMap<'a> {
 }
 
 
-impl<'a> Object<'a> {
-    //A helper to extract the storage index / slot from an object
-    pub fn extract_key(&self) -> &Hash {
-        match *self {
-            //its always the first field in a ADT (its existence is enforced by the type checker)
-            Object::Adt(_, ref fields) => fields[0].extract_key(),
-            //found it
-            Object::Data(ref data) if data.len() == 20 => array_ref!(data,0,20),
-            _ => unreachable!(),
-        }
+//A helper to extract the storage index / slot from an object
+pub fn extract_key<'a>(obj:&'a Object<'a>) -> &'a Hash {
+    match *obj {
+        //its always the first field in a ADT (its existence is enforced by the type checker)
+        Object::Adt(_, ref fields) => extract_key(&fields[0]),
+        //found it
+        Object::Data(ref data) if data.len() == 20 => array_ref!(data,0,20),
+        _ => unreachable!(),
     }
 }
 

@@ -3,7 +3,7 @@ use byteorder::{LittleEndian, WriteBytesExt};
 use hex::decode;
 use model::Type;
 use model::Ref;
-use sanskrit_runtime::model::LitDesc;
+use sanskrit_interpreter::model::LitDesc;
 
 pub fn parse_lit(input:&str, typ:&Type) -> Vec<u8>{
     fn into_vec<F:FnOnce(&mut Vec<u8>)>(f:F)-> Vec<u8>{
@@ -44,7 +44,7 @@ pub fn parse_lit(input:&str, typ:&Type) -> Vec<u8>{
             "data160"  => decode(&input[2..322]).unwrap(),
             "data192"  => decode(&input[2..386]).unwrap(),
             "data224"  => decode(&input[2..450]).unwrap(),
-            "ref" => decode(input).unwrap(),
+            "publicId" => decode(input).unwrap(),
             _ => panic!(),
         },
         _ => panic!(),
@@ -65,7 +65,7 @@ pub fn gen_lit_desc(typ:&Type) -> LitDesc {
             "u128" => LitDesc::U128,
             "i128" => LitDesc::I128,
             "data" => LitDesc::Data,
-            "ref" => LitDesc::Ref,
+            "publicId" => LitDesc::Ref,
             _ => panic!()
         },
         _ => panic!(),

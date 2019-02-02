@@ -1,14 +1,14 @@
 signed(A) transaction{
    a = lit 1:$u8;
    b = pack SomeTypes.X[$u8]#Ctr(a);
-   d = lit 0x00112233445566778899AABBCCDDEEFF00112233:$data;
+   d = call IndexOps.ModIndex();
    (r, s) = call SomeTypes.GenIndexedAt[SomeTypes.X[$u8]](d,b);
    store s;
 };
 
 signed(A) transaction{
    orig = lit 1:$u8;
-   a = lit 0x00112233445566778899AABBCCDDEEFF00112233:$data;
+   a = call IndexOps.ModIndex();
    r = call SomeFunctions.GenRef(a);
    b = &load r;
    (d0, i0) = call SomeTypes.BorrowEntryX[$u8](b);
@@ -18,7 +18,7 @@ signed(A) transaction{
 
 signed(A) transaction{
    orig = lit 1:$u8;
-   a = lit 0x00112233445566778899AABBCCDDEEFF00112233:$data;
+   a = call IndexOps.ModIndex();
    r = call SomeFunctions.GenRef(a);
    b = load r;
    (d0, i0) = call SomeTypes.BorrowEntryX[$u8](b);
@@ -33,14 +33,14 @@ signed(A) transaction{
 signed(A) transaction{
    a = lit 2:$u8;
    b = pack SomeTypes.X[$u8]#Ctr(a);
-   d = lit 0x00112233445566778899AABBCCDDEEFF00112233:$data;
+   d = call IndexOps.ModIndex();
    (r, s) = call SomeTypes.GenIndexedAt[SomeTypes.X[$u8]](d,b);
    store s;
 };
 
 signed(A) transaction{
    changed = lit 2:$u8;
-   a = lit 0x00112233445566778899AABBCCDDEEFF00112233:$data;
+   a = call IndexOps.ModIndex();
    r = call SomeFunctions.GenRef(a);
    b = &load r;
    (d0, i0) = call SomeTypes.BorrowEntryX[$u8](b);

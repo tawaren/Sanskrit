@@ -4,6 +4,8 @@ use sanskrit_common::capabilities::CapSet;
 use model::NativeAdtType;
 use model::*;
 use sanskrit_common::arena::*;
+use sanskrit_interpreter::model::*;
+use descriptors::build_type_from_desc;
 
 //lit types do not have generics
 fn resolve_runtime_leaf_type<'a,'h>(typ: NativeType, applies:SlicePtr<'a,Ptr<'a,RuntimeType<'a>>>, alloc:&'a VirtualHeapArena<'h>) ->  Result<Ptr<'a,RuntimeType<'a>>>{
@@ -22,8 +24,8 @@ pub fn to_runtime_type<'a,'b,'h>(typ:NativeType, applies:SlicePtr<'a,Ptr<'a,Runt
         NativeType::Data(_)
         | NativeType::SInt(_)
         | NativeType::UInt(_)
-        | NativeType::Id
-        | NativeType::Ref => {
+        | NativeType::PrivateId
+        | NativeType::PublicId => {
             //these types hav eno generics
             if !applies.is_empty() {
                 generic_args_mismatch()
@@ -38,7 +40,7 @@ pub fn to_runtime_type<'a,'b,'h>(typ:NativeType, applies:SlicePtr<'a,Ptr<'a,Runt
                 generic_args_mismatch()
             } else {
                 //Construct over descriptor
-                NativeAdtType::Bool.get_native_adt_descriptor(code_alloc)?.build_type(applies, alloc)
+                build_type_from_desc(&NativeAdtType::Bool.get_native_adt_descriptor(code_alloc)?,applies, alloc)
             }
         },
         NativeType::Tuple(size) => {
@@ -47,7 +49,7 @@ pub fn to_runtime_type<'a,'b,'h>(typ:NativeType, applies:SlicePtr<'a,Ptr<'a,Runt
                 generic_args_mismatch()
             } else {
                 //Construct over descriptor
-                NativeAdtType::Tuple(size).get_native_adt_descriptor(code_alloc)?.build_type(applies, alloc)
+                build_type_from_desc(&NativeAdtType::Tuple(size).get_native_adt_descriptor(code_alloc)?,applies, alloc)
             }
         },
         NativeType::Alternative(size) => {
@@ -56,7 +58,7 @@ pub fn to_runtime_type<'a,'b,'h>(typ:NativeType, applies:SlicePtr<'a,Ptr<'a,Runt
                 generic_args_mismatch()
             } else {
                 //Construct over descriptor
-                NativeAdtType::Alternative(size).get_native_adt_descriptor(code_alloc)?.build_type(applies, alloc)
+                build_type_from_desc(&NativeAdtType::Alternative(size).get_native_adt_descriptor(code_alloc)?,applies, alloc)
             }
         },
     }
@@ -96,55 +98,53 @@ impl NativeAdtType {
     }
 }
 
-impl LitDesc {
 
-    pub fn lit_typ<'a,'h>(self, size:u16, alloc:&'a VirtualHeapArena<'h>) -> Result<Ptr<'a,RuntimeType<'a>>>{
-        match self {
-            LitDesc::Ref => {
-                if size != 20 {return literal_data_error()}
-                resolve_runtime_leaf_type(NativeType::Ref, SlicePtr::empty(), alloc)
-            },
-            LitDesc::Data => resolve_runtime_leaf_type(NativeType::Data(size), SlicePtr::empty(), alloc),
-            LitDesc::I8 => {
-                if size != 1 {return literal_data_error()}
-                resolve_runtime_leaf_type(NativeType::SInt(1), SlicePtr::empty(), alloc)
-            },
-            LitDesc::U8 => {
-                if size != 1 {return literal_data_error()}
-                resolve_runtime_leaf_type(NativeType::UInt(1), SlicePtr::empty(), alloc)
-            },
-            LitDesc::I16 => {
-                if size != 2 {return literal_data_error()}
-                resolve_runtime_leaf_type(NativeType::SInt(2), SlicePtr::empty(), alloc)
-            },
-            LitDesc::U16 => {
-                if size != 2 {return literal_data_error()}
-                resolve_runtime_leaf_type(NativeType::UInt(2), SlicePtr::empty(), alloc)
-            },
-            LitDesc::I32 => {
-                if size != 4 {return literal_data_error()}
-                resolve_runtime_leaf_type(NativeType::SInt(4), SlicePtr::empty(), alloc)
-            },
-            LitDesc::U32 => {
-                if size != 4 {return literal_data_error()}
-                resolve_runtime_leaf_type(NativeType::UInt(4), SlicePtr::empty(), alloc)
-            },
-            LitDesc::I64 => {
-                if size != 8 {return literal_data_error()}
-                resolve_runtime_leaf_type(NativeType::SInt(8), SlicePtr::empty(), alloc)
-            },
-            LitDesc::U64 => {
-                if size != 8 {return literal_data_error()}
-                resolve_runtime_leaf_type(NativeType::UInt(8), SlicePtr::empty(), alloc)
-            },
-            LitDesc::I128 => {
-                if size != 16 {return literal_data_error()}
-                resolve_runtime_leaf_type(NativeType::SInt(16), SlicePtr::empty(), alloc)
-            },
-            LitDesc::U128 => {
-                if size != 16 {return literal_data_error()}
-                resolve_runtime_leaf_type(NativeType::UInt(16), SlicePtr::empty(), alloc)
-            },
-        }
+pub fn lit_typ<'a,'h>(desc:LitDesc, size:u16, alloc:&'a VirtualHeapArena<'h>) -> Result<Ptr<'a,RuntimeType<'a>>>{
+    match desc {
+        LitDesc::Ref => {
+            if size != 20 {return literal_data_error()}
+            resolve_runtime_leaf_type(NativeType::PublicId, SlicePtr::empty(), alloc)
+        },
+        LitDesc::Data => resolve_runtime_leaf_type(NativeType::Data(size), SlicePtr::empty(), alloc),
+        LitDesc::I8 => {
+            if size != 1 {return literal_data_error()}
+            resolve_runtime_leaf_type(NativeType::SInt(1), SlicePtr::empty(), alloc)
+        },
+        LitDesc::U8 => {
+            if size != 1 {return literal_data_error()}
+            resolve_runtime_leaf_type(NativeType::UInt(1), SlicePtr::empty(), alloc)
+        },
+        LitDesc::I16 => {
+            if size != 2 {return literal_data_error()}
+            resolve_runtime_leaf_type(NativeType::SInt(2), SlicePtr::empty(), alloc)
+        },
+        LitDesc::U16 => {
+            if size != 2 {return literal_data_error()}
+            resolve_runtime_leaf_type(NativeType::UInt(2), SlicePtr::empty(), alloc)
+        },
+        LitDesc::I32 => {
+            if size != 4 {return literal_data_error()}
+            resolve_runtime_leaf_type(NativeType::SInt(4), SlicePtr::empty(), alloc)
+        },
+        LitDesc::U32 => {
+            if size != 4 {return literal_data_error()}
+            resolve_runtime_leaf_type(NativeType::UInt(4), SlicePtr::empty(), alloc)
+        },
+        LitDesc::I64 => {
+            if size != 8 {return literal_data_error()}
+            resolve_runtime_leaf_type(NativeType::SInt(8), SlicePtr::empty(), alloc)
+        },
+        LitDesc::U64 => {
+            if size != 8 {return literal_data_error()}
+            resolve_runtime_leaf_type(NativeType::UInt(8), SlicePtr::empty(), alloc)
+        },
+        LitDesc::I128 => {
+            if size != 16 {return literal_data_error()}
+            resolve_runtime_leaf_type(NativeType::SInt(16), SlicePtr::empty(), alloc)
+        },
+        LitDesc::U128 => {
+            if size != 16 {return literal_data_error()}
+            resolve_runtime_leaf_type(NativeType::UInt(16), SlicePtr::empty(), alloc)
+        },
     }
 }

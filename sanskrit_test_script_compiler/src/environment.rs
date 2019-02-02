@@ -188,9 +188,8 @@ impl<'a> CodeImportBuilder<'a> {
                     "Concat" => FunctionImport::Native(NativeFunc::Concat,r_appl),
                     "SetBit" => FunctionImport::Native(NativeFunc::SetBit,r_appl),
                     "GetBit" => FunctionImport::Native(NativeFunc::GetBit,r_appl),
-                    "GenId" => FunctionImport::Native(NativeFunc::GenId, r_appl),
-                    "ToRef" => FunctionImport::Native(NativeFunc::ToRef,r_appl),
-                    "Derive" => FunctionImport::Native(NativeFunc::Derive,r_appl),
+                    "GenPublicId" => FunctionImport::Native(NativeFunc::GenPublicId, r_appl),
+                    "DeriveId" => FunctionImport::Native(NativeFunc::DeriveId, r_appl),
                     _ => return Err("Unsupported native function".into())
 
                 }
@@ -229,8 +228,8 @@ impl<'a> CodeImportBuilder<'a> {
             Ref::Native(ref id) => {
                 let bt = match id.0.as_ref() {
                     "bool" => NativeType::Bool,
-                    "ref" => NativeType::Ref,
-                    "id" => NativeType::Id,
+                    "publicId" => NativeType::PublicId,
+                    "privateId" => NativeType::PrivateId,
                     "u8" => NativeType::UInt(1),
                     "u16" => NativeType::UInt(2),
                     "u32" => NativeType::UInt(4),
@@ -477,8 +476,8 @@ impl<'a,'c, 'h> ScriptContext<'a,'c, 'h> {
             Ref::Native(ref id) => {
                 let typ = match id.0.as_ref() {
                     "bool" => NativeType::Bool,
-                    "ref" => NativeType::Ref,
-                    "id" => NativeType::Id,
+                    "publicId" => NativeType::PublicId,
+                    "privateId" => NativeType::PrivateId,
                     "u8" => NativeType::UInt(1),
                     "u16" => NativeType::UInt(2),
                     "u32" => NativeType::UInt(4),

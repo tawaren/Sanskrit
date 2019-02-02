@@ -22,11 +22,11 @@ pub fn check_valid_literal_construction(data:&[u8], lit_type:&Crc<ResolvedType>)
                     } else {Ok(())}
                 },
                 //refs need to have 20 Bytes like keys
-                NativeType::Ref => {
+                NativeType::PublicId => {
                     if data.len() != 20 as usize {
                         literal_data_error()
                     } else {Ok(())}
-                },
+                }
                 //Remaining Natives can not be constructed over a literal
                 _ => not_a_literal_error(),
             }

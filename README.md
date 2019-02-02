@@ -120,7 +120,7 @@ module Purse {
   // Top is an alias for a type that does not have the embed capability (can not be part of other types)
   // Index gives a type the indexed capability which says it can be stored on the blockchain under a index (its first field)
   // Open says that everybody can create a purse
-  open top indexed linear type Purse[phantom O, phantom T]($id, Token[T])
+  open top indexed linear type Purse[phantom O, phantom T]($privateId, Token[T])
  
   //
  

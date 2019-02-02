@@ -35,8 +35,8 @@ pub enum NativeType {
     Bool,               // A Boolean with two ctrs True & False
     Tuple(u8),          // A And Type with up to u8::max_value() fields
     Alternative(u8),    // A Or Type with up to u8::max_value() ctrs
-    Id,                 // A Index that represents a storage slot on the blockchain
-    Ref,                // A references that points ot  a storage slot on the blockchain
+    PrivateId,          // A Index that represents a storage slot on the blockchain
+    PublicId,           // A references that points ot  a storage slot on the blockchain
 }
 
 //todo: can we move to core??
@@ -66,9 +66,8 @@ pub enum NativeFunc {
     Concat,             //Concatenates two data values
     SetBit,             //Sets a bit in a data value to 1/0
     GetBit,             //Checks if a bit in a data value is 1/0
-    GenId,              //Generates a index from either a unique or plain data (consumes the value allowing to generate unique indexes)
-    ToRef,              //Generates a ref from either an index or plain data
-    Derive,             //Combines 2 indexes or 2 refs to a new one allowing derive indexes & refs deterministically
+    GenPublicId,         //Generates a ref from either an index or plain data
+    DeriveId,           //Combines 2 indexes or 2 refs to a new one allowing derive indexes & refs deterministically
 }
 
 //All the Available Native Errors

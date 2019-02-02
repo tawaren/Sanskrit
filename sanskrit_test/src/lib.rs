@@ -4,6 +4,7 @@ extern crate sanskrit_test_script_compiler;
 extern crate sanskrit_deploy;
 extern crate sanskrit_core;
 extern crate sanskrit_compile;
+extern crate sanskrit_interpreter;
 extern crate sanskrit_runtime;
 extern crate sanskrit_common;
 extern crate sanskrit_memory_store;

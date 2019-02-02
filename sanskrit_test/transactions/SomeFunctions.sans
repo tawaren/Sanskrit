@@ -28,10 +28,8 @@ module SomeFunctions {
        return;
     };
 
-    public fun GenRef(b:$data20):(r:$ref) {
-         b2 = copy b;
-         r = call $ToRef[$data20](b2);
-         drop b2;
+    public fun GenRef(b:$privateId):(r:$publicId) {
+         r = call $GenPublicId[$privateId](b);
          return r;
     };
 

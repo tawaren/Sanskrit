@@ -135,17 +135,8 @@ pub fn resolved_native_function(fun: NativeFunc, base_applies:&[Crc<ResolvedType
             }
         },
 
-        //GenIndex has no risks and returns a new index generated from its input
-        NativeFunc::GenId => {
-            ResolvedSignature {
-                risks: build_set(&[]),
-                params: vec![ ResolvedParam{ consumes: true, typ: base_applies[0].clone() } ],
-                returns: vec![ ResolvedReturn { borrows:vec![], typ: resolved_native_type(NativeType::Id, &[]) }],
-            }
-        },
-
         //Derive combines its inputs into a output that is deterministically derived
-        NativeFunc::Derive => {
+        NativeFunc::DeriveId => {
             ResolvedSignature {
                 risks: build_set(&[]),
                 params: vec![
@@ -157,11 +148,11 @@ pub fn resolved_native_function(fun: NativeFunc, base_applies:&[Crc<ResolvedType
         },
 
         //ToRef has no riks and returns a reference generated from its inputs
-        NativeFunc::ToRef => {
+        NativeFunc::GenPublicId => {
             ResolvedSignature {
                 risks: build_set(&[]),
                 params: vec![ ResolvedParam{ consumes: false, typ: base_applies[0].clone() }],
-                returns: vec![ ResolvedReturn { borrows:vec![], typ: resolved_native_type(NativeType::Ref, &[])  }],
+                returns: vec![ ResolvedReturn { borrows:vec![], typ: resolved_native_type(NativeType::PublicId, &[])  }],
             }
         },
     })
@@ -247,8 +238,8 @@ pub fn check_native_function_constraints(fun: NativeFunc, types:&[Crc<ResolvedTy
             ResolvedType::Native{ typ: NativeType::UInt(s), .. } => u16::from(s) == width,
             ResolvedType::Native{ typ: NativeType::SInt(s), .. } => u16::from(s) == width,
             ResolvedType::Native{ typ: NativeType::Data(s), .. } => s == width,
-            ResolvedType::Native{ typ: NativeType::Ref, .. } => 20 == width,
-            ResolvedType::Native{ typ: NativeType::Id, .. } => 20 == width,
+            ResolvedType::Native{ typ: NativeType::PublicId, .. } => 20 == width,
+            ResolvedType::Native{ typ: NativeType::PrivateId, .. } => 20 == width,
             _ => false,
         })
     }
@@ -278,9 +269,9 @@ pub fn check_native_function_constraints(fun: NativeFunc, types:&[Crc<ResolvedTy
     }
 
     //check if something can be used as an Id
-    fn is_ref_input(typ:&Crc<ResolvedType>) -> Result<bool>{
+    fn is_public_input(typ:&Crc<ResolvedType>) -> Result<bool>{
         Ok(match **typ {
-            ResolvedType::Native{ typ: NativeType::Id, .. } => true,
+            ResolvedType::Native{ typ: NativeType::PrivateId, .. } => true,
             ResolvedType::Native{ typ: NativeType::Data(20), .. } => true,
             _ => false,
         })
@@ -289,8 +280,8 @@ pub fn check_native_function_constraints(fun: NativeFunc, types:&[Crc<ResolvedTy
     //check if something is a key or refs a key
     fn is_derivable(typ:&Crc<ResolvedType>) -> Result<bool>{
         Ok(match **typ {
-            ResolvedType::Native{ typ: NativeType::Id, .. } => true,
-            ResolvedType::Native{ typ: NativeType::Ref, .. } => true,
+            ResolvedType::Native{ typ: NativeType::PrivateId, .. } => true,
+            ResolvedType::Native{ typ: NativeType::PublicId, .. } => true,
             _ => false,
         })
     }
@@ -299,8 +290,8 @@ pub fn check_native_function_constraints(fun: NativeFunc, types:&[Crc<ResolvedTy
     fn is_data_material(typ:&Crc<ResolvedType>) -> Result<bool>{
         Ok(match **typ {
             ResolvedType::Native{ typ: NativeType::Data(_), .. } => true,
-            ResolvedType::Native{ typ: NativeType::Id, .. } => true,
-            ResolvedType::Native{ typ: NativeType::Ref, .. } => true,
+            ResolvedType::Native{ typ: NativeType::PrivateId, .. } => true,
+            ResolvedType::Native{ typ: NativeType::PublicId, .. } => true,
             _ => false,
         })
     }
@@ -335,11 +326,9 @@ pub fn check_native_function_constraints(fun: NativeFunc, types:&[Crc<ResolvedTy
         NativeFunc::Concat =>  true_or_err(types.len() == 3 && summed_up_data(&types[0], &types[1], &types[2])?),
         //Set & Get Bit takes 2 type params 1 for the data and one for the index
         NativeFunc::GetBit | NativeFunc::SetBit =>  true_or_err(types.len() == 2 && is_data(&types[0])? && positive_small_int(&types[1])?),
-        //Gen a Key has one type pram that can be a unique/singleton/data
-        NativeFunc::GenId => true_or_err(types.len() == 1 && is_data(&types[0])?),
         //Derives a new Key from two existing ones (or a ref from 2 Refs)
-        NativeFunc::Derive => true_or_err(types.len() == 2 && is_derivable(&types[0])? && is_data_material(&types[1])?),
+        NativeFunc::DeriveId => true_or_err(types.len() == 2 && is_derivable(&types[0])? && is_data_material(&types[1])?),
         //Generates a Ref From a Key or from raw Data
-        NativeFunc::ToRef => true_or_err(types.len() == 1 && is_ref_input(&types[0])?),
+        NativeFunc::GenPublicId => true_or_err(types.len() == 1 && is_public_input(&types[0])?),
     }
 }

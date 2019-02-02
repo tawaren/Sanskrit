@@ -88,15 +88,15 @@ module Helpers {
         return;
     };
 
-    public risky<.ValidationError> fun AssertEqIndex(v1:$id,v2:$id):() {
-        r = call $Eq[$id](v1,v2);
+    public risky<.ValidationError> fun AssertEqIndex(v1:$privateId,v2:$privateId):() {
+        r = call $Eq[$privateId](v1,v2);
         () = call .AssertTrue(r);
         drop r;
         return;
     };
 
-    public risky<.ValidationError> fun AssertEqRef(v1:$ref,v2:$ref):() {
-        r = call $Eq[$ref](v1,v2);
+    public risky<.ValidationError> fun AssertEqRef(v1:$publicId,v2:$publicId):() {
+        r = call $Eq[$publicId](v1,v2);
         () = call .AssertTrue(r);
         drop r;
         return;
@@ -117,15 +117,15 @@ module Helpers {
         return;
     };
 
-    public risky<.ValidationError> fun AssertNotEqRef(v1:$ref,v2:$ref):() {
-        r = call $Eq[$ref](v1,v2);
+    public risky<.ValidationError> fun AssertNotEqRef(v1:$publicId,v2:$publicId):() {
+        r = call $Eq[$publicId](v1,v2);
         () = call .AssertFalse(r);
         drop r;
         return;
     };
 
-    public risky<.ValidationError> fun AssertNotEqIndex(v1:$id,v2:$id):() {
-        r = call $Eq[$id](v1,v2);
+    public risky<.ValidationError> fun AssertNotEqIndex(v1:$privateId,v2:$privateId):() {
+        r = call $Eq[$privateId](v1,v2);
         () = call .AssertFalse(r);
         drop r;
         return;
@@ -135,7 +135,7 @@ module Helpers {
         return;
     };
 
-    public fun ModIndex():(a:$id){
+    public fun ModIndex():(a:$privateId){
        a = moduleIndex;
        return a;
     };

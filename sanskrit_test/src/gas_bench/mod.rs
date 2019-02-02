@@ -1,12 +1,12 @@
 #[cfg(test)]
 
 use sanskrit_common::model::*;
-use sanskrit_runtime::interpreter::Frame;
+use sanskrit_interpreter::interpreter::Frame;
+use sanskrit_interpreter::model::*;
 use sanskrit_runtime::model::*;
 use sanskrit_common::arena::Heap;
 use test::Bencher;
-use sanskrit_runtime::ContextEnvironment;
-use sanskrit_runtime::interpreter::ExecutionContext;
+use sanskrit_interpreter::interpreter::ExecutionContext;
 use sanskrit_common::arena::VirtualHeapArena;
 use sanskrit_runtime::Configuration;
 use sanskrit_runtime::script_stack::StackEntry;
@@ -54,7 +54,6 @@ pub enum Operand {
     Concat,     //Concats two data values
     SetBit,     //sets a bit in a data value
     GetBit,     //queries a bit from a data value
-    GenId,      //generates a new storage index fro data or uniques
     Derive,     //derives a new index or referenz from two others
     Id,
 }
@@ -83,7 +82,6 @@ impl Operand {
             Operand::Concat => OpCode::Concat(ptr[0],ptr[1]),
             Operand::SetBit => OpCode::SetBit(ptr[0],ptr[1], ptr[2]),
             Operand::GetBit => OpCode::GetBit(ptr[0],ptr[1]),
-            Operand::GenId => OpCode::GenId(ptr[0]),
             Operand::Derive => OpCode::Derive(ptr[0],ptr[1]),
             Operand::Id => OpCode::Id(ptr[0]),
         }
@@ -111,12 +109,6 @@ fn execute_multi_ret_native<F>(b: &mut Bencher, v_gen:F, ops:&[Operand], rets:us
     let alloc = heap.new_virtual_arena(size_alloc);
     let code_alloc = heap.new_virtual_arena(size_code_alloc);
     let structural_arena = heap.new_arena(size_interpreter_stack + size_frame_stack);
-    let env = ContextEnvironment {
-        block_no:0,
-        full_hash:[0;20],
-        txt_hash:[0;20],
-        code_hash:[0;20]
-    };
     let vals_sets = v_gen(&alloc);
     let first = vals_sets[0].len();
     assert!(vals_sets.iter().all(|s|s.len() == first));
@@ -156,7 +148,7 @@ fn execute_multi_ret_native<F>(b: &mut Bencher, v_gen:F, ops:&[Operand], rets:us
         }
 
         if do_it {
-            ExecutionContext::interpret(env,&funs, &mut value_stack, &mut frame_stack, &tmp_alloc, &tmp).unwrap();
+            ExecutionContext::interpret(&funs, &mut value_stack, &mut frame_stack, &tmp_alloc, &tmp).unwrap();
         }
     })
 }
@@ -186,12 +178,6 @@ fn execute_code_with_extra_fun<F,O,E>(b: &mut Bencher, v_gen:F, mut op:O, rets:u
     let alloc = heap.new_virtual_arena(size_alloc);
     let code_alloc = heap.new_virtual_arena(size_code_alloc);
     let structural_arena = heap.new_arena(size_interpreter_stack + size_frame_stack);
-    let env = ContextEnvironment {
-        block_no:0,
-        full_hash:[0;20],
-        txt_hash:[0;20],
-        code_hash:[0;20]
-    };
     let vals_sets = v_gen(&alloc);
     let first = vals_sets[0].len();
     assert!(vals_sets.iter().all(|s|s.len() == first));
@@ -234,7 +220,7 @@ fn execute_code_with_extra_fun<F,O,E>(b: &mut Bencher, v_gen:F, mut op:O, rets:u
         }
 
         if do_it {
-            ExecutionContext::interpret(env,&funs, &mut value_stack, &mut frame_stack, &tmp_alloc, &tmp).unwrap()
+            ExecutionContext::interpret(&funs, &mut value_stack, &mut frame_stack, &tmp_alloc, &tmp).unwrap()
         }
     })
 }
@@ -288,13 +274,6 @@ fn execute_script<F,O>(b: &mut Bencher, v_gen:F, mut code_gen:O, rets:usize, do_
     let alloc = heap.new_virtual_arena(size_alloc);
     let code_alloc = heap.new_virtual_arena(size_code_alloc);
     let structural_arena = heap.new_arena(size_interpreter_stack + size_frame_stack + size_script_stack);
-
-    let env = ContextEnvironment {
-        block_no:0,
-        full_hash:[0;20],
-        txt_hash:[0;20],
-        code_hash:[0;20]
-    };
     let vals_sets = v_gen(&alloc);
     let first = vals_sets[0].len();
     assert!(vals_sets.iter().all(|s|s.len() == first));
@@ -322,7 +301,7 @@ fn execute_script<F,O>(b: &mut Bencher, v_gen:F, mut code_gen:O, rets:usize, do_
         let script_stack = sub_structural.alloc_stack(CONFIG.max_script_stack_size);
 
         let mut stack = LinearScriptStack::new(&sub_alloc,script_stack).unwrap();
-        push_ctx(&mut stack, &sub_alloc, &env.full_hash, &env.txt_hash, &env.code_hash).unwrap();
+        push_ctx(&mut stack, &sub_alloc, &[0;20], &[0;20], &[0;20]).unwrap();
 
         for vals in &vals_sets {
             for v in vals {
@@ -336,7 +315,6 @@ fn execute_script<F,O>(b: &mut Bencher, v_gen:F, mut code_gen:O, rets:usize, do_
             newtypes: SlicePtr::empty(),
             imports: SlicePtr::empty(),
             stack,
-            env,
             store:ElemStore::new(&store, slot_map),
             alloc: &sub_alloc,
             code_alloc: &code_alloc,

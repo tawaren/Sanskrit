@@ -14,14 +14,14 @@ use alloc::rc::Rc;
 use sanskrit_core::model::*;
 use sanskrit_core::model::resolved::ResolvedErr;
 use sanskrit_core::model::linking::Ref;
-use sanskrit_runtime::model::OpCode as ROpCode;
-use sanskrit_runtime::model::Exp as RExp;
+use sanskrit_interpreter::model::OpCode as ROpCode;
+use sanskrit_interpreter::model::Exp as RExp;
 use sanskrit_core::model::resolved::*;
 use sanskrit_common::errors::*;
 use sanskrit_common::model::*;
 use sanskrit_common::store::*;
-use sanskrit_runtime::model::Error;
-use sanskrit_runtime::model::LitDesc;
+use sanskrit_interpreter::model::Error;
+use sanskrit_interpreter::model::LitDesc;
 use core::mem;
 use sanskrit_common::arena::*;
 use gas_table::gas;
@@ -339,7 +339,7 @@ impl<'b,'h> Compactor<'b,'h> {
         let r_typ = typ.fetch(context)?;
         let lit_desc = match *r_typ {
             ResolvedType::Native { typ:NativeType::Data(_), .. } => LitDesc::Data,
-            ResolvedType::Native { typ:NativeType::Ref, .. } => LitDesc::Ref,
+            ResolvedType::Native { typ:NativeType::PublicId, .. } => LitDesc::Ref,
             ResolvedType::Native { typ:NativeType::SInt(1), .. } => LitDesc::I8,
             ResolvedType::Native { typ:NativeType::UInt(1), .. } => LitDesc::U8,
             ResolvedType::Native { typ:NativeType::SInt(2), .. } => LitDesc::I16,
@@ -599,21 +599,15 @@ impl<'b,'h> Compactor<'b,'h> {
                 NativeFunc::Concat => (ROpCode::Concat(self.translate_ref(vals[0]), self.translate_ref(vals[1])),1, gas::concat(applies)),
                 NativeFunc::GetBit => (ROpCode::GetBit(self.translate_ref(vals[0]), self.translate_ref(vals[1])),1, gas::get_bit()),
                 NativeFunc::SetBit => (ROpCode::SetBit(self.translate_ref(vals[0]), self.translate_ref(vals[1]),self.translate_ref(vals[2])),1, gas::set_bit(applies)),
-                //Index and Ref have the same runtime behaviour and representation, the difference is only in the type and allowed usage
-                NativeFunc::GenId | NativeFunc::ToRef  => match *applies[0] {
-                    //this is just hashing - but in the key domain
-                    ResolvedType::Native {  typ: NativeType::Data(_), .. } => (ROpCode::GenId(self.translate_ref(vals[0])), 1, gas::hash_plain(applies)),
-                    //these are no ops --  same bit representation -- |Index is for toref, others are for genIndex|
-                    ResolvedType::Native {  typ: NativeType::Id, .. } => {
-                    //push the compiletime stack
-                        let pos = self.get(vals[0]);
-                        self.state.push_alias(pos);
-                        //return eliminated indicator
-                        return Ok(None)
-                    }
-                    _ => unreachable!()
+                //Private and Public have the same runtime representation, the difference is only in the type and allowed / intended usage
+                NativeFunc::GenPublicId => {
+                    //these are no ops --  same bit representation --
+                    let pos = self.get(vals[0]);
+                    self.state.push_alias(pos);
+                    //return eliminated indicator
+                    return Ok(None)
                 },
-                NativeFunc::Derive => (ROpCode::Derive(self.translate_ref(vals[0]), self.translate_ref(vals[1])), 1,gas::join_hash()),
+                NativeFunc::DeriveId => (ROpCode::Derive(self.translate_ref(vals[0]), self.translate_ref(vals[1])), 1, gas::join_hash()),
             }
         };
 

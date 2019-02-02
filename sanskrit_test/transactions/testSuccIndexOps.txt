@@ -16,6 +16,7 @@ signed(A) new(T1,T2) transaction{
    () = call Helpers.AssertNotEqRef(r1,r2);
 };
 
+
 signed(A) new(T1) transaction{
    t1 = token T1;
    i1 = call IndexOps.GenId[T1](t1);
@@ -54,7 +55,7 @@ signed(A) new(T1) transaction{
    r1 = call IndexOps.ToRef(i1);
    d1 = call IndexOps.ToData(r1);
    r2 = call IndexOps.ToRef2(d1);
-   () = call Helpers.AssertNotEqRef(r1,r2);
+   () = call Helpers.AssertEqRef(r1,r2);
 };
 
 signed(A) new(T1) transaction{

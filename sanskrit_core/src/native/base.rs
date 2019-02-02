@@ -10,7 +10,7 @@ use core::iter::repeat;
 //checks if a native type is a literal
 pub fn is_native_literal(typ: NativeType) -> bool {
     match typ {
-        NativeType::SInt(_) | NativeType::UInt(_) | NativeType::Data(_) | NativeType::Ref => true,
+        NativeType::SInt(_) | NativeType::UInt(_) | NativeType::Data(_) | NativeType::PublicId => true,
         _ => false,
     }
 }
@@ -24,8 +24,8 @@ pub fn get_native_type_constructors(typ: NativeType, base_applies:&[ResolvedAppl
         NativeType::SInt(_)
         | NativeType::UInt(_)
         | NativeType::Data(_)
-        | NativeType::Id
-        | NativeType::Ref =>  no_ctr_available(),
+        | NativeType::PrivateId
+        | NativeType::PublicId =>  no_ctr_available(),
         //Bools have 2 Ctrs with 0 fields each
         NativeType::Bool => Ok(vec![vec![]; 2]),
         //Tuple has one ctr with a dynamic number of fields (each its own type)
@@ -45,8 +45,8 @@ pub fn resolved_native_type(typ: NativeType, base_applies:&[Crc<ResolvedType>]) 
         | NativeType::SInt(_)
         | NativeType::UInt(_)
         | NativeType::Bool
-        | NativeType::Ref
-        | NativeType::Id => ResolvedType::Native {
+        | NativeType::PublicId
+        | NativeType::PrivateId => ResolvedType::Native {
             //In the absence of  (non-phantom) generics all the caps are the same
             base_caps,
             caps:base_caps,
@@ -131,8 +131,8 @@ pub fn check_native_type_constraints(typ: NativeType, types:&[Crc<ResolvedType>]
             }
         },
         //These have 0 params
-        NativeType::Id
-        | NativeType::Ref => {
+        NativeType::PrivateId
+        | NativeType::PublicId => {
             //These have zero generic type
             if types.is_empty() {
                 Ok(())

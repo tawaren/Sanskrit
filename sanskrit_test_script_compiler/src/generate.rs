@@ -2,7 +2,7 @@ use model::*;
 use environment::*;
 use std::collections::HashMap;
 use sanskrit_runtime::model::ScriptCode as RScriptCode;
-use sanskrit_runtime::model::LitDesc;
+use sanskrit_interpreter::model::LitDesc;
 use sanskrit_core::model::OpCode as ROpCode;
 use sanskrit_core::model::Visibility as RVisibility;
 use sanskrit_core::model::Ret as RRet;

@@ -4,13 +4,12 @@
 
 extern crate blake2_rfc;
 #[macro_use]
-extern crate alloc;
-#[macro_use]
 extern crate arrayref;
 extern crate byteorder;
 extern crate num_traits;
 extern crate ed25519_dalek;
 extern crate sha2;
+extern crate sanskrit_interpreter;
 extern crate sanskrit_common;
 #[macro_use]
 extern crate sanskrit_derive;
@@ -34,24 +33,22 @@ use script_stack::StackEntry;
 use sanskrit_common::model::SlicePtr;
 use sanskrit_common::linear_stack::Elem;
 use sanskrit_common::model::Ptr;
-use model::Object;
-use interpreter::Frame;
+use sanskrit_interpreter::model::Object;
+use sanskrit_interpreter::interpreter::Frame;
 use elem_store::CacheSlotMap;
 use elem_store::CacheEntry;
-use script_interpreter::HashingDomain;
+use sanskrit_interpreter::hashing::HashingDomain;
 use system::*;
 use script_interpreter::unique_hash;
 
 
 pub mod native;
 pub mod descriptors;
-pub mod interpreter;
 pub mod model;
 pub mod script_stack;
 pub mod script_interpreter;
 pub mod type_builder;
 pub mod elem_store;
-pub mod encoding;
 pub mod system;
 
 
@@ -212,12 +209,6 @@ pub fn execute<S:Store>(store:&S, txt_data:&[u8], block_no:u64, heap:&Heap) -> R
         newtypes,
         imports: txt.imports,
         stack,
-        env:ContextEnvironment {
-            block_no,
-            full_hash,
-            txt_hash,
-            code_hash
-        },
         store:ElemStore::new(store, slot_map),
         alloc: &alloc,
         code_alloc: &code_alloc,

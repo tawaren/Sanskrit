@@ -4,6 +4,7 @@ members = [
         "sanskrit_derive",
         "sanskrit_core",
         "sanskrit_deploy",
+        "sanskrit_interpreter",
         "sanskrit_runtime",
         "sanskrit_compile",
         "sanskrit_memory_store",

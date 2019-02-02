@@ -1,23 +1,23 @@
 module System {
    type <Copy,Drop,Create,Persist> Entry[<Embed> T]{
-        Ctr($id,T);
+        Ctr($privateId,T);
    };
 
    type <Drop,Embed,Consume,Persist> Singleton[phantom <Embed> T]{
-        Ctr($id);
+        Ctr($privateId);
    };
 
    type <Drop,Copy,Embed,Consume,Inspect> Account[phantom <Embed> T]{
-          Ctr($id);
+          Ctr($privateId);
    };
 
    type <Drop> Context{
-          Ctr($data20, $id, $data20, $u64, $u64);
+          Ctr($data20, $privateId, $data20, $u64, $u64);
    };
 
    public fun TxTHash(ctx:.Context):(txtHash:$data20) {
         txtId = &field[1] ctx:.Context;
-        txtHash = call $ToData[$id,$data20](txtId);
+        txtHash = call $ToData[$privateId,$data20](txtId);
         return txtHash;
    };
 
@@ -36,10 +36,10 @@ module System {
         return blockNo;
    };
 
-   public risky<$Unexpected> fun UniqueID(consume ctx:.Context):(id:$id, ctx:.Context) {
+   public risky<$Unexpected> fun UniqueID(consume ctx:.Context):(id:$privateId, ctx:.Context) {
          (codeHash, txtId, fullHash, blockNo, ctr) = unpack ctx:.Context;
          ctrData = call $ToData[$u64,$data8](ctr);
-         id = call $Derive[$id,$data8](txtId,ctrData);
+         id = call $DeriveId[$privateId,$data8](txtId,ctrData);
          newCtr = try {
             inc = lit 1:$u64;
             newCtr = call $Add[$u64](ctr,inc);
@@ -55,12 +55,12 @@ module System {
          return (id,newCtx);
    };
 
-   protected[T] fun UnpackEntry[<Embed> T](consume entry:.Entry[T]):(id:$id, t:T){
+   protected[T] fun UnpackEntry[<Embed> T](consume entry:.Entry[T]):(id:$privateId, t:T){
         (id, t) = unpack entry:.Entry[T];
         return (id,t);
    };
 
-    protected[T] fun BorrowEntry[<Embed> T](entry:.Entry[T]):(borrowed(entry) id:$id, borrowed(entry) t:T){
+    protected[T] fun BorrowEntry[<Embed> T](entry:.Entry[T]):(borrowed(entry) id:$privateId, borrowed(entry) t:T){
           (id, t) = &unpack entry:.Entry[T];
           return (id,t);
     };

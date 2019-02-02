@@ -6,7 +6,7 @@
 extern crate alloc;
 
 extern crate sanskrit_core;
-extern crate sanskrit_runtime;
+extern crate sanskrit_interpreter;
 extern crate sanskrit_common;
 
 pub mod compacting;
@@ -18,8 +18,8 @@ use sanskrit_common::store::*;
 use sanskrit_common::errors::*;
 use sanskrit_common::encoding::*;
 use compiler::ComponentProcessor;
-use sanskrit_runtime::model::AdtDescriptor;
-use sanskrit_runtime::model::FunctionDescriptor;
+use sanskrit_interpreter::model::AdtDescriptor;
+use sanskrit_interpreter::model::FunctionDescriptor;
 
 struct StoreDescriptorProcessor<'a, S:Store> {
     module_hash:Hash,

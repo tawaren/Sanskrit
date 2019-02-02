@@ -17,8 +17,8 @@ pub mod gas {
                 NativeType::SInt(s)
                 | NativeType::UInt(s) => s as usize,
                 NativeType::Bool => 1,
-                NativeType::Id
-                | NativeType::Ref => 20,
+                NativeType::PrivateId
+                | NativeType::PublicId => 20,
                 _ => unreachable!(),
             },
             _ => unreachable!()
@@ -29,8 +29,8 @@ pub mod gas {
         match **typ {
             ResolvedType::Native { typ, ..} => match typ {
                 NativeType::Data(_)
-                | NativeType::Id
-                | NativeType::Ref => true,
+                | NativeType::PrivateId
+                | NativeType::PublicId => true,
                 _ => false,
             },
             _ => unreachable!()
@@ -58,8 +58,8 @@ pub mod gas {
                     }
                     max+obj_factor
                 },
-                NativeType::Id
-                | NativeType::Ref => obj_factor + 20*byte_factor,
+                NativeType::PrivateId
+                | NativeType::PublicId => obj_factor + 20*byte_factor,
             },
             ResolvedType::Import { ref module, offset, ref applies, ..} => {
                 //Get the cache

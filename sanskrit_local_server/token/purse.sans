@@ -1,6 +1,6 @@
 module Purse {
     type <Indexed, Create, Persist> Purse[phantom O, phantom C] {
-        Purse($id, Token.Token[C]);
+        Purse($privateId, Token.Token[C]);
     };
 
     public risky<$NumericError> fun deposit[phantom O, phantom C](consume p:.Purse[O,C], consume t:Token.Token[C]):(pn:.Purse[O,C]) {

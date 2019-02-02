@@ -16,6 +16,6 @@ default-features = false
 path = "../sanskrit_core"
 version = "0.1.0"
 
-[dependencies.sanskrit_runtime]
-path = "../sanskrit_runtime"
+[dependencies.sanskrit_interpreter]
+path = "../sanskrit_interpreter"
 version = "0.1.0"

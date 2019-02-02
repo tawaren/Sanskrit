@@ -7,7 +7,7 @@
 //! (See runtime for the two interpreters)
 //!
 
-use sanskrit_runtime::model::*;
+use sanskrit_interpreter::model::*;
 use sanskrit_common::store::*;
 use sanskrit_common::model::*;
 use sanskrit_core::model::*;

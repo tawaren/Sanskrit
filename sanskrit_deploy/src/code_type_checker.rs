@@ -172,7 +172,7 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
 
     fn module_index(&mut self,) -> Result<()> {
         //Tell the Stack that an element has appeared out of nowhere
-        self.stack.provide(resolved_native_type(NativeType::Id, &[]))
+        self.stack.provide(resolved_native_type(NativeType::PrivateId, &[]))
     }
 
     //_ as let is keyword

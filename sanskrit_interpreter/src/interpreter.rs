@@ -6,8 +6,7 @@ use model::*;
 use byteorder::{LittleEndian, ByteOrder};
 use num_traits::ToPrimitive;
 use blake2_rfc::blake2b::{Blake2b};
-use script_interpreter::HashingDomain;
-use ContextEnvironment;
+use hashing::HashingDomain;
 use sanskrit_common::arena::*;
 
 //enum to indicate if a block had a result or an error as return
@@ -29,7 +28,6 @@ pub enum Frame<'code> {
 
 //the context in which the code is interpreted / executed
 pub struct ExecutionContext<'script,'code, 'interpreter, 'execution, 'heap> {
-    env:ContextEnvironment,                                             //Environment with txt and block infos
     functions: &'code [Ptr<'code,Exp<'code>>],                          // all the code
     frames: &'execution mut HeapStack<'interpreter,Frame<'code>>,
     stack: &'execution mut HeapStack<'interpreter,Ptr<'script ,Object<'script>>>,       //The current stack
@@ -141,10 +139,9 @@ fn object_hash(obj:&Object, context: &mut Blake2b) {
 
 impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code,'interpreter, 'execution,'heap> {
     //Creates a new Empty context
-    pub fn interpret(env:ContextEnvironment, functions: &'code [Ptr<'code,Exp<'code>>], stack:&'execution mut HeapStack<'interpreter,Ptr<'script, Object<'script>>>, frames:&'execution mut HeapStack<'interpreter,Frame<'code>>, alloc:&'script VirtualHeapArena<'heap>, temporary_values:&'interpreter HeapArena<'heap>) -> Result<()>{
+    pub fn interpret(functions: &'code [Ptr<'code,Exp<'code>>], stack:&'execution mut HeapStack<'interpreter,Ptr<'script, Object<'script>>>, frames:&'execution mut HeapStack<'interpreter,Frame<'code>>, alloc:&'script VirtualHeapArena<'heap>, temporary_values:&'interpreter HeapArena<'heap>) -> Result<()>{
         //Define some reused types and capabilities
         let context = ExecutionContext {
-            env,
             functions,
             frames,
             stack,
@@ -293,7 +290,6 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
             OpCode::Gte(op1,op2) => self.gte(op1,op2),
             OpCode::SetBit(op1,op2, op3) => self.set_bit(op1,op2, op3),
             OpCode::GetBit(op1,op2) => self.get_bit(op1,op2),
-            OpCode::GenId(op) => self.hash(op, HashingDomain::Id),
             OpCode::Derive(op1,op2) => self.join_hash(op1, op2, HashingDomain::Derive),
         }
     }

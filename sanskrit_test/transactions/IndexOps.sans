@@ -1,45 +1,45 @@
 module IndexOps {
-    public fun GenId[phantom T](consume in:System.Singleton[T]):(out:$id) {
+    public fun GenId[phantom T](consume in:System.Singleton[T]):(out:$privateId) {
         out = unpack in:System.Singleton[T];
         return out;
     };
 
-    public fun ToRef(a:$id):(b:$ref) {
-        b = call $ToRef[$id](a);
+    public fun ToRef(a:$privateId):(b:$publicId) {
+        b = call $GenPublicId[$privateId](a);
         return b;
     };
 
-    public fun ToRef2(a:$data20):(b:$ref) {
-        b = call $ToRef[$data20](a);
+    public fun ToRef2(a:$data20):(b:$publicId) {
+        b = call $GenPublicId[$data20](a);
         return b;
     };
 
-    public fun ToData(a:$ref):(c:$data20) {
-        c = call $ToData[$ref,$data20](a);
+    public fun ToData(a:$publicId):(c:$data20) {
+        c = call $ToData[$publicId,$data20](a);
         return c;
     };
 
-    public fun ToData2(a:$id):(c:$data20) {
-        c = call $ToData[$id,$data20](a);
+    public fun ToData2(a:$privateId):(c:$data20) {
+        c = call $ToData[$privateId,$data20](a);
         return c;
     };
 
-    public fun DeriveIndex(a:$id, b:$id):(c:$id) {
-        c = call $Derive[$id,$id](a,b);
+    public fun DeriveIndex(a:$privateId, b:$privateId):(c:$privateId) {
+        c = call $DeriveId[$privateId,$privateId](a,b);
         return c;
     };
 
-    public fun DeriveRef(a:$ref, b:$ref):(c:$ref) {
-        c = call $Derive[$ref,$ref](a,b);
+    public fun DeriveRef(a:$publicId, b:$publicId):(c:$publicId) {
+        c = call $DeriveId[$publicId,$publicId](a,b);
         return c;
     };
 
-    public fun ModIndex():(a:$id){
+    public fun ModIndex():(a:$privateId){
        a = moduleIndex;
        return a;
     };
 
-    public fun ModIndex2():(b:$id){
+    public fun ModIndex2():(b:$privateId){
        b = moduleIndex;
        return b;
     };

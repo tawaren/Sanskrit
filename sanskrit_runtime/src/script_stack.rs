@@ -7,7 +7,8 @@ use model::*;
 use elem_store::ElemStore;
 use sanskrit_common::store::Store;
 use sanskrit_common::arena::*;
-use script_interpreter::HashingDomain;
+use sanskrit_interpreter::model::Object;
+use elem_store::extract_key;
 
 
 #[derive(Clone, Copy, Debug)]
@@ -132,7 +133,7 @@ impl<'a,'h> LinearScriptStack<'a,'h> {
             if !elem.status.borrowing.is_empty() {
                 //if it is borrowed from the store we have to release it before we free it
                 if elem.value.store_borrow {
-                    let key = elem.value.val.extract_key();
+                    let key = extract_key(&*elem.value.val);
                     store.free(key)
                 }
             } else {

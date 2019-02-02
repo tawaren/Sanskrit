@@ -1,19 +1,20 @@
-use interpreter::*;
+use sanskrit_interpreter::interpreter::*;
 use script_stack::*;
 use sanskrit_common::errors::*;
 use sanskrit_common::model::*;
 use sanskrit_common::linear_stack::*;
 use sanskrit_common::store::*;
-use alloc::prelude::*;
 use model::*;
 use native::*;
-use blake2_rfc::blake2b::{Blake2b};
 use byteorder::{LittleEndian, ByteOrder};
 use elem_store::ElemStore;
-use ContextEnvironment;
 use sanskrit_common::arena::*;
 use CONFIG;
 use system::is_entry;
+use sanskrit_interpreter::hashing::HashingDomain;
+use sanskrit_interpreter::model::*;
+use elem_store::extract_key;
+use descriptors::*;
 
 //The state of the script execution
 pub struct Executor<'a, 'h, S:Store>{
@@ -22,48 +23,14 @@ pub struct Executor<'a, 'h, S:Store>{
     pub newtypes:SlicePtr<'a,Ptr<'a,RuntimeType<'a>>>,
     pub imports:SlicePtr<'a, Hash>,
     pub stack:LinearScriptStack<'a, 'h>,
-    pub env:ContextEnvironment,
+    //pub env:ContextEnvironment,
     pub store:ElemStore<'a,S>,
     pub alloc:&'a VirtualHeapArena<'h>,
     pub code_alloc:&'a VirtualHeapArena<'h>,
     pub stack_alloc: &'a HeapArena<'h>
 }
 
-//Hashing Domains to ensure there are no collisions
-pub enum HashingDomain {
-    Unique,
-    Singleton,
-    Transaction,
-    Id,
-    Derive,
-    Object,
-    Account
-}
 
-impl HashingDomain {
-
-    pub fn get_domain_code(&self) -> u8 {
-        match *self {
-            HashingDomain::Unique => 0,
-            HashingDomain::Singleton => 1,
-            HashingDomain::Transaction => 2,
-            HashingDomain::Id => 3,
-            HashingDomain::Derive => 4,
-            HashingDomain::Object => 5,
-            HashingDomain::Account => 6,
-        }
-    }
-
-    pub fn get_domain_hasher(&self, input_len:i32) -> Blake2b {
-        let mut context = Blake2b::new(20);
-        //prepare the counter
-        let mut input = [0u8; 4];
-        LittleEndian::write_i32(&mut input, input_len);
-        context.update(&[self.get_domain_code()]);
-        context.update(&input);
-        context
-    }
-}
 
 //generates a new hash from a hash (usually txtHash) and a counter
 pub fn unique_hash<'a, 'h>(base: &Hash, domain: HashingDomain, ctr: u64, alloc:&'a VirtualHeapArena<'h>) -> Result<Object<'a>> {
@@ -86,16 +53,16 @@ pub fn unique_hash<'a, 'h>(base: &Hash, domain: HashingDomain, ctr: u64, alloc:&
 
 //helper th extract a key from a stack entry
 // used as input to load & store
-fn extract_key(entry:&StackEntry) -> Result<Hash> {
+fn extract_entry_key(entry:&StackEntry) -> Result<Hash> {
     //ensure it is a ref
     match &*entry.typ {
-        RuntimeType::NativeType { typ:NativeType::Ref, .. } => {},
+        RuntimeType::NativeType { typ:NativeType::PublicId, .. } => {},
         _ => return type_mismatch()
     }
 
     //fetch the value
     Ok(match &*entry.val {
-        Object::Data(key) => array_ref!(key,0,20).to_owned(),
+        Object::Data(key) => array_ref!(key,0,20).clone(),
         _ => unreachable!()
     })
 }
@@ -197,7 +164,7 @@ impl<'a, 'h, S:Store> Executor<'a,'h,S> {
                 let b_applies = self.alloc.iter_result_alloc_slice(applies.iter().map(|appl|self.resolve_type(appl).map(|r|r.1)))?;
                 let code_alloc = self.code_alloc.temp_arena()?;
                 let desc = self.store.backend.parsed_get::<AdtDescriptor, VirtualHeapArena>(StorageClass::AdtDesc, &self.elem_key(*imp, *offset)?, CONFIG.max_structural_dept, &code_alloc)?;
-                let res = (false,desc.build_type(b_applies, self.alloc)?);
+                let res = (false,build_type_from_desc(&desc, b_applies, self.alloc)?);
                 Ok(res)
             }
         }
@@ -210,7 +177,7 @@ impl<'a, 'h, S:Store> Executor<'a,'h,S> {
             AdtRef::Ref(imp, offset) => self.store.backend.parsed_get::<AdtDescriptor, VirtualHeapArena>(StorageClass::AdtDesc, &self.elem_key(imp,offset)?, CONFIG.max_structural_dept, &code_alloc)?,
             AdtRef::Native(typ) => typ.get_native_adt_descriptor(&code_alloc)?,
         };
-        desc.pack(types, tag, &vals, is_borrowed, &mut self.stack, self.alloc)
+        pack_adt_from_desc(&desc, types, tag, &vals, is_borrowed, &mut self.stack, self.alloc)
     }
 
     fn unpack(&mut self, adt_ref:AdtRef, val:ValueRef, expected_tag:Tag, is_borrowed:bool, temporary_values:&HeapArena<'h>) -> Result<()> {
@@ -219,7 +186,7 @@ impl<'a, 'h, S:Store> Executor<'a,'h,S> {
             AdtRef::Ref(imp, offset) => self.store.backend.parsed_get::<AdtDescriptor, VirtualHeapArena>(StorageClass::AdtDesc, &self.elem_key(imp,offset)?, CONFIG.max_structural_dept, &code_alloc)?,
             AdtRef::Native(typ) => typ.get_native_adt_descriptor(&code_alloc)?,
         };
-        desc.unpack(val, expected_tag, is_borrowed, &mut self.stack, self.alloc, temporary_values)
+        unpack_adt_from_desc(&desc,val, expected_tag, is_borrowed, &mut self.stack, self.alloc, temporary_values)
     }
 
     fn invoke<'c>(&mut self, func_ref:FuncRef, applies:&'c[Ptr<'c,TypeApplyRef>], vals:&'c[ValueRef], temporary_values:&HeapArena<'h>) -> Result<()> {
@@ -227,12 +194,12 @@ impl<'a, 'h, S:Store> Executor<'a,'h,S> {
         let types = tmp.iter_result_alloc_slice(applies.iter().map(|t_ref| self.resolve_type(t_ref)))?;
         let code_alloc = self.code_alloc.temp_arena()?;
         let desc = self.store.backend.parsed_get::<FunctionDescriptor, VirtualHeapArena>(StorageClass::FunDesc, &self.elem_key(func_ref.module, func_ref.offset)?, CONFIG.max_structural_dept, &code_alloc)?;
-        desc.apply(&types, &vals, &mut self.stack, self.env, self.alloc, &self.stack_alloc, &tmp)
+        apply_fun_from_desc(&desc,&types, &vals, &mut self.stack, self.alloc, &self.stack_alloc, &tmp)
     }
 
     fn lit(&mut self, data:&[u8], desc:LitDesc) -> Result<()>{
         let val = create_lit_object(&data,desc, self.alloc)?;
-        let typ = desc.lit_typ(data.len() as u16, self.alloc)?;
+        let typ = lit_typ(desc,data.len() as u16, self.alloc)?;
         self.stack.provide(StackEntry::new( val, typ ))
     }
 
@@ -265,7 +232,7 @@ impl<'a, 'h, S:Store> Executor<'a,'h,S> {
         }
         let freed = self.stack.value_of(v1)?;
         if freed.store_borrow {
-            let key = freed.val.extract_key();
+            let key = extract_key(&freed.val);
             self.store.free(key)
         }
         self.stack.free(v1)
@@ -280,13 +247,13 @@ impl<'a, 'h, S:Store> Executor<'a,'h,S> {
     }
 
     fn load(&mut self, v1:ValueRef) -> Result<()> {
-        let key = extract_key(&self.stack.value_of(v1)?)?;
+        let key = extract_entry_key(&self.stack.value_of(v1)?)?;
         let res = self.store.load(key, self.alloc)?;
         self.stack.provide(res)
     }
 
     fn borrow_load(&mut self, v1:ValueRef) -> Result<()> {
-        let key = extract_key(&self.stack.value_of(v1)?)?;
+        let key = extract_entry_key(&self.stack.value_of(v1)?)?;
         let res = self.store.borrow(key, self.alloc)?;
         self.stack.store_borrow(res)
     }
@@ -303,7 +270,7 @@ impl<'a, 'h, S:Store> Executor<'a,'h,S> {
             return type_mismatch()
         }
 
-        let key = entry.val.extract_key();
+        let key = extract_key(&entry.val);
         self.store.store(*key,entry)?;
         self.stack.consume(vl)
     }

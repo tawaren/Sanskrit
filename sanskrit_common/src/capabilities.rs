@@ -139,8 +139,8 @@ impl NativeType {
             NativeType::SInt(_)
             | NativeType::UInt(_)
             | NativeType::Data(_)
-            | NativeType::Id
-            | NativeType::Ref => CapSet::opaque(),
+            | NativeType::PrivateId
+            | NativeType::PublicId => CapSet::opaque(),
             NativeType::Bool
             | NativeType::Tuple(_)
             | NativeType::Alternative(_) => CapSet::open(),
