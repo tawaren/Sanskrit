@@ -26,8 +26,8 @@ ScriptCode:ScriptCode = {
     <id:Id> "=" "&pack" <typ:Type> "#" <ctr:Id> "(" <vars:Comma<Id>> ")" => ScriptCode::Pack(id,typ,ctr,vars,true),
     <assigs:Assigns> "call" <function:Ref> "[" <generics:Comma<Type>> "]" "(" <vars:Comma<Id>> ")" =>  ScriptCode::Call(assigs, function, generics, vars),
     <assigs:Assigns> "call" <function:Ref> "(" <vars:Comma<Id>> ")" =>  ScriptCode::Call(assigs, function, vec![], vars),
-    <id:Id> "=" "token" <var:Id> => ScriptCode::Singleton(id,var,false),
-    <id:Id> "=" "&token" <var:Id> => ScriptCode::Singleton(id,var,true),
+    <id:Id> "=" "token" <var:Id> => ScriptCode::Token(id,var,false),
+    <id:Id> "=" "&token" <var:Id> => ScriptCode::Token(id,var,true),
     <id:Id> "=" "load" <var:Id> => ScriptCode::Load(id, var, false),
     <id:Id> "=" "&load" <var:Id> => ScriptCode::Load(id, var, true),
     "store" <id:Id> => ScriptCode::Store(id),
@@ -40,7 +40,7 @@ Type:Type = {
 
 Ref:Ref = {
     <name:Id> => Ref::This(name),
-    <module:Id> "." <name:Id> => Ref::Module(module,name),
+    <module:Id> "." <name:Id> => Ref::Module(Id(module.0.to_lowercase()),name),
     "native" "." <name:Id> => Ref::Native(name),
     "$" <name:Id> => Ref::Native(name),
     "!" <addr:Lit> => Ref::Account(addr),

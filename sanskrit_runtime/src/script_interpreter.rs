@@ -13,6 +13,7 @@ use elem_store::ElemStore;
 use ContextEnvironment;
 use sanskrit_common::arena::*;
 use CONFIG;
+use system::is_entry;
 
 //The state of the script execution
 pub struct Executor<'a, 'h, S:Store>{
@@ -32,7 +33,8 @@ pub struct Executor<'a, 'h, S:Store>{
 pub enum HashingDomain {
     Unique,
     Singleton,
-    Index,
+    Transaction,
+    Id,
     Derive,
     Object,
     Account
@@ -44,10 +46,11 @@ impl HashingDomain {
         match *self {
             HashingDomain::Unique => 0,
             HashingDomain::Singleton => 1,
-            HashingDomain::Index => 2,
-            HashingDomain::Derive => 3,
-            HashingDomain::Object => 4,
-            HashingDomain::Account => 5,
+            HashingDomain::Transaction => 2,
+            HashingDomain::Id => 3,
+            HashingDomain::Derive => 4,
+            HashingDomain::Object => 5,
+            HashingDomain::Account => 6,
         }
     }
 
@@ -292,8 +295,12 @@ impl<'a, 'h, S:Store> Executor<'a,'h,S> {
         let entry = self.stack.value_of(vl)?;
 
         let caps = entry.typ.get_caps();
-        if !caps.contains(NativeCap::Persist) || !caps.contains(NativeCap::Indexed){
+        if !caps.contains(NativeCap::Persist){
             return capability_missing_error()
+        }
+
+        if !is_entry(entry.typ){
+            return type_mismatch()
         }
 
         let key = entry.val.extract_key();

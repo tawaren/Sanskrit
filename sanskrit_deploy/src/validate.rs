@@ -60,8 +60,6 @@ pub fn validate<S:Store>(data:&[u8], store:&S, link:Hash) -> Result<()>{
 
 //Checks that an Adt declaration is semantically valid
 pub fn validate_adt<S:Store>(adt:&AdtComponent, context:&Context<S>) -> Result<()>{
-    //check capability implications
-    check_capabilities(&adt, context)?;
     //Check the import section
     check_type_import_constraints_validity(&adt.import, context)?;
     //Check constructors for phantoms and enforce recursive capabilities
@@ -86,35 +84,7 @@ pub fn validate_function<S:Store>(fun:&FunctionComponent, ctx:&Context<S>) -> Re
     check_function_visibility(fun)
 }
 
-fn check_capabilities<S:Store>(adt:&AdtComponent, context:&Context<S>) -> Result<()>{
 
-    //Make sure Consume implies Inspect
-    if adt.provided_caps.contains(NativeCap::Consume) && !adt.provided_caps.contains(NativeCap::Inspect) {
-        return capability_implication_mismatch()
-    }
-
-    if adt.provided_caps.contains(NativeCap::Indexed) {
-        //Make sure Indexed implies Persist
-        if !adt.provided_caps.contains(NativeCap::Persist) {
-            return capability_implication_mismatch()
-        }
-
-        //Make sure each ctr is indexed
-        for ctr in &adt.constructors{
-            //must have at least 1 field per ctr to be indexed
-            if ctr.fields.is_empty() {
-                return capability_constraints_violation()
-            }
-
-            //first field must be indexed as well
-            if !ctr.fields[0].fetch(context)?.get_caps().contains(NativeCap::Indexed) {
-                return capability_constraints_violation()
-            }
-        }
-    }
-
-    Ok(())
-}
 
 //Checks that native imports are allowed and have correct amount and kind of arguments
 //Checks that normal imports have correct amount and kind of arguments

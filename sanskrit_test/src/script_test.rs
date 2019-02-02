@@ -19,6 +19,7 @@ mod tests {
         let folder = current_dir().unwrap().join("scripts");
         let out_folder = folder.join("out");
         let mut comp = Compiler::new(&folder);
+        comp.parse_module_tree(Id("system".into()));
         comp.parse_module_tree(id.clone());
         comp.compile_module_tree().unwrap();
         let s = BTreeMapStore::new();
@@ -33,6 +34,11 @@ mod tests {
             }
             let res = deploy_module(&s, r)?;
             compile_module(&s, res)?;
+            if c_id == id {
+                let fh_path = out_folder.join(&id.0.to_lowercase()).with_extension("hash");
+                let mut hs = File::create(fh_path).expect("file not found");
+                hs.write_all(format!("{:?}",res).as_bytes()).unwrap();
+            }
         }
         Ok(())
     }
@@ -41,6 +47,7 @@ mod tests {
         let id = Id(id.into());
         let folder = current_dir().unwrap().join("scripts");
         let mut comp = Compiler::new(&folder);
+        comp.parse_module_tree(Id("system".into()));
         comp.parse_module_tree(id.clone());
         comp.compile_module_tree().unwrap();
         b.iter(|| {
@@ -56,6 +63,11 @@ mod tests {
     #[bench]
     fn build_diff_adts_bench_deploy(b: &mut Bencher) {
         parse_and_compile_deploy_bench("testSucAdt",b).unwrap();
+    }
+
+    #[test]
+    fn build_system() {
+        parse_and_compile("system").unwrap();
     }
 
     #[test]
@@ -182,18 +194,6 @@ mod tests {
     #[should_panic(expected="Type does not full fill capability requirements")]
     fn rec_unsat_adts_persist_remote() {
         parse_and_compile("testFailAdtWrongRecCapsPersistRemote").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Type does not full fill capability requirements")]
-    fn identity_unsat_adts() {
-        parse_and_compile("testFailAdtWrongCapsIdentity").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Illegal capability set")]
-    fn consume_implicatons() {
-        parse_and_compile("testFailInspectImplied").unwrap();
     }
 
     #[test]

@@ -65,25 +65,27 @@ impl<'a> Compiler<'a> {
     }
 
     pub fn get_direct_dependencies(&self, module_id:Id) -> HashSet<Id> {
-            let mut f = File::open(self.get_module_path(&module_id)).unwrap();
-            let mut contents = String::new();
-            f.read_to_string(&mut contents).unwrap();
+        let module_id = Id(module_id.0.to_lowercase());
+        let mut f = File::open(self.get_module_path(&module_id)).unwrap();
+        let mut contents = String::new();
+        f.read_to_string(&mut contents).unwrap();
 
-            let module = match module_parser::ModuleParser::new().parse(&contents){
-                Ok(m) => m,
-                Err(err) => {
-                    println!("{:?}",err);
-                    panic!()
-                },
-            };
-
-            if module.name.0.to_lowercase() != module_id.0.to_lowercase() {
+        let module = match module_parser::ModuleParser::new().parse(&contents) {
+            Ok(m) => m,
+            Err(err) => {
+                println!("{:?}", err);
                 panic!()
-            }
-            module.collect_module_dependencies()
+            },
+        };
+
+        if module.name.0.to_lowercase() != module_id.0.to_lowercase() {
+            panic!()
+        }
+        module.collect_module_dependencies()
     }
 
     pub fn parse_module_tree(&mut self, module_id:Id) -> usize {
+        let module_id = Id(module_id.0.to_lowercase());
         if !self.parsed.contains_key(&module_id){
             let mut f = File::open(self.get_module_path(&module_id)).unwrap();
             let mut contents = String::new();
@@ -120,7 +122,7 @@ impl<'a> Compiler<'a> {
             .map(|(id,_)| (*id).clone()).collect();
         for id in ordered {
             let mut r_module = RModule {
-                meta: LargeVec(id.0.clone().into_bytes()),
+                meta: LargeVec(id.0.to_lowercase().clone().into_bytes()),
                 adts: Vec::new(),
                 functions: Vec::new(),
                 errors: 0

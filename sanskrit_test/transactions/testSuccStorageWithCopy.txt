@@ -18,8 +18,8 @@ signed(A) transaction{
    r = call SomeFunctions.GenRef(a);
    b = load r;
    c = load r;
-   (d0, i0) = unpack b:SomeTypes.WitIndex#Ctr;
-   (d1, i1) = unpack c:SomeTypes.WitIndex#Ctr;
+   (d0, i0) = call SomeTypes.DeEntryNoDrop[$u8](b);
+   (d1, i1) = call SomeTypes.DeEntryNoDrop[$u8](c);
    d2 = unpack i0:SomeTypes.NoDrop#Ctr;
    d3 = unpack i1:SomeTypes.NoDrop#Ctr;
 };
@@ -29,6 +29,6 @@ signed(A) transaction{
    r = call SomeFunctions.GenRef(a);
    b = load r;
    c = &load r;
-   (d0, i0) = unpack b:SomeTypes.WitIndex#Ctr;
+   (d0, i0) = call SomeTypes.DeEntryNoDrop[$u8](b);
    d1 = unpack i0:SomeTypes.NoDrop#Ctr;
 };

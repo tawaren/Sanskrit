@@ -60,7 +60,7 @@ impl<'a> Compiler<'a> {
             let mut f = File::open(self.get_transaction_path(&txt)).unwrap();
             let mut contents = String::new();
             f.read_to_string(&mut contents).unwrap();
-
+            self.modules.parse_module_tree(Id("system".into()));
             self.parsed_txts = match transaction_parser::TransactionsParser::new().parse(&contents){
                 Ok(m) => m,
                 Err(ref err) => {

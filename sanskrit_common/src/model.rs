@@ -35,11 +35,7 @@ pub enum NativeType {
     Bool,               // A Boolean with two ctrs True & False
     Tuple(u8),          // A And Type with up to u8::max_value() fields
     Alternative(u8),    // A Or Type with up to u8::max_value() ctrs
-    Context,            // A Context gives access to blockchain constants and allows to generate unique numbers
-    Unique,             // A Unique value (exist only once as it is linear so Eq always returns false)
-    Singleton,          // A Unique value that is assosiated wit a new type (meaning only one Singleton[T] exists per T)
-    Account,            // A Token assosiated with an Account that can only be produces over a vallid signature
-    Index,              // A Index that represents a storage slot on the blockchain
+    Id,                 // A Index that represents a storage slot on the blockchain
     Ref,                // A references that points ot  a storage slot on the blockchain
 }
 
@@ -70,13 +66,7 @@ pub enum NativeFunc {
     Concat,             //Concatenates two data values
     SetBit,             //Sets a bit in a data value to 1/0
     GetBit,             //Checks if a bit in a data value is 1/0
-    ToUnique,           //Generates a Unique from a singleton (consuming it in the process)
-    GenUnique,          //Generates a new Unique from the context (generating a new context as well)
-    FullHash,           //Gets the Hash of the full transaction (including the Signatures) - from Context
-    TxTHash,            //Gets the Hash of the transaction (not including te signatures) - from Context
-    CodeHash,           //Gets the Hash of the code only - from Context
-    BlockNo,            //The BlockNo of the block containing the transaction  - from Context
-    GenIndex,           //Generates a index from either a unique or plain data (consumes the value allowing to generate unique indexes)
+    GenId,              //Generates a index from either a unique or plain data (consumes the value allowing to generate unique indexes)
     ToRef,              //Generates a ref from either an index or plain data
     Derive,             //Combines 2 indexes or 2 refs to a new one allowing derive indexes & refs deterministically
 }
@@ -87,6 +77,7 @@ pub enum NativeFunc {
 pub enum NativeError {
     NumericError,   //Thrown when a numeric operation fails or is undefined
     IndexError,
+    Unexpected
 }
 
 //Most vectors used in sanskrit have a max len of 255, in some places more is needed
@@ -108,7 +99,6 @@ pub enum NativeCap {
     Inspect,    //Indicates if the nested values can be inspected
     Embed,      //Indicates if the value can be embeded into another value
     Create,     //Indicates if the value can be created
-    Indexed,    //Indicates if the value contains a storage index
 }
 
 //the Parsable Derive is special for the next two see encoding

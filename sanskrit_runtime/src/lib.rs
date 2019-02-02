@@ -39,6 +39,8 @@ use interpreter::Frame;
 use elem_store::CacheSlotMap;
 use elem_store::CacheEntry;
 use script_interpreter::HashingDomain;
+use system::*;
+use script_interpreter::unique_hash;
 
 
 pub mod native;
@@ -50,6 +52,7 @@ pub mod script_interpreter;
 pub mod type_builder;
 pub mod elem_store;
 pub mod encoding;
+pub mod system;
 
 
 pub const CONFIG: Configuration = Configuration {
@@ -133,6 +136,8 @@ pub fn execute<S:Store>(store:&S, txt_data:&[u8], block_no:u64, heap:&Heap) -> R
         unimplemented!()
     }
 
+    //create the transaction executor
+    let mut stack = LinearScriptStack::new(&alloc, script_stack)?;
     //find the start of each of the transaction hashes
     //note this is serialize format dependent
     //todo: update when new format
@@ -142,11 +147,11 @@ pub fn execute<S:Store>(store:&S, txt_data:&[u8], block_no:u64, heap:&Heap) -> R
     let sigs_start = txt_data.len() - witness_size - txt.signatures.len()*64 - 2;  //2 is num sigs
     //hash over everything
     //todo: alloc  & store ptrs
-    let full_hash = hash(&[&txt_data]);
+    let full_hash = hash(&[&[HashingDomain::Transaction.get_domain_code()],&txt_data]);
     //hash over everything except signatures
-    let txt_hash = hash(&[&txt_data[..sigs_start]]);
+    let txt_hash = hash(&[&[HashingDomain::Transaction.get_domain_code()],&txt_data[..sigs_start]]);
     //hash over the code only
-    let code_hash = hash(&[&txt_data[code_start..sigs_start]]);
+    let code_hash = hash(&[&[HashingDomain::Transaction.get_domain_code()],&txt_data[code_start..sigs_start]]);
 
     //todo: check if txt_hash already included in last 100 blocks
 
@@ -170,23 +175,37 @@ pub fn execute<S:Store>(store:&S, txt_data:&[u8], block_no:u64, heap:&Heap) -> R
             Err(_) => return signature_error(),
         }
         //hash the pk to get the address
-
-        accounts.push(alloc.alloc(RuntimeType::AccountType { address: hash(&[&[HashingDomain::Account.get_domain_code()],pk]) })?)
+        let address = hash(&[&[HashingDomain::Account.get_domain_code()],pk]);
+        let acc_type = alloc.alloc(RuntimeType::AccountType { address })?;
+        let val = Object::Data(alloc.copy_alloc_slice(&address)?);
+        let singleton = StackEntry::new(
+            alloc.alloc(val)?,
+            alloc.alloc(account_type(&alloc,acc_type)?)?
+        );
+        stack.setup_push(singleton)?;
+        accounts.push(acc_type)
     }
     let accounts = accounts.finish();
 
     let mut newtypes = alloc.slice_builder(txt.new_types as usize)?;
     for offset in 0..txt.new_types {
+        let val = unique_hash(&txt_hash, HashingDomain::Singleton, u64::from(offset), &alloc)?;
         let n_type = alloc.alloc(RuntimeType::NewType {
             txt: txt_hash,
             offset,
         })?;
+        let singleton = StackEntry::new(
+            alloc.alloc(val)?,
+            alloc.alloc(singleton_type(&alloc, n_type)?)?
+        );
+        stack.setup_push(singleton)?;
         newtypes.push(n_type);
     }
     let newtypes = newtypes.finish();
 
-    //create the transaction executor
-    let stack = LinearScriptStack::new(&alloc,script_stack,&accounts,&newtypes)?;
+    //add the context on top -- As the Context has the Drop Cap the clean up wil snap it
+    push_ctx(&mut stack, &alloc, &full_hash, &txt_hash, &code_hash)?;
+
     let mut exec = Executor{
         accounts,
         witness: txt.witness,
@@ -224,4 +243,19 @@ fn hash(data:&[&[u8]]) -> Hash {
     //generate a array to the hash
     *array_ref!(hash.as_bytes(),0,20)
 
+}
+
+pub fn push_ctx<'a,'h>(stack:&mut LinearScriptStack<'a,'h>, alloc:&'a VirtualHeapArena<'h>, full_hash:&Hash, txt_hash:&Hash, code_hash:&Hash) -> Result<()> {
+    stack.setup_push(StackEntry::new(
+        alloc.alloc(Object::Adt(0,
+                alloc.copy_alloc_slice(&[
+                    alloc.alloc(Object::Data(alloc.copy_alloc_slice(code_hash)?))?,
+                    alloc.alloc(Object::Data(alloc.copy_alloc_slice(txt_hash)?))?,
+                    alloc.alloc(Object::Data(alloc.copy_alloc_slice(full_hash)?))?,
+                    alloc.alloc(Object::U64(0))?,
+                    alloc.alloc(Object::U64(0))?
+                ])?
+        ))?,
+        alloc.alloc(context_type())?
+    ))
 }

@@ -40,7 +40,6 @@ Cap: u8 = {
     "Inspect" => 1 << 4,
     "Embed" => 1 << 5,
     "Create" => 1 << 6,
-    "Indexed" => 1 << 7,
 }
 
 Generic:Generic = {
@@ -70,7 +69,7 @@ Ref:Ref = {
     <name:Id> => Ref::Generic(name),
     "this" "." <name:Id> => Ref::This(name),
     "." <name:Id> => Ref::This(name),
-    <module:Id> "." <name:Id> => Ref::Module(module,name),
+    <module:Id> "." <name:Id> => Ref::Module(Id(module.0.to_lowercase()),name),
     "native" "." <name:Id> => Ref::Native(name),
     "$" <name:Id> => Ref::Native(name),
 };

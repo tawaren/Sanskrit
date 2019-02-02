@@ -17,6 +17,7 @@ use sanskrit_runtime::script_interpreter::Executor;
 use sanskrit_memory_store::BTreeMapStore;
 use sanskrit_runtime::elem_store::ElemStore;
 use sanskrit_common::linear_stack::LinearStack;
+use sanskrit_runtime::push_ctx;
 
 pub const CONFIG: Configuration = Configuration {
     max_stack_depth:16*1024,
@@ -53,12 +54,7 @@ pub enum Operand {
     Concat,     //Concats two data values
     SetBit,     //sets a bit in a data value
     GetBit,     //queries a bit from a data value
-    GenUnique,  //generates a new unique value (needs context for that)
-    FullHash,   //gets the full hash of the current transactoion (needs context for that)
-    TxTHash,    //gets the transaction hash (no witnesses) of the current transactoion (needs context for that)
-    CodeHash,   //gets the hash of the currents transactions code  (needs context for that)
-    BlockNo,    //gets the blockno in which the transaction is included
-    GenIndex,   //generates a new storage index fro data or uniques
+    GenId,      //generates a new storage index fro data or uniques
     Derive,     //derives a new index or referenz from two others
     Id,
 }
@@ -87,12 +83,7 @@ impl Operand {
             Operand::Concat => OpCode::Concat(ptr[0],ptr[1]),
             Operand::SetBit => OpCode::SetBit(ptr[0],ptr[1], ptr[2]),
             Operand::GetBit => OpCode::GetBit(ptr[0],ptr[1]),
-            Operand::GenUnique => OpCode::GenUnique(ptr[0]),
-            Operand::FullHash => OpCode::FullHash,
-            Operand::TxTHash => OpCode::TxTHash,
-            Operand::CodeHash => OpCode::CodeHash,
-            Operand::BlockNo => OpCode::BlockNo,
-            Operand::GenIndex => OpCode::GenIndex(ptr[0]),
+            Operand::GenId => OpCode::GenId(ptr[0]),
             Operand::Derive => OpCode::Derive(ptr[0],ptr[1]),
             Operand::Id => OpCode::Id(ptr[0]),
         }
@@ -330,7 +321,8 @@ fn execute_script<F,O>(b: &mut Bencher, v_gen:F, mut code_gen:O, rets:usize, do_
         let slot_map = CacheSlotMap::new(&sub_structural, CONFIG.max_store_slots,(0,0,0)).unwrap();
         let script_stack = sub_structural.alloc_stack(CONFIG.max_script_stack_size);
 
-        let mut stack = LinearScriptStack::new(&sub_alloc,script_stack,&[], &[]).unwrap();
+        let mut stack = LinearScriptStack::new(&sub_alloc,script_stack).unwrap();
+        push_ctx(&mut stack, &sub_alloc, &env.full_hash, &env.txt_hash, &env.code_hash).unwrap();
 
         for vals in &vals_sets {
             for v in vals {
@@ -382,7 +374,6 @@ mod gte;
 mod cmp;
 mod set_bit;
 mod get_bit;
-mod gen_unique;
 mod derive;
 mod env;
 mod unpack;

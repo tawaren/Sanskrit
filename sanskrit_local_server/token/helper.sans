@@ -1,12 +1,12 @@
 module Helper {
-    public fun createIndex(consume d:$data1):(idx:$index) {
-        idx = call $GenIndex[$data1](d);
+    public fun createIndex(consume d:$data1):(idx:$id) {
+        idx = call $GenId[$data1](d);
         return idx;
     };
 
     public fun createRef(consume d:$data1):(ref:$ref) {
-        idx = call $GenIndex[$data1](d);
-        ref = call $ToRef[$index](idx);
+        idx = call $GenId[$data1](d);
+        ref = call $ToRef[$id](idx);
         drop idx;
         return ref;
     };

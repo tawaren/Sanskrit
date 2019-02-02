@@ -1,0 +1,67 @@
+module System {
+   type <Copy,Drop,Create,Persist> Entry[<Embed> T]{
+        Ctr($id,T);
+   };
+
+   type <Drop,Embed,Consume,Persist> Singleton[phantom <Embed> T]{
+        Ctr($id);
+   };
+
+   type <Drop,Copy,Embed,Consume,Inspect> Account[phantom <Embed> T]{
+          Ctr($id);
+   };
+
+   type <Drop> Context{
+          Ctr($data20, $id, $data20, $u64, $u64);
+   };
+
+   public fun TxTHash(ctx:.Context):(txtHash:$data20) {
+        txtId = &field[1] ctx:.Context;
+        txtHash = call $ToData[$id,$data20](txtId);
+        return txtHash;
+   };
+
+   public fun CodeHash(ctx:.Context):(codeHash:$data20) {
+        codeHash = copy field[0] ctx:.Context;
+        return codeHash;
+   };
+
+   public fun FullHash(ctx:.Context):(fullHash:$data20) {
+        fullHash = copy field[2] ctx:.Context;
+        return fullHash;
+   };
+
+   public fun BlockNo(ctx:.Context):(blockNo:$u64) {
+        blockNo = copy field[3] ctx:.Context;
+        return blockNo;
+   };
+
+   public risky<$Unexpected> fun UniqueID(consume ctx:.Context):(id:$id, ctx:.Context) {
+         (codeHash, txtId, fullHash, blockNo, ctr) = unpack ctx:.Context;
+         ctrData = call $ToData[$u64,$data8](ctr);
+         id = call $Derive[$id,$data8](txtId,ctrData);
+         newCtr = try {
+            inc = lit 1:$u64;
+            newCtr = call $Add[$u64](ctr,inc);
+            drop inc;
+            return newCtr;
+         } catch {
+            $NumericError => {
+              throw $Unexpected;
+            };
+         };
+         newCtx = pack .Context#Ctr(codeHash, txtId, fullHash, blockNo, newCtr);
+         discard (ctr, ctrData);
+         return (id,newCtx);
+   };
+
+   protected[T] fun UnpackEntry[<Embed> T](consume entry:.Entry[T]):(id:$id, t:T){
+        (id, t) = unpack entry:.Entry[T];
+        return (id,t);
+   };
+
+    protected[T] fun BorrowEntry[<Embed> T](entry:.Entry[T]):(borrowed(entry) id:$id, borrowed(entry) t:T){
+          (id, t) = &unpack entry:.Entry[T];
+          return (id,t);
+    };
+}

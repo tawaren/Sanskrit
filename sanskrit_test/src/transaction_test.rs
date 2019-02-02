@@ -465,7 +465,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected="Required capability is missing")]
+    #[should_panic(expected="Type mismatch")]
     fn store_cap_fail() {
         parse_and_compile_and_run("testFailNoIndex").unwrap();
     }

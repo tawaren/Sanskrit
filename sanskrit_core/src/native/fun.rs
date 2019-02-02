@@ -135,51 +135,12 @@ pub fn resolved_native_function(fun: NativeFunc, base_applies:&[Crc<ResolvedType
             }
         },
 
-        //ToUnique has no risks and makes a unique from a singleton
-        NativeFunc::ToUnique => {
-            ResolvedSignature {
-                risks: build_set(&[]),
-                params: vec![ ResolvedParam{ consumes: true, typ: resolved_native_type(NativeType::Singleton, &[base_applies[0].clone()]) } ],
-                returns: vec![ ResolvedReturn { borrows:vec![], typ: resolved_native_type(NativeType::Unique, &[]) }],
-            }
-        },
-
-        //GenUnique has no risks and makes a Unique from a context returning the modified context
-        NativeFunc::GenUnique => {
-            ResolvedSignature {
-                risks: build_set(&[]),
-                params: vec![ ResolvedParam{ consumes: true, typ: resolved_native_type(NativeType::Context, &[]) } ],
-                returns: vec![
-                    ResolvedReturn { borrows:vec![], typ: resolved_native_type(NativeType::Context, &[]) },
-                    ResolvedReturn { borrows:vec![], typ: resolved_native_type(NativeType::Unique, &[]) }
-                ],
-            }
-        },
-
-        //FullHash, TxTHash and CodeHash extract the coresponding transaction property from the context
-        NativeFunc::FullHash | NativeFunc::TxTHash | NativeFunc::CodeHash => {
-            ResolvedSignature {
-                risks: build_set(&[]),
-                params: vec![ ResolvedParam{ consumes: false, typ: resolved_native_type(NativeType::Context, &[]) } ],
-                returns: vec![ ResolvedReturn { borrows:vec![], typ: resolved_native_type(NativeType::Data(20), &[]) }],
-            }
-        },
-
-        //BlockNo extracts the coresponding transaction property from the context
-        NativeFunc::BlockNo => {
-            ResolvedSignature {
-                risks: build_set(&[]),
-                params: vec![ ResolvedParam{ consumes: false, typ: resolved_native_type(NativeType::Context, &[]) } ],
-                returns: vec![ ResolvedReturn { borrows:vec![], typ: resolved_native_type(NativeType::UInt(8), &[]) }],
-            }
-        },
-
         //GenIndex has no risks and returns a new index generated from its input
-        NativeFunc::GenIndex => {
+        NativeFunc::GenId => {
             ResolvedSignature {
                 risks: build_set(&[]),
                 params: vec![ ResolvedParam{ consumes: true, typ: base_applies[0].clone() } ],
-                returns: vec![ ResolvedReturn { borrows:vec![], typ: resolved_native_type(NativeType::Index, &[]) }],
+                returns: vec![ ResolvedReturn { borrows:vec![], typ: resolved_native_type(NativeType::Id, &[]) }],
             }
         },
 
@@ -189,7 +150,7 @@ pub fn resolved_native_function(fun: NativeFunc, base_applies:&[Crc<ResolvedType
                 risks: build_set(&[]),
                 params: vec![
                     ResolvedParam{ consumes: false, typ: base_applies[0].clone() },
-                    ResolvedParam{ consumes: false, typ: base_applies[0].clone() }
+                    ResolvedParam{ consumes: false, typ: base_applies[1].clone() }
                 ],
                 returns: vec![ ResolvedReturn { borrows:vec![], typ: base_applies[0].clone() }],
             }
@@ -287,9 +248,7 @@ pub fn check_native_function_constraints(fun: NativeFunc, types:&[Crc<ResolvedTy
             ResolvedType::Native{ typ: NativeType::SInt(s), .. } => u16::from(s) == width,
             ResolvedType::Native{ typ: NativeType::Data(s), .. } => s == width,
             ResolvedType::Native{ typ: NativeType::Ref, .. } => 20 == width,
-            ResolvedType::Native{ typ: NativeType::Index, .. } => 20 == width,
-            ResolvedType::Native{ typ: NativeType::Unique, .. } => 20 == width,
-            ResolvedType::Native{ typ: NativeType::Singleton, .. } => 20 == width,
+            ResolvedType::Native{ typ: NativeType::Id, .. } => 20 == width,
             _ => false,
         })
     }
@@ -318,30 +277,29 @@ pub fn check_native_function_constraints(fun: NativeFunc, types:&[Crc<ResolvedTy
         }
     }
 
-    //check if something can be used as a key
-    fn is_key_source(typ:&Crc<ResolvedType>) -> Result<bool>{
+    //check if something can be used as an Id
+    fn is_ref_input(typ:&Crc<ResolvedType>) -> Result<bool>{
         Ok(match **typ {
-            ResolvedType::Native{ typ: NativeType::Unique, .. } => true,
-            ResolvedType::Native{ typ: NativeType::Singleton, .. } => true,
-            ResolvedType::Native{ typ: NativeType::Account, .. } => true,
-            ResolvedType::Native{ typ: NativeType::Data(_), .. } => true,
-            _ => false,
-        })
-    }
-
-    //check if something can be used as a key
-    fn is_index_material(typ:&Crc<ResolvedType>) -> Result<bool>{
-        Ok(match **typ {
-            ResolvedType::Native{ typ: NativeType::Index, .. } => true,
+            ResolvedType::Native{ typ: NativeType::Id, .. } => true,
             ResolvedType::Native{ typ: NativeType::Data(20), .. } => true,
             _ => false,
         })
     }
 
     //check if something is a key or refs a key
-    fn is_index_or_ref(typ:&Crc<ResolvedType>) -> Result<bool>{
+    fn is_derivable(typ:&Crc<ResolvedType>) -> Result<bool>{
         Ok(match **typ {
-            ResolvedType::Native{ typ: NativeType::Index, .. } => true,
+            ResolvedType::Native{ typ: NativeType::Id, .. } => true,
+            ResolvedType::Native{ typ: NativeType::Ref, .. } => true,
+            _ => false,
+        })
+    }
+
+    //check if something is a key or refs a key
+    fn is_data_material(typ:&Crc<ResolvedType>) -> Result<bool>{
+        Ok(match **typ {
+            ResolvedType::Native{ typ: NativeType::Data(_), .. } => true,
+            ResolvedType::Native{ typ: NativeType::Id, .. } => true,
             ResolvedType::Native{ typ: NativeType::Ref, .. } => true,
             _ => false,
         })
@@ -352,16 +310,7 @@ pub fn check_native_function_constraints(fun: NativeFunc, types:&[Crc<ResolvedTy
         if check { Ok(())  } else { generic_args_mismatch() }
     }
 
-    //Check phantom apply holds
-    //Check that the phantom & cap constrains hold -- no caps to check as the specific type is checked
-    for appl in types {
-        //All primitive function generics are real (except for toUnique) )and do not require any caps (So only phantom needs checking)
-        if let ResolvedType::Generic { is_phantom:true,  .. }  = **appl {
-            if fun != NativeFunc::ToUnique {
-                return can_not_apply_phantom_to_physical_error()
-            }
-        }
-    }
+    //Note: We omit phantom apply check as there are no native functions with phantom parameters
 
     match fun {
         //And, Or, Xor, Not are defined only fo Ints, Bools and Data and must have one type parameter
@@ -386,15 +335,11 @@ pub fn check_native_function_constraints(fun: NativeFunc, types:&[Crc<ResolvedTy
         NativeFunc::Concat =>  true_or_err(types.len() == 3 && summed_up_data(&types[0], &types[1], &types[2])?),
         //Set & Get Bit takes 2 type params 1 for the data and one for the index
         NativeFunc::GetBit | NativeFunc::SetBit =>  true_or_err(types.len() == 2 && is_data(&types[0])? && positive_small_int(&types[1])?),
-        //toUnique has 1 type param which is the param of the Singleton
-        NativeFunc::ToUnique => true_or_err(types.len() == 1),
-        //genUnique & Context infos have 0 type param which is the param of the Singleton
-        NativeFunc::GenUnique | NativeFunc::FullHash | NativeFunc::TxTHash | NativeFunc::CodeHash | NativeFunc::BlockNo => true_or_err(types.is_empty()),
         //Gen a Key has one type pram that can be a unique/singleton/data
-        NativeFunc::GenIndex => true_or_err(types.len() == 1 && is_key_source(&types[0])?),
+        NativeFunc::GenId => true_or_err(types.len() == 1 && is_data(&types[0])?),
         //Derives a new Key from two existing ones (or a ref from 2 Refs)
-        NativeFunc::Derive => true_or_err(types.len() == 1 && is_index_or_ref(&types[0])?),
+        NativeFunc::Derive => true_or_err(types.len() == 2 && is_derivable(&types[0])? && is_data_material(&types[1])?),
         //Generates a Ref From a Key or from raw Data
-        NativeFunc::ToRef => true_or_err(types.len() == 1 && is_index_material(&types[0])?),
+        NativeFunc::ToRef => true_or_err(types.len() == 1 && is_ref_input(&types[0])?),
     }
 }

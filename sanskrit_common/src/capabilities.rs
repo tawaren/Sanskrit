@@ -17,22 +17,21 @@ const CONSUME_MASK:u8 = 1 << 3;
 const INSPECT_MASK:u8 = 1 << 4;
 const EMBED_MASK:u8 = 1 << 5;
 const CREATE_MASK:u8 = 1 << 6;
-const INDEXED_MASK:u8 = 1 << 7;
 
 impl CapSet {
 
     //define some capability sets
     const RECURSIVE_MASK:u8 = DROP_MASK | COPY_MASK | PERSIST_MASK;
 
-    const NON_RECURSIVE_MASK:u8 = CONSUME_MASK | INSPECT_MASK | EMBED_MASK | CREATE_MASK | INDEXED_MASK;
+    const NON_RECURSIVE_MASK:u8 = CONSUME_MASK | INSPECT_MASK | EMBED_MASK | CREATE_MASK ;
 
     const STD_MASK:u8 = CONSUME_MASK | INSPECT_MASK | EMBED_MASK | CREATE_MASK | DROP_MASK | COPY_MASK | PERSIST_MASK;
+
+    const TXT_LOCAL_MASK:u8 = CONSUME_MASK | INSPECT_MASK | EMBED_MASK | DROP_MASK | COPY_MASK ;
 
     const OPAQUE_MASK:u8 = EMBED_MASK | DROP_MASK | COPY_MASK | PERSIST_MASK;
 
     const OPAQUE_AFFINE_MASK:u8 = EMBED_MASK | DROP_MASK  | PERSIST_MASK;
-
-    const INDEXED_MASK:u8 = CONSUME_MASK | INSPECT_MASK | EMBED_MASK | CREATE_MASK | DROP_MASK | COPY_MASK | PERSIST_MASK | INDEXED_MASK;
 
     //generate a empty set
     pub fn empty() -> Self {
@@ -59,7 +58,6 @@ impl CapSet {
             NativeCap::Inspect => INSPECT_MASK,
             NativeCap::Embed => EMBED_MASK,
             NativeCap::Create => CREATE_MASK,
-            NativeCap::Indexed => INDEXED_MASK,
         })
     }
 
@@ -73,15 +71,16 @@ impl CapSet {
         CapSet(CapSet::OPAQUE_AFFINE_MASK)
     }
 
-    //This has everithing
-    pub fn indexed() -> Self {
-        CapSet(CapSet::INDEXED_MASK)
-    }
-
     //No Create,Consume,Inspect
     pub fn opaque() -> Self {
         CapSet(CapSet::OPAQUE_MASK)
     }
+
+    //No Create,Consume,Inspect
+    pub fn local() -> Self {
+        CapSet(CapSet::TXT_LOCAL_MASK)
+    }
+
 
     //adds a cap to the set
     pub fn with_elem(self, native_cap:NativeCap) -> Self {
@@ -140,15 +139,11 @@ impl NativeType {
             NativeType::SInt(_)
             | NativeType::UInt(_)
             | NativeType::Data(_)
-            | NativeType::Account
+            | NativeType::Id
             | NativeType::Ref => CapSet::opaque(),
             NativeType::Bool
             | NativeType::Tuple(_)
             | NativeType::Alternative(_) => CapSet::open(),
-            NativeType::Context => CapSet::from_cap(NativeCap::Drop),
-            NativeType::Unique
-            | NativeType::Singleton => CapSet::opaque_affine(),
-            NativeType::Index => CapSet::indexed(),
         }
     }
 }

@@ -88,8 +88,8 @@ module Helpers {
         return;
     };
 
-    public risky<.ValidationError> fun AssertEqIndex(v1:$index,v2:$index):() {
-        r = call $Eq[$index](v1,v2);
+    public risky<.ValidationError> fun AssertEqIndex(v1:$id,v2:$id):() {
+        r = call $Eq[$id](v1,v2);
         () = call .AssertTrue(r);
         drop r;
         return;
@@ -124,15 +124,8 @@ module Helpers {
         return;
     };
 
-    public risky<.ValidationError> fun AssertNotEqIndex(v1:$index,v2:$index):() {
-        r = call $Eq[$index](v1,v2);
-        () = call .AssertFalse(r);
-        drop r;
-        return;
-    };
-
-    public risky<.ValidationError> fun AssertNotEqUnique(v1:$unique,v2:$unique):() {
-        r = call $Eq[$unique](v1,v2);
+    public risky<.ValidationError> fun AssertNotEqIndex(v1:$id,v2:$id):() {
+        r = call $Eq[$id](v1,v2);
         () = call .AssertFalse(r);
         drop r;
         return;
@@ -142,7 +135,7 @@ module Helpers {
         return;
     };
 
-    public fun ModIndex():(a:$index){
+    public fun ModIndex():(a:$id){
        a = moduleIndex;
        return a;
     };

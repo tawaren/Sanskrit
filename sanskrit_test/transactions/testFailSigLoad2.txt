@@ -10,7 +10,7 @@ signed(A) transaction{
    a = lit 0x00112233445566778899AABBCCDDEEFF00112233:$data;
    r = call SomeFunctions.GenRef(a);
    b = load r;
-   () = call Helpers.EnforceType[SomeTypes.WitIndex[SomeTypes.Z[$u8,A]]](b);
-   (d0, i0) = unpack b:SomeTypes.WitIndex#Ctr;
+   () = call Helpers.EnforceType[System.Entry[SomeTypes.Z[$u8,A]]](b);
+   (d0, i0) = unpack b:System.Entry#Ctr;
    d1 = unpack i0:SomeTypes.Z#Ctr;
 };

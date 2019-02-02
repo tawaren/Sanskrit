@@ -599,28 +599,12 @@ impl<'b,'h> Compactor<'b,'h> {
                 NativeFunc::Concat => (ROpCode::Concat(self.translate_ref(vals[0]), self.translate_ref(vals[1])),1, gas::concat(applies)),
                 NativeFunc::GetBit => (ROpCode::GetBit(self.translate_ref(vals[0]), self.translate_ref(vals[1])),1, gas::get_bit()),
                 NativeFunc::SetBit => (ROpCode::SetBit(self.translate_ref(vals[0]), self.translate_ref(vals[1]),self.translate_ref(vals[2])),1, gas::set_bit(applies)),
-                //is a NoOp, as Unique & Singleton & Manifest & Index & Ref have same repr: Data(20)
-                NativeFunc::ToUnique => {
-                    //push the compiletime stack
-                    let pos = self.get(vals[0]);
-                    self.state.push_alias(pos);
-                    //return eliminated indicator
-                    return Ok(None)
-                },
-                NativeFunc::GenUnique => (ROpCode::GenUnique(self.translate_ref(vals[0])),2,gas::gen_unique()),
-                NativeFunc::FullHash => (ROpCode::FullHash,1,gas::fetch_env_hash()),
-                NativeFunc::TxTHash => (ROpCode::TxTHash,1,gas::fetch_env_hash()),
-                NativeFunc::CodeHash => (ROpCode::CodeHash,1,gas::fetch_env_hash()),
-                NativeFunc::BlockNo => (ROpCode::BlockNo,1,gas::fetch_env_val()),
                 //Index and Ref have the same runtime behaviour and representation, the difference is only in the type and allowed usage
-                NativeFunc::GenIndex |  NativeFunc::ToRef  => match *applies[0] {
+                NativeFunc::GenId | NativeFunc::ToRef  => match *applies[0] {
                     //this is just hashing - but in the key domain
-                    ResolvedType::Native {  typ: NativeType::Data(_), .. } => (ROpCode::GenIndex(self.translate_ref(vals[0])),1, gas::hash_plain(applies)),
+                    ResolvedType::Native {  typ: NativeType::Data(_), .. } => (ROpCode::GenId(self.translate_ref(vals[0])), 1, gas::hash_plain(applies)),
                     //these are no ops --  same bit representation -- |Index is for toref, others are for genIndex|
-                    ResolvedType::Native {  typ: NativeType::Unique, .. }
-                    | ResolvedType::Native {  typ: NativeType::Singleton, .. }
-                    | ResolvedType::Native {  typ: NativeType::Account, .. }
-                    | ResolvedType::Native {  typ: NativeType::Index, .. } => {
+                    ResolvedType::Native {  typ: NativeType::Id, .. } => {
                     //push the compiletime stack
                         let pos = self.get(vals[0]);
                         self.state.push_alias(pos);

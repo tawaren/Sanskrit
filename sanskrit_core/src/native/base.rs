@@ -24,12 +24,8 @@ pub fn get_native_type_constructors(typ: NativeType, base_applies:&[ResolvedAppl
         NativeType::SInt(_)
         | NativeType::UInt(_)
         | NativeType::Data(_)
-        | NativeType::Singleton
-        | NativeType::Account
-        | NativeType::Unique
-        | NativeType::Index
-        | NativeType::Ref
-        | NativeType::Context =>  no_ctr_available(),
+        | NativeType::Id
+        | NativeType::Ref =>  no_ctr_available(),
         //Bools have 2 Ctrs with 0 fields each
         NativeType::Bool => Ok(vec![vec![]; 2]),
         //Tuple has one ctr with a dynamic number of fields (each its own type)
@@ -49,25 +45,14 @@ pub fn resolved_native_type(typ: NativeType, base_applies:&[Crc<ResolvedType>]) 
         | NativeType::SInt(_)
         | NativeType::UInt(_)
         | NativeType::Bool
-        | NativeType::Context
-        | NativeType::Unique
         | NativeType::Ref
-        | NativeType::Index => ResolvedType::Native {
+        | NativeType::Id => ResolvedType::Native {
             //In the absence of  (non-phantom) generics all the caps are the same
             base_caps,
             caps:base_caps,
             extended_caps:base_caps,
             typ,
             applies: vec![]
-        },
-        //these have a phantom generic (does not influence caps)
-        NativeType::Account | NativeType::Singleton => ResolvedType::Native {
-            //In the absence of (non-phantom) generics all the caps are the same
-            base_caps,
-            caps:base_caps,
-            extended_caps:base_caps,
-            typ,
-            applies: vec![ResolvedApply{ is_phantom: true, typ: base_applies[0].clone()}]
         },
         // these have real generics (influence caps)
         NativeType::Tuple(_)
@@ -146,10 +131,8 @@ pub fn check_native_type_constraints(typ: NativeType, types:&[Crc<ResolvedType>]
             }
         },
         //These have 0 params
-        NativeType::Index
-        | NativeType::Ref
-        | NativeType::Unique
-        | NativeType::Context => {
+        NativeType::Id
+        | NativeType::Ref => {
             //These have zero generic type
             if types.is_empty() {
                 Ok(())
@@ -157,16 +140,5 @@ pub fn check_native_type_constraints(typ: NativeType, types:&[Crc<ResolvedType>]
                 num_applied_generics_error()
             }
         },
-
-        //These have 1 param
-        NativeType::Account | NativeType::Singleton => {
-            //These have 1 generic type
-            if types.len() == 1 {
-                Ok(())
-            } else {
-                num_applied_generics_error()
-            }
-        },
-
     }
 }

@@ -1,5 +1,0 @@
-module TestFailInspectImplied {
-
-    type <Consume> Phantom;
-
-}

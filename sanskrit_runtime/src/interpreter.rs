@@ -6,7 +6,6 @@ use model::*;
 use byteorder::{LittleEndian, ByteOrder};
 use num_traits::ToPrimitive;
 use blake2_rfc::blake2b::{Blake2b};
-use script_interpreter::unique_hash;
 use script_interpreter::HashingDomain;
 use ContextEnvironment;
 use sanskrit_common::arena::*;
@@ -104,7 +103,7 @@ fn object_hash(obj:&Object, context: &mut Blake2b) {
             LittleEndian::write_i64(&mut input[2..], data);
             context.update(&input);
         },
-        Object::U64(data) | Object::Context(data) => {
+        Object::U64(data) => {
             let mut input = [0; 10];
             LittleEndian::write_u16(&mut input[0..], 8);
             LittleEndian::write_u64(&mut input[2..], data);
@@ -294,13 +293,8 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
             OpCode::Gte(op1,op2) => self.gte(op1,op2),
             OpCode::SetBit(op1,op2, op3) => self.set_bit(op1,op2, op3),
             OpCode::GetBit(op1,op2) => self.get_bit(op1,op2),
-            OpCode::GenUnique(op) => self.gen_unique(op),
-            OpCode::GenIndex(op) => self.hash(op, HashingDomain::Index),
+            OpCode::GenId(op) => self.hash(op, HashingDomain::Id),
             OpCode::Derive(op1,op2) => self.join_hash(op1, op2, HashingDomain::Derive),
-            OpCode::FullHash => self.fetch_full_hash(),
-            OpCode::TxTHash => self.fetch_txt_hash(),
-            OpCode::CodeHash => self.fetch_code_hash(),
-            OpCode::BlockNo => self.fetch_block_no(),
         }
     }
 
@@ -541,8 +535,7 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
                 Object::Data(builder.finish())
             },
             //adts not the tag (could be a boolean)
-            Object::Adt(op, _) => Object::Adt(!*op, SlicePtr::empty()),
-            _ => unreachable!()
+            Object::Adt(op, _) => Object::Adt(!*op, SlicePtr::empty())
         })?)?;
 
         Ok(Continuation::Next)
@@ -571,8 +564,7 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
                 Object::Data(builder.finish())
             },
             //adts not the tag (could be a boolean)
-            Object::Adt(op, _) => Object::Adt(*op, SlicePtr::empty()),
-            _ => unreachable!()
+            Object::Adt(op, _) => Object::Adt(*op, SlicePtr::empty())
         })?)?;
 
         Ok(Continuation::Next)
@@ -1082,41 +1074,4 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
     }
 
 
-    //sreate a unique data value from the context
-    fn gen_unique(&mut self, ValueRef(val):ValueRef) -> Result<Continuation<'code>> {
-        //cost: constant
-        match &*self.get(val)? {
-            Object::Context(num) => {
-                self.stack.push(self.alloc.alloc(Object::Context(num + 1))?)?;       //increase the context so a new value is generated next time
-                //derive the value
-                self.stack.push(self.alloc.alloc(unique_hash(&self.env.txt_hash, HashingDomain::Unique, *num, self.alloc)?)?)?;
-            },
-            _ => unreachable!()
-        };
-        Ok(Continuation::Next)
-    }
-
-    fn fetch_full_hash(&mut self) -> Result<Continuation<'code>> {
-        let val = &self.env.full_hash;
-        self.stack.push(self.alloc.alloc(Object::Data(self.alloc.copy_alloc_slice(val)?))?)?;
-        Ok(Continuation::Next)
-    }
-
-    fn fetch_txt_hash(&mut self) -> Result<Continuation<'code>> {
-        let val = &self.env.txt_hash;
-        self.stack.push(self.alloc.alloc(Object::Data(self.alloc.copy_alloc_slice(val)?))?)?;
-        Ok(Continuation::Next)
-    }
-
-    fn fetch_code_hash(&mut self) -> Result<Continuation<'code>> {
-        let val = &self.env.code_hash;
-        self.stack.push(self.alloc.alloc(Object::Data(self.alloc.copy_alloc_slice(val)?))?)?;
-        Ok(Continuation::Next)
-    }
-
-    fn fetch_block_no(&mut self) -> Result<Continuation<'code>> {
-        let val = self.env.block_no;
-        self.stack.push(self.alloc.alloc(Object::U64(val))?)?;
-        Ok(Continuation::Next)
-    }
 }

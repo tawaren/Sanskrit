@@ -113,10 +113,11 @@ impl<'a> CodeImportBuilder<'a> {
     }
 
     fn mod_import_ref(&mut self, id:&Id) -> Result<ModRef,String>{
-        if self.module_assoc.contains_key(id) {
-            return Ok(self.module_assoc[id])
+        let id = Id(id.0.to_lowercase());
+        if self.module_assoc.contains_key(&id) {
+            return Ok(self.module_assoc[&id])
         }
-        let link = ModuleLink::Remote(self.mapping[id].hash.unwrap());
+        let link = ModuleLink::Remote(self.mapping[&id].hash.unwrap());
         let pos = self.modules_import.len()+1;
         self.modules_import.push(link);
         self.module_assoc.insert(id.clone(),ModRef(pos as u8));
@@ -133,6 +134,7 @@ impl<'a> CodeImportBuilder<'a> {
                 match id.0.as_ref() {
                     "NumericError" => ErrorImport::Native(NativeError::NumericError),
                     "IndexError" => ErrorImport::Native(NativeError::IndexError),
+                    "Unexpected" => ErrorImport::Native(NativeError::Unexpected),
                     _ => return Err("Unsupported native error".into())
 
                 }
@@ -186,13 +188,7 @@ impl<'a> CodeImportBuilder<'a> {
                     "Concat" => FunctionImport::Native(NativeFunc::Concat,r_appl),
                     "SetBit" => FunctionImport::Native(NativeFunc::SetBit,r_appl),
                     "GetBit" => FunctionImport::Native(NativeFunc::GetBit,r_appl),
-                    "ToUnique" => FunctionImport::Native(NativeFunc::ToUnique,r_appl),
-                    "GenUniqu" => FunctionImport::Native(NativeFunc::GenUnique,r_appl),
-                    "FullHash" => FunctionImport::Native(NativeFunc::FullHash,r_appl),
-                    "TxTHash" => FunctionImport::Native(NativeFunc::TxTHash,r_appl),
-                    "CodeHash" => FunctionImport::Native(NativeFunc::CodeHash,r_appl),
-                    "BlockNo" => FunctionImport::Native(NativeFunc::BlockNo,r_appl),
-                    "GenIndex" => FunctionImport::Native(NativeFunc::GenIndex,r_appl),
+                    "GenId" => FunctionImport::Native(NativeFunc::GenId, r_appl),
                     "ToRef" => FunctionImport::Native(NativeFunc::ToRef,r_appl),
                     "Derive" => FunctionImport::Native(NativeFunc::Derive,r_appl),
                     _ => return Err("Unsupported native function".into())
@@ -204,7 +200,7 @@ impl<'a> CodeImportBuilder<'a> {
                 FunctionImport::Module(FuncLink{module:ModRef(0), offset}, r_appl)
             },
             Ref::Module(ref m_id, ref e_id) => {
-                let module = self.mod_import_ref(m_id)?;
+                let module = self.mod_import_ref(&m_id)?;
                 let offset = self.mapping[m_id].index[e_id].elem_index as u8;
                 FunctionImport::Module(FuncLink{module, offset}, r_appl)
             },
@@ -234,10 +230,7 @@ impl<'a> CodeImportBuilder<'a> {
                 let bt = match id.0.as_ref() {
                     "bool" => NativeType::Bool,
                     "ref" => NativeType::Ref,
-                    "index" => NativeType::Index,
-                    "context" => NativeType::Context,
-                    "unique" => NativeType::Unique,
-                    "singleton" => NativeType::Singleton,
+                    "id" => NativeType::Id,
                     "u8" => NativeType::UInt(1),
                     "u16" => NativeType::UInt(2),
                     "u32" => NativeType::UInt(4),
@@ -297,8 +290,8 @@ impl<'a> CodeImportBuilder<'a> {
                 RType::Real(BaseType::Module(AdtLink{ module: ModRef(0), offset }), r_appl)
             },
             Ref::Module(ref m_id, ref e_id) => {
-                let module = self.mod_import_ref(m_id)?;
-                let offset = self.mapping[m_id].index[e_id].elem_index as u8;
+                let module = self.mod_import_ref(&m_id)?;
+                let offset = self.mapping[&m_id].index[e_id].elem_index as u8;
                 RType::Real(BaseType::Module(AdtLink{ module, offset }), r_appl)
             },
         };
@@ -398,11 +391,12 @@ impl<'a,'c, 'h> ScriptContext<'a,'c, 'h> {
     }
 
     pub fn get_token_offset(&self, new_type:&Id) -> u8 {
-        if self.news.contains_key(new_type){
+        let res =if self.news.contains_key(new_type){
             self.news.len()  - self.news[new_type] as usize - 1
         } else {
-            self.sigs.len()  - self.sigs[new_type] as usize - 1 + self.news.len() as usize
-        } as u8
+            self.sigs.len()  - self.sigs[new_type] as usize - 1 + self.news.len()
+        };
+        res as u8
     }
 
     pub fn generate_imp_ref(&mut self, imp:&Hash) -> ImpRef {
@@ -484,10 +478,7 @@ impl<'a,'c, 'h> ScriptContext<'a,'c, 'h> {
                 let typ = match id.0.as_ref() {
                     "bool" => NativeType::Bool,
                     "ref" => NativeType::Ref,
-                    "index" => NativeType::Index,
-                    "context" => NativeType::Context,
-                    "unique" => NativeType::Unique,
-                    "singleton" => NativeType::Singleton,
+                    "id" => NativeType::Id,
                     "u8" => NativeType::UInt(1),
                     "u16" => NativeType::UInt(2),
                     "u32" => NativeType::UInt(4),

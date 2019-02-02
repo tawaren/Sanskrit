@@ -22,25 +22,14 @@ pub fn to_runtime_type<'a,'b,'h>(typ:NativeType, applies:SlicePtr<'a,Ptr<'a,Runt
         NativeType::Data(_)
         | NativeType::SInt(_)
         | NativeType::UInt(_)
-        | NativeType::Context
-        | NativeType::Index
-        | NativeType::Ref
-        | NativeType::Unique => {
+        | NativeType::Id
+        | NativeType::Ref => {
             //these types hav eno generics
             if !applies.is_empty() {
                 generic_args_mismatch()
             } else {
                 //they behave like a leaf type
                 resolve_runtime_leaf_type(typ, applies, alloc)
-            }
-        },
-        NativeType::Account | NativeType::Singleton  => {
-            //singleton has one generic but it phantom
-            if applies.len() != 1 {
-                generic_args_mismatch()
-            } else {
-                //it behaves like a leaf type (because param is phantom)
-                resolve_runtime_leaf_type(typ, applies,alloc)
             }
         },
         NativeType::Bool => {

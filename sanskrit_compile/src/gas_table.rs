@@ -17,9 +17,7 @@ pub mod gas {
                 NativeType::SInt(s)
                 | NativeType::UInt(s) => s as usize,
                 NativeType::Bool => 1,
-                NativeType::Unique
-                | NativeType::Singleton
-                | NativeType::Index
+                NativeType::Id
                 | NativeType::Ref => 20,
                 _ => unreachable!(),
             },
@@ -31,9 +29,7 @@ pub mod gas {
         match **typ {
             ResolvedType::Native { typ, ..} => match typ {
                 NativeType::Data(_)
-                | NativeType::Unique
-                | NativeType::Singleton
-                | NativeType::Index
+                | NativeType::Id
                 | NativeType::Ref => true,
                 _ => false,
             },
@@ -62,11 +58,7 @@ pub mod gas {
                     }
                     max+obj_factor
                 },
-                NativeType::Context => obj_factor + 8*byte_factor,
-                NativeType::Unique
-                | NativeType::Singleton
-                | NativeType::Account
-                | NativeType::Index
+                NativeType::Id
                 | NativeType::Ref => obj_factor + 20*byte_factor,
             },
             ResolvedType::Import { ref module, offset, ref applies, ..} => {
@@ -194,20 +186,6 @@ pub mod gas {
 
     pub fn set_bit(typ:&[Crc<ResolvedType>]) -> usize {
         BASIC_OP + (prim_width(&typ[0]) * BASIC_ALLOC) + 2*STACK_READ + STACK_PUSH + BASIC_ALLOC
-    }
-
-    pub fn gen_unique() -> usize {
-        HASH_FINALISATION_COST + 2*STACK_READ + 2*STACK_PUSH + 2*BASIC_ALLOC + ((8+20) * BYTE_HASH_COST)
-    }
-
-    pub fn fetch_env_hash() -> usize {
-        //Env read is like stack read some deref
-        2*STACK_READ + STACK_PUSH + (20 * BASIC_ALLOC)
-    }
-
-    pub fn fetch_env_val() -> usize {
-        //Env read is like stack read some deref
-        2*STACK_READ + STACK_PUSH + BASIC_ALLOC
     }
 
     pub fn call(args:usize) -> usize {

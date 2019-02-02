@@ -200,12 +200,7 @@ pub enum OpCode<#[AllocLifetime] 'b> {
     Concat(ValueRef,ValueRef),                                      //Concats two data values
     SetBit(ValueRef,ValueRef,ValueRef),                             //sets a bit in a data value
     GetBit(ValueRef,ValueRef),                                      //queries a bit from a data value
-    GenUnique(ValueRef),                                            //generates a new unique value (needs context for that)
-    FullHash,                                                       //gets the full hash of the current transactoion (needs context for that)
-    TxTHash,                                                        //gets the transaction hash (no witnesses) of the current transactoion (needs context for that)
-    CodeHash,                                                       //gets the hash of the currents transactions code  (needs context for that)
-    BlockNo,                                                        //gets the blockno in which the transaction is included
-    GenIndex(ValueRef),                                             //generates a new storage index fro data or uniques
+    GenId(ValueRef),                                             //generates a new storage index fro data or uniques
     Derive(ValueRef,ValueRef),                                      //derives a new index or referenz from two others
     //Gas Testing Operands
     Id(ValueRef),                                                   //Makes a Copy of the input (this is for testing) -- Establishes a Baseline
@@ -290,7 +285,6 @@ pub enum Object<#[AllocLifetime] 'a> {
     U128(u128),
     Data(SlicePtr<'a,u8>),
     Adt(u8, SlicePtr<'a,Ptr<'a,Object<'a>>>),
-    Context(u64),                               //u64 == counter for uniques   //rest environment
     //Note: Unique, Singleton, PrimaryKey, SecondaryKey are represented as Data(20)
 }
 
