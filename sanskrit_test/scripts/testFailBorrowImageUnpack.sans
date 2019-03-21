@@ -1,0 +1,6 @@
+module TestFailBorrowImageUnpack {
+    private fun Test[<Embed> A](a:%TestSucAdt.Wrapper[A]):(borrowed(a) b:A){
+       b = &unpack a:%TestSucAdt.Wrapper[A];
+       return b;
+    };
+}

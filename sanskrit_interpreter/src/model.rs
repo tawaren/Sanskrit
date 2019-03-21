@@ -22,7 +22,7 @@ pub enum Exp<#[AllocLifetime] 'b> {
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Parsable, Serializable, VirtualSize)]
 #[repr(u8)]
 pub enum LitDesc {
-    Ref,
+    Id,
     Data,
     I8,
     U8,

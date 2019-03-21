@@ -12,7 +12,6 @@ extern crate byteorder;
 extern crate hex;
 extern crate itertools;
 extern crate test;
-extern crate blake2_rfc;
 #[macro_use]
 extern crate arrayref;
 extern crate ed25519_dalek;

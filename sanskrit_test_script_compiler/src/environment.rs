@@ -215,90 +215,100 @@ impl<'a> CodeImportBuilder<'a> {
         if self.type_assoc.contains_key(typ ) {
             return Ok(self.type_assoc[typ])
         }
-        let r_appl = typ.applies.iter().map(|t|self.import_typ_ref(t)).collect::<Result<_,_>>()?;
-        let rtyp = match typ.main{
-            Ref::Account(_) | Ref::Txt(_,_) => return Err("Ref is not a sanskrit type (is a script type)".into()),
-            Ref::Generic(ref id) => {
-                let pos = match self.generics.iter().position(|g|&g.name==id){
-                    Some(v) => v,
-                    None => 0,
-                };
-                RType::Generic(GenRef(pos as u8))
-            },
-            Ref::Native(ref id) => {
-                let bt = match id.0.as_ref() {
-                    "bool" => NativeType::Bool,
-                    "publicId" => NativeType::PublicId,
-                    "privateId" => NativeType::PrivateId,
-                    "u8" => NativeType::UInt(1),
-                    "u16" => NativeType::UInt(2),
-                    "u32" => NativeType::UInt(4),
-                    "u64" => NativeType::UInt(8),
-                    "u128" => NativeType::UInt(16),
-                    "i8" => NativeType::SInt(1),
-                    "i16" => NativeType::SInt(2),
-                    "i32" => NativeType::SInt(4),
-                    "i64" => NativeType::SInt(8),
-                    "i128" => NativeType::SInt(16),
-                    "tuple0"  => NativeType::Tuple(0),
-                    "tuple1"  => NativeType::Tuple(1),
-                    "tuple2"  => NativeType::Tuple(2),
-                    "tuple3"  => NativeType::Tuple(3),
-                    "tuple4"  => NativeType::Tuple(4),
-                    "tuple5"  => NativeType::Tuple(5),
-                    "tuple6"  => NativeType::Tuple(6),
-                    "tuple7"  => NativeType::Tuple(7),
-                    "tuple8"  => NativeType::Tuple(8), //for tests enough
-                    "alt0"  => NativeType::Alternative(0),
-                    "alt1"  => NativeType::Alternative(1),
-                    "alt2"  => NativeType::Alternative(2),
-                    "alt3"  => NativeType::Alternative(3),
-                    "alt4"  => NativeType::Alternative(4),
-                    "alt5"  => NativeType::Alternative(5),
-                    "alt6"  => NativeType::Alternative(6),
-                    "alt7"  => NativeType::Alternative(7),
-                    "alt8"  => NativeType::Alternative(8), //for tests enough
-                    "data1"  => NativeType::Data(1),
-                    "data2"  => NativeType::Data(2),
-                    "data4"  => NativeType::Data(4),
-                    "data8"  => NativeType::Data(8),
-                    "data12"  => NativeType::Data(12),
-                    "data16"  => NativeType::Data(16),
-                    "data20"  => NativeType::Data(20),
-                    "data24"  => NativeType::Data(24),
-                    "data28"  => NativeType::Data(28),
-                    "data32"  => NativeType::Data(32),
-                    "data40"  => NativeType::Data(40),
-                    "data48"  => NativeType::Data(48),
-                    "data56"  => NativeType::Data(56),
-                    "data64"  => NativeType::Data(64),
-                    "data80"  => NativeType::Data(80),
-                    "data96"  => NativeType::Data(96),
-                    "data112"  => NativeType::Data(112),
-                    "data128"  => NativeType::Data(128),
-                    "data160"  => NativeType::Data(160),
-                    "data192"  => NativeType::Data(192),
-                    "data224"  => NativeType::Data(224),
-                    _ => return Err("Unsupported native type".into())
+        let rtyp = if typ.is_image {
+            let plain = self.import_typ_ref(&Type{
+                main: typ.main.clone(),
+                applies: typ.applies.clone(),
+                is_image: false
+            })?;
+            RType::Image(plain)
+        } else {
+            let r_appl = typ.applies.iter().map(|t|self.import_typ_ref(t)).collect::<Result<_,_>>()?;
+            match typ.main{
+                Ref::Account(_) | Ref::Txt(_,_) => return Err("Ref is not a sanskrit type (is a script type)".into()),
+                Ref::Generic(ref id) => {
+                    let pos = match self.generics.iter().position(|g|&g.name==id){
+                        Some(v) => v,
+                        None => 0,
+                    };
+                    RType::Generic(GenRef(pos as u8))
+                },
+                Ref::Native(ref id) => {
+                    let bt = match id.0.as_ref() {
+                        "bool" => NativeType::Bool,
+                        "publicId" => NativeType::PublicId,
+                        "privateId" => NativeType::PrivateId,
+                        "u8" => NativeType::UInt(1),
+                        "u16" => NativeType::UInt(2),
+                        "u32" => NativeType::UInt(4),
+                        "u64" => NativeType::UInt(8),
+                        "u128" => NativeType::UInt(16),
+                        "i8" => NativeType::SInt(1),
+                        "i16" => NativeType::SInt(2),
+                        "i32" => NativeType::SInt(4),
+                        "i64" => NativeType::SInt(8),
+                        "i128" => NativeType::SInt(16),
+                        "tuple0"  => NativeType::Tuple(0),
+                        "tuple1"  => NativeType::Tuple(1),
+                        "tuple2"  => NativeType::Tuple(2),
+                        "tuple3"  => NativeType::Tuple(3),
+                        "tuple4"  => NativeType::Tuple(4),
+                        "tuple5"  => NativeType::Tuple(5),
+                        "tuple6"  => NativeType::Tuple(6),
+                        "tuple7"  => NativeType::Tuple(7),
+                        "tuple8"  => NativeType::Tuple(8), //for tests enough
+                        "alt0"  => NativeType::Alternative(0),
+                        "alt1"  => NativeType::Alternative(1),
+                        "alt2"  => NativeType::Alternative(2),
+                        "alt3"  => NativeType::Alternative(3),
+                        "alt4"  => NativeType::Alternative(4),
+                        "alt5"  => NativeType::Alternative(5),
+                        "alt6"  => NativeType::Alternative(6),
+                        "alt7"  => NativeType::Alternative(7),
+                        "alt8"  => NativeType::Alternative(8), //for tests enough
+                        "data1"  => NativeType::Data(1),
+                        "data2"  => NativeType::Data(2),
+                        "data4"  => NativeType::Data(4),
+                        "data8"  => NativeType::Data(8),
+                        "data12"  => NativeType::Data(12),
+                        "data16"  => NativeType::Data(16),
+                        "data20"  => NativeType::Data(20),
+                        "data24"  => NativeType::Data(24),
+                        "data28"  => NativeType::Data(28),
+                        "data32"  => NativeType::Data(32),
+                        "data40"  => NativeType::Data(40),
+                        "data48"  => NativeType::Data(48),
+                        "data56"  => NativeType::Data(56),
+                        "data64"  => NativeType::Data(64),
+                        "data80"  => NativeType::Data(80),
+                        "data96"  => NativeType::Data(96),
+                        "data112"  => NativeType::Data(112),
+                        "data128"  => NativeType::Data(128),
+                        "data160"  => NativeType::Data(160),
+                        "data192"  => NativeType::Data(192),
+                        "data224"  => NativeType::Data(224),
+                        _ => return Err("Unsupported native type".into())
 
-                };
-                RType::Real(BaseType::Native(bt),r_appl)
-            },
-            Ref::This(ref id) => {
-                let offset = self.this_module.index[id].elem_index as u8;
-                RType::Real(BaseType::Module(AdtLink{ module: ModRef(0), offset }), r_appl)
-            },
-            Ref::Module(ref m_id, ref e_id) => {
-                let module = self.mod_import_ref(&m_id)?;
-                let offset = self.mapping[&m_id].index[e_id].elem_index as u8;
-                RType::Real(BaseType::Module(AdtLink{ module, offset }), r_appl)
-            },
+                    };
+                    RType::Real(BaseType::Native(bt),r_appl)
+                },
+                Ref::This(ref id) => {
+                    let offset = self.this_module.index[id].elem_index as u8;
+                    RType::Real(BaseType::Module(AdtLink{ module: ModRef(0), offset }), r_appl)
+                },
+                Ref::Module(ref m_id, ref e_id) => {
+                    let module = self.mod_import_ref(&m_id)?;
+                    let offset = self.mapping[&m_id].index[e_id].elem_index as u8;
+                    RType::Real(BaseType::Module(AdtLink{ module, offset }), r_appl)
+                },
+            }
         };
 
         let pos = self.type_import.len();
         self.type_import.push(rtyp);
         self.type_assoc.insert(typ.clone(),TypeRef(pos as u8));
-        Ok(TypeRef(pos as u8))    }
+        Ok(TypeRef(pos as u8))
+    }
 
     pub fn get_ctr_order(&mut self, typ:&Type) -> Result<Vec<Id>,String>{
         match typ.main {
@@ -465,96 +475,106 @@ impl<'a,'c, 'h> ScriptContext<'a,'c, 'h> {
     }
 
     pub fn generate_type_ref(&mut self, t_ref:&Type) -> Result<Ptr<'c, TypeApplyRef<'c>>,String> {
-        Ok(self.alloc.alloc(match t_ref.main {
-            Ref::Generic(_) => return Err("Ref is not an adt".into()),
-            Ref::Module(ref m_id, ref e_id) => {
-                let module = &self.mapping[m_id];
-                let offset = self.mapping[m_id].index[e_id].elem_index as u8;
-                let applies = self.alloc.iter_result_alloc_slice(t_ref.applies.iter().map(|tar|self.generate_type_ref(tar)))?;
-                TypeApplyRef::Module(self.generate_imp_ref(&module.hash.unwrap()), offset, applies)
-            },
-            Ref::Native(ref id) => {
-                let typ = match id.0.as_ref() {
-                    "bool" => NativeType::Bool,
-                    "publicId" => NativeType::PublicId,
-                    "privateId" => NativeType::PrivateId,
-                    "u8" => NativeType::UInt(1),
-                    "u16" => NativeType::UInt(2),
-                    "u32" => NativeType::UInt(4),
-                    "u64" => NativeType::UInt(8),
-                    "u128" => NativeType::UInt(16),
-                    "i8" => NativeType::SInt(1),
-                    "i16" => NativeType::SInt(2),
-                    "i32" => NativeType::SInt(4),
-                    "i64" => NativeType::SInt(8),
-                    "i128" => NativeType::SInt(16),
-                    "tuple0"  => NativeType::Tuple(0),
-                    "tuple1"  => NativeType::Tuple(1),
-                    "tuple2"  => NativeType::Tuple(2),
-                    "tuple3"  => NativeType::Tuple(3),
-                    "tuple4"  => NativeType::Tuple(4),
-                    "tuple5"  => NativeType::Tuple(5),
-                    "tuple6"  => NativeType::Tuple(6),
-                    "tuple7"  => NativeType::Tuple(7),
-                    "tuple8"  => NativeType::Tuple(8), //for tests enough
-                    "alt0"  => NativeType::Alternative(0),
-                    "alt1"  => NativeType::Alternative(1),
-                    "alt2"  => NativeType::Alternative(2),
-                    "alt3"  => NativeType::Alternative(3),
-                    "alt4"  => NativeType::Alternative(4),
-                    "alt5"  => NativeType::Alternative(5),
-                    "alt6"  => NativeType::Alternative(6),
-                    "alt7"  => NativeType::Alternative(7),
-                    "alt8"  => NativeType::Alternative(8), //for tests enough
-                    "data1"  => NativeType::Data(1),
-                    "data2"  => NativeType::Data(2),
-                    "data4"  => NativeType::Data(4),
-                    "data8"  => NativeType::Data(8),
-                    "data12"  => NativeType::Data(12),
-                    "data16"  => NativeType::Data(16),
-                    "data20"  => NativeType::Data(20),
-                    "data24"  => NativeType::Data(24),
-                    "data28"  => NativeType::Data(28),
-                    "data32"  => NativeType::Data(32),
-                    "data40"  => NativeType::Data(40),
-                    "data48"  => NativeType::Data(48),
-                    "data56"  => NativeType::Data(56),
-                    "data64"  => NativeType::Data(64),
-                    "data80"  => NativeType::Data(80),
-                    "data96"  => NativeType::Data(96),
-                    "data112"  => NativeType::Data(112),
-                    "data128"  => NativeType::Data(128),
-                    "data160"  => NativeType::Data(160),
-                    "data192"  => NativeType::Data(192),
-                    "data224"  => NativeType::Data(224),
-                    _ => return Err("Unsupported native type".into())
-                };
-                let applies = self.alloc.iter_result_alloc_slice(t_ref.applies.iter().map(|tar|self.generate_type_ref(tar)))?;
-                TypeApplyRef::Native(typ,applies)
-            },
+        Ok(if t_ref.is_image {
+            let plain = self.generate_type_ref(&Type {
+                main: t_ref.main.clone(),
+                applies: t_ref.applies.clone(),
+                is_image: false
+            })?;
+            self.alloc.alloc(TypeApplyRef::Image(plain))
+        } else {
+            self.alloc.alloc(match t_ref.main {
+                Ref::Generic(_) => return Err("Ref is not an adt".into()),
+                Ref::Module(ref m_id, ref e_id) => {
+                    let module = &self.mapping[m_id];
+                    let offset = self.mapping[m_id].index[e_id].elem_index as u8;
+                    let applies = self.alloc.iter_result_alloc_slice(t_ref.applies.iter().map(|tar|self.generate_type_ref(tar)))?;
+                    TypeApplyRef::Module(self.generate_imp_ref(&module.hash.unwrap()), offset, applies)
+                },
 
-            Ref::This(ref id) => {
-                match self.news.get(id) {
-                    Some(idx) => TypeApplyRef::NewType(*idx),
-                    None => match self.sigs.get(id) {
-                        Some(idx) => TypeApplyRef::Account(*idx),
-                        None => return Err("Unsupported local type".into())
+                Ref::Native(ref id) => {
+                    let typ = match id.0.as_ref() {
+                        "bool" => NativeType::Bool,
+                        "publicId" => NativeType::PublicId,
+                        "privateId" => NativeType::PrivateId,
+                        "u8" => NativeType::UInt(1),
+                        "u16" => NativeType::UInt(2),
+                        "u32" => NativeType::UInt(4),
+                        "u64" => NativeType::UInt(8),
+                        "u128" => NativeType::UInt(16),
+                        "i8" => NativeType::SInt(1),
+                        "i16" => NativeType::SInt(2),
+                        "i32" => NativeType::SInt(4),
+                        "i64" => NativeType::SInt(8),
+                        "i128" => NativeType::SInt(16),
+                        "tuple0"  => NativeType::Tuple(0),
+                        "tuple1"  => NativeType::Tuple(1),
+                        "tuple2"  => NativeType::Tuple(2),
+                        "tuple3"  => NativeType::Tuple(3),
+                        "tuple4"  => NativeType::Tuple(4),
+                        "tuple5"  => NativeType::Tuple(5),
+                        "tuple6"  => NativeType::Tuple(6),
+                        "tuple7"  => NativeType::Tuple(7),
+                        "tuple8"  => NativeType::Tuple(8), //for tests enough
+                        "alt0"  => NativeType::Alternative(0),
+                        "alt1"  => NativeType::Alternative(1),
+                        "alt2"  => NativeType::Alternative(2),
+                        "alt3"  => NativeType::Alternative(3),
+                        "alt4"  => NativeType::Alternative(4),
+                        "alt5"  => NativeType::Alternative(5),
+                        "alt6"  => NativeType::Alternative(6),
+                        "alt7"  => NativeType::Alternative(7),
+                        "alt8"  => NativeType::Alternative(8), //for tests enough
+                        "data1"  => NativeType::Data(1),
+                        "data2"  => NativeType::Data(2),
+                        "data4"  => NativeType::Data(4),
+                        "data8"  => NativeType::Data(8),
+                        "data12"  => NativeType::Data(12),
+                        "data16"  => NativeType::Data(16),
+                        "data20"  => NativeType::Data(20),
+                        "data24"  => NativeType::Data(24),
+                        "data28"  => NativeType::Data(28),
+                        "data32"  => NativeType::Data(32),
+                        "data40"  => NativeType::Data(40),
+                        "data48"  => NativeType::Data(48),
+                        "data56"  => NativeType::Data(56),
+                        "data64"  => NativeType::Data(64),
+                        "data80"  => NativeType::Data(80),
+                        "data96"  => NativeType::Data(96),
+                        "data112"  => NativeType::Data(112),
+                        "data128"  => NativeType::Data(128),
+                        "data160"  => NativeType::Data(160),
+                        "data192"  => NativeType::Data(192),
+                        "data224"  => NativeType::Data(224),
+                        _ => return Err("Unsupported native type".into())
+                    };
+                    let applies = self.alloc.iter_result_alloc_slice(t_ref.applies.iter().map(|tar|self.generate_type_ref(tar)))?;
+                    TypeApplyRef::Native(typ,applies)
+                },
+
+                Ref::This(ref id) => {
+                    match self.news.get(id) {
+                        Some(idx) => TypeApplyRef::NewType(*idx),
+                        None => match self.sigs.get(id) {
+                            Some(idx) => TypeApplyRef::Account(*idx),
+                            None => return Err("Unsupported local type".into())
+                        }
                     }
                 }
-            }
 
-            Ref::Account(ref addr) => {
-                let decoded = decode(&addr.0[2..42]).unwrap();
-                let hash_data_ref = array_ref!(decoded,0,20);
-                TypeApplyRef::RemoteAccount(self.generate_imp_ref(hash_data_ref))
-            }
+                Ref::Account(ref addr) => {
+                    let decoded = decode(&addr.0[2..42]).unwrap();
+                    let hash_data_ref = array_ref!(decoded,0,20);
+                    TypeApplyRef::RemoteAccount(self.generate_imp_ref(hash_data_ref))
+                }
 
-            Ref::Txt(ref txt, ref num) => {
-                let decoded = decode(&txt.0[2..42]).unwrap();
-                let hash_data_ref = array_ref!(decoded,0,20);
-                TypeApplyRef::RemoteNewType(self.generate_imp_ref(hash_data_ref),num.0.parse::<u8>().unwrap())
-            }
-        }))
+                Ref::Txt(ref txt, ref num) => {
+                    let decoded = decode(&txt.0[2..42]).unwrap();
+                    let hash_data_ref = array_ref!(decoded,0,20);
+                    TypeApplyRef::RemoteNewType(self.generate_imp_ref(hash_data_ref),num.0.parse::<u8>().unwrap())
+                }
+            })
+        })
     }
 
     pub fn get_tag(&mut self, r:&Ref, ctr:Id) -> Result<Tag,String>{

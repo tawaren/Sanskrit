@@ -53,7 +53,8 @@ pub struct Generic{
 #[derive(Eq, PartialEq, Hash, Clone)]
 pub struct Type{
     pub main:Ref,
-    pub applies:Vec<Type>
+    pub applies:Vec<Type>,
+    pub is_image:bool,
 }
 
 
@@ -96,6 +97,7 @@ pub enum OpCode {
     Lit(Id, Lit, Type),
     Let(Vec<Id>, Box<Block>),
     Copy(Id,Id),
+    Image(Id,Id),
     Fetch(Id,Id,bool),
     Field(Id,Id,Lit,Type,bool),
     CopyField(Id,Id,Lit,Type),
@@ -258,7 +260,6 @@ pub struct Transaction {
 pub enum ScriptCode {
     Lit(Id, Lit, Type),
     Wit(Id, Lit, Type),
-    RefGen(Id,Id),
     Copy(Id,Id),
     Fetch(Id,Id,bool),
     Drop(Id),

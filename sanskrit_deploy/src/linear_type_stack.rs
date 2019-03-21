@@ -104,9 +104,7 @@ impl LinearStack<Crc<ResolvedType>,Vec<usize>> for LinearTypeStack {
             frame = &mut self.frames[frame_index];
         }
         //Consume the stored one
-        self.stack[res].consume()?;
-        //Return the original
-        Ok(())
+        self.stack[res].consume()
     }
 }
 
@@ -115,13 +113,6 @@ impl LinearTypeStack {
     //Generates an empty Stack
     pub fn new() -> Self {
         LinearTypeStack { stack: vec![], frames:vec![Frame{ start_index: 0, consumes: BTreeSet::new() }] }
-    }
-
-    //calcs the absolute index from a relative one (relative to the end) -- bernouli index to vec index
-    fn absolute_index(&self, ValueRef(index):ValueRef) -> Result<usize> {
-        //ensure that the resulting index will be valid
-        if index as usize >= self.stack_depth() {return out_of_range_stack_addressing()}
-        Ok(self.stack_depth() - (index as usize) -1)
     }
 
     //steals the borrows from an element recursively
@@ -143,12 +134,10 @@ impl LinearTypeStack {
                     if self.stack[index].status.borrowing.is_empty() {
                         return steal_violation();
                     } else {
-                        for b in self.stack[index].status.borrowing.clone() {
+                        for b in &self.stack[index].status.borrowing.clone() {
                             //Prevents stealing from an element that was already processed with steal_ret
                             // and enforces borrowing order ( can not borrow from an element deeper on the stack )
-                            // -- I'm not sure if this can ever happen: But better save than sorry --
-                            if b >= index { return steal_violation(); }
-                            self.steal_ret(elem_pos, free_border, migrate, b, res, false)?
+                            self.steal_ret(elem_pos, free_border, migrate, *b, res, false)?
                         }
                     }
                 },
@@ -226,7 +215,7 @@ impl LinearTypeStack {
                 Migrate::Free => self.free_internal(ValueRef(i as u16), false)?,
                 Migrate::Drop => self.stack[index].consume()?,
                 Migrate::Move(elem_pos) => {
-                    //if the returned is borrowed, steal borrowes of non-returned
+                    //if the returned is borrowed, steal borrows of non-returned
                     if !self.stack[index].status.borrowing.is_empty() {
                         let mut new_borrows = BTreeSet::new();
                         //steal from each borrowed
@@ -256,7 +245,7 @@ impl LinearTypeStack {
             self.stack.pop().unwrap();
         }
 
-        //push the retrns back onto the stack
+        //push the returns back onto the stack
         self.stack.extend(returns);
 
         Ok(())

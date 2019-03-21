@@ -1,0 +1,20 @@
+module TestFailImageSwitch2 {
+
+    type <Consume, Inspect> X[<Embed> A] {
+        X(A);
+        Y(A);
+    };
+
+
+    private fun Test[<Embed> A](consume a:.X[A]):(b:%A){
+       b = switch a:.X[A] {
+            X(a) => {
+                return a;
+            };
+            Y(a) => {
+                return a;
+            };
+       };
+       return b;
+    };
+}

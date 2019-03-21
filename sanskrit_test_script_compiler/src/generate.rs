@@ -2,7 +2,6 @@ use model::*;
 use environment::*;
 use std::collections::HashMap;
 use sanskrit_runtime::model::ScriptCode as RScriptCode;
-use sanskrit_interpreter::model::LitDesc;
 use sanskrit_core::model::OpCode as ROpCode;
 use sanskrit_core::model::Visibility as RVisibility;
 use sanskrit_core::model::Ret as RRet;
@@ -14,7 +13,6 @@ use native::*;
 use sanskrit_common::model::Tag;
 use sanskrit_core::model::GenRef;
 use sanskrit_core::model::Param;
-use blake2_rfc::blake2b::{Blake2b};
 use sanskrit_common::encoding::ParserAllocator;
 use sanskrit_common::model::Ptr;
 use sanskrit_common::model::ValueRef;
@@ -72,6 +70,12 @@ impl OpCode {
                 let from_v = env.get_id_pos(&from_id).unwrap();
                 env.push_new(to_id.clone());
                 Ok(ROpCode::CopyFetch(from_v))
+            },
+
+            OpCode::Image(ref to_id, ref from_id) => {
+                let from_v = env.get_id_pos(&from_id).unwrap();
+                env.push_new(to_id.clone());
+                Ok(ROpCode::Image(from_v))
             },
 
             OpCode::Fetch(ref to_id, ref from_id, borrow) => {
@@ -266,20 +270,12 @@ impl ScriptCode {
                 RScriptCode::Wit(wit_ref,desc)
             },
 
-            ScriptCode::RefGen(ref id, ref val) => {
-                let mut context = Blake2b::new(20);
-                context.update(val.0.as_bytes());
-                let hash = context.finalize();
-                let hash_data_ref = array_ref!(hash.as_bytes(),0,20);
-                let val = imp.alloc.copy_alloc_slice(hash_data_ref)?;
-                env.push_new(id.clone());
-                RScriptCode::Lit(val,LitDesc::Ref)
-            },
             ScriptCode::Copy(ref to_id, ref from_id) => {
                 let from_v = env.get_id_pos(&from_id).unwrap();
                 env.push_new(to_id.clone());
                 RScriptCode::Copy(from_v)
             }
+
             ScriptCode::Fetch(ref to_id, ref from_id, borrow) => {
                 let from_v = env.get_id_pos(&from_id).unwrap();
                 env.push_new(to_id.clone());
@@ -289,14 +285,17 @@ impl ScriptCode {
                     RScriptCode::Fetch(from_v)
                 }
             },
+
             ScriptCode::Drop(ref val) => {
                 let from_v = env.get_id_pos(&val).unwrap();
                 RScriptCode::Drop(from_v)
             },
+
             ScriptCode::Free(ref val) => {
                 let from_v = env.get_id_pos(&val).unwrap();
                 RScriptCode::Free(from_v)
             },
+
             ScriptCode::Unpack(ref assigs, ref val, ref main, ref ctr, borrow) => {
                 let from_v = env.get_id_pos(&val).unwrap();
                 let adt_r = imp.generate_adt_ref(main)?;
@@ -310,6 +309,7 @@ impl ScriptCode {
                     RScriptCode::Unpack(adt_r, tag,from_v)
                 }
             },
+
             ScriptCode::Pack(ref res_id, ref typ, ref ctr_id, ref vals, borrow) => {
                 let inputs = imp.alloc.iter_alloc_slice(vals.iter().map(|id|env.get_id_pos(id).unwrap()))?;
                 let adt_r = imp.generate_adt_ref(&typ.main)?;
@@ -322,6 +322,7 @@ impl ScriptCode {
                     RScriptCode::Pack(adt_r,types,tag, inputs)
                 }
             },
+
             ScriptCode::Call(ref assigs, ref fun, ref applies, ref params) => {
                 let inputs = imp.alloc.iter_alloc_slice(params.iter().map(|id|env.get_id_pos(id).unwrap()))?;
                 let f_ref = imp.generate_func_ref(&fun)?;

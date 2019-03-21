@@ -9,8 +9,8 @@ extern crate sanskrit_core;
 extern crate sanskrit_interpreter;
 extern crate sanskrit_common;
 
-pub mod compacting;
-pub mod compiler;
+mod compacting;
+mod compiler;
 mod gas_table;
 
 use sanskrit_common::model::*;

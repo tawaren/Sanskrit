@@ -1,5 +1,4 @@
 
-
 //NOTE: THESE ARE NOT BASED ON MEASUREMENTS BUT ON INTUITION
 pub mod gas {
     use sanskrit_core::model::resolved::ResolvedType;
@@ -37,29 +36,29 @@ pub mod gas {
         }
     }
 
-    fn traversing_statistics<S:Store>(typ:&Crc<ResolvedType>, context:&Context<S>, obj_factor:usize, byte_factor:usize) -> Result<usize> {
+    fn traversing_statistics<S:Store>(typ:&Crc<ResolvedType>, context:&Context<S>, node_fix:u64,  leaf_static:u64, leaf_per_byte:u64, prim_fact:u64) -> Result<u64> {
         Ok(match **typ {
             ResolvedType::Native { typ, ref applies, ..} => match typ {
-                NativeType::Data(s) => obj_factor + (s as usize)*byte_factor,
+                NativeType::Data(s) => leaf_static + (s as u64)*leaf_per_byte,
                 NativeType::SInt(s)
-                | NativeType::UInt(s) => obj_factor + (s as usize)*byte_factor,
-                NativeType::Bool => obj_factor + byte_factor,
+                | NativeType::UInt(s) => leaf_static + (s as u64)*leaf_per_byte*prim_fact,
+                NativeType::Bool => leaf_static + leaf_per_byte*prim_fact,
                 NativeType::Tuple(_) => {
-                    let mut sum = obj_factor;
+                    let mut sum = node_fix;
                     for appl in applies {
-                        sum += traversing_statistics(&appl.typ,context,obj_factor,byte_factor)?;
+                        sum += traversing_statistics(&appl.typ,context,node_fix,leaf_static, leaf_per_byte,prim_fact)?;
                     }
                     sum
                 },
                 NativeType::Alternative(_) => {
-                    let mut max = 0;
+                    let mut max = 0u64;
                     for appl in applies {
-                        max = max.max(traversing_statistics(&appl.typ,context,obj_factor,byte_factor)?);
+                        max = max.max(traversing_statistics(&appl.typ,context,node_fix,leaf_static, leaf_per_byte,prim_fact)?);
                     }
-                    max+obj_factor
+                    max+node_fix
                 },
                 NativeType::PrivateId
-                | NativeType::PublicId => obj_factor + 20*byte_factor,
+                | NativeType::PublicId => leaf_static + 20*leaf_per_byte,
             },
             ResolvedType::Import { ref module, offset, ref applies, ..} => {
                 //Get the cache
@@ -68,167 +67,162 @@ pub mod gas {
                 let adt = adt_cache.retrieve();
                 //get its context with the applies as substitutions
                 let new_context = adt_cache.substituted_context(applies.iter().map(|apl|apl.typ.clone()).collect(),&context.store)?;
-                let mut max = 0;
+                let mut max = 0u64;
                 for ctr in &adt.constructors {
-                    let mut sum = obj_factor;
+                    let mut sum = leaf_static;
                     for f in &ctr.fields {
                         let typ = f.fetch(&new_context)?;
-                        sum += traversing_statistics(&typ,&new_context,obj_factor,byte_factor)?;
+                        sum += traversing_statistics(&typ,&new_context,node_fix,leaf_static, leaf_per_byte,prim_fact)?;
                     }
                     max = max.max(sum);
                 }
-                max+1
+                max
             },
             _ => unreachable!()
         })
     }
 
-    //these are slightly different but are the base
-    const STACK_READ:usize = 1;
-    const STACK_PUSH:usize = 1;
-    const FRAME_PUSH:usize = 2;
-    const STACK_REWIND:usize = 1;
-    //this looks at the worst case if we have to process data and do it on a byte level
-    const BASIC_OP:usize = 1;
-    const BASIC_ALLOC:usize = 1; //just a mem_copy
-    const OBJECT_VISIT:usize = 1; //ptr fetch
-    const BYTE_HASH_COST:usize = 1; //Just a educated cost guess //is cheap as the hasher will collect blocks and not hash single bytes
-    const HASH_FINALISATION_COST:usize = 45; //Just a educated guess
-    const DISPATCH:usize = 1;
 
+    //The following values are from a benchmark but with a constant mu to giv niver numbers, old ar in comment
+        //the factor is 0.2
     pub fn and(typ:&[Crc<ResolvedType>]) -> usize {
         if is_data(&typ[0])  {
-            (prim_width(&typ[0]) * (BASIC_OP + BASIC_ALLOC)) + (2*STACK_READ) + STACK_PUSH + BASIC_ALLOC
+            let width = prim_width(&typ[0]);
+            width/8 + 19//(width*2) + (4*width)/64 + 95
         } else {
-            BASIC_OP + 2*BASIC_ALLOC + (2*STACK_READ) + STACK_PUSH
+            13
         }
     }
 
     pub fn or(typ:&[Crc<ResolvedType>]) -> usize {
         if is_data(&typ[0])  {
-            (prim_width(&typ[0]) * (BASIC_OP + BASIC_ALLOC)) + (2*STACK_READ) + STACK_PUSH + BASIC_ALLOC
+            let width = prim_width(&typ[0]);
+            width/8 + 19//(width*2) + (4*width)/64 + 95
         } else {
-            BASIC_OP + 2*BASIC_ALLOC + (2*STACK_READ) + STACK_PUSH
+            13
         }
     }
 
     pub fn xor(typ:&[Crc<ResolvedType>]) -> usize {
         if is_data(&typ[0])  {
-            (prim_width(&typ[0]) * (BASIC_OP + BASIC_ALLOC)) + (2*STACK_READ) + STACK_PUSH + BASIC_ALLOC
+            let width = prim_width(&typ[0]);
+            width/8 + 19//(width*2) + (4*width)/64 + 95
         } else {
-            BASIC_OP + 2*BASIC_ALLOC + (2*STACK_READ) + STACK_PUSH
+            13
         }
     }
 
     pub fn not(typ:&[Crc<ResolvedType>]) -> usize {
         if is_data(&typ[0])  {
-            (prim_width(&typ[0]) * (BASIC_OP + BASIC_ALLOC)) + STACK_READ + STACK_PUSH + BASIC_ALLOC
+            //the width * 11/80 is rounded to width/8
+            let width = prim_width(&typ[0]);
+            width/8 + 17//(width/2) + (12*width)/64 + 85
         } else {
-            BASIC_OP + 2*BASIC_ALLOC + (2*STACK_READ) + STACK_PUSH
+            13
         }
     }
 
     pub fn convert() -> usize {
-        BASIC_OP + (STACK_READ + STACK_PUSH) + BASIC_ALLOC
+        11
     }
 
     pub fn add() -> usize {
-        BASIC_OP + (2*STACK_READ) + STACK_PUSH + BASIC_ALLOC
+        12
     }
 
     pub fn sub() -> usize {
-        BASIC_OP + (2*STACK_READ) + STACK_PUSH + BASIC_ALLOC
+        12
     }
 
     pub fn mul() -> usize {
-        //the additional +BASIC_OP is for mul as it is slightly more expensive than add/sub
-        2*BASIC_OP + (2*STACK_READ) + STACK_PUSH + BASIC_ALLOC
+       13
     }
 
     pub fn div() -> usize {
-        //not byte dependent (2* is for i/u128 which may need slightly more)
-        //the additional +3*BASIC_OP is for div as it is  more expensive than add/sub/mul
-        4*BASIC_OP + (2*STACK_READ) + STACK_PUSH + BASIC_ALLOC
+        17 /*reality: 65 for u/i8, 70 for u/i16, 75 for u/i32, 80 for u/i64, 85 for u/i128*/
     }
 
     pub fn eq<S:Store>(typ:&[Crc<ResolvedType>], context:&Context<S>) -> Result<usize> {
-        Ok((2*STACK_READ) + STACK_PUSH + BASIC_ALLOC + traversing_statistics(&typ[0], context, OBJECT_VISIT+BASIC_OP, BASIC_OP )?)
+        Ok(12 + (traversing_statistics(&typ[0], context, 34, 240, 5, 0)?/200) as usize)
     }
 
     pub fn hash<S:Store>(typ:&[Crc<ResolvedType>], context:&Context<S>) -> Result<usize> {
-        Ok(HASH_FINALISATION_COST + STACK_READ + STACK_PUSH + BASIC_ALLOC + traversing_statistics(&typ[0], context, OBJECT_VISIT, BYTE_HASH_COST )?)
+        Ok(60 + (traversing_statistics(&typ[0], context, 11, 16, 1, 1)?/4) as usize)
     }
 
     pub fn hash_plain(typ:&[Crc<ResolvedType>]) -> usize {
-        HASH_FINALISATION_COST + STACK_READ + STACK_PUSH + BASIC_ALLOC + (prim_width(&typ[0]) * BYTE_HASH_COST)
+        60 + prim_width(&typ[0])/5
     }
 
     pub fn join_hash() -> usize {
-        HASH_FINALISATION_COST + STACK_READ + STACK_PUSH + BASIC_ALLOC + (40 * BYTE_HASH_COST)
+       70
     }
 
     pub fn cmp() -> usize {
-        BASIC_OP + (2*STACK_READ) + STACK_PUSH + BASIC_ALLOC
+        13
     }
 
 
     pub fn to_data(typ:&[Crc<ResolvedType>]) -> usize {
-        (prim_width(&typ[0]) * BASIC_ALLOC) + STACK_READ + STACK_PUSH + BASIC_ALLOC
+        18
     }
 
     pub fn concat(typ:&[Crc<ResolvedType>]) -> usize {
-        (prim_width(&typ[2]) * BASIC_ALLOC) + 2*STACK_READ + STACK_PUSH + BASIC_ALLOC
+        20 + prim_width(&typ[2])/50
     }
 
     pub fn get_bit() -> usize {
-        BASIC_OP + 2*STACK_READ + STACK_PUSH + BASIC_ALLOC
+        13
     }
 
     pub fn set_bit(typ:&[Crc<ResolvedType>]) -> usize {
-        BASIC_OP + (prim_width(&typ[0]) * BASIC_ALLOC) + 2*STACK_READ + STACK_PUSH + BASIC_ALLOC
+        22 + prim_width(&typ[0])/50
     }
 
     pub fn call(args:usize) -> usize {
-        (args*STACK_READ) + (args*STACK_PUSH)
+        //1.4 was rounded to 1.5
+        14 + (3*args)/2//70 + 7*args
     }
 
-    pub fn op_process() -> usize {
-        DISPATCH
-    }
-
-    pub fn frame_process() -> usize {
-        FRAME_PUSH + STACK_REWIND
-    }
+    pub fn _let() -> usize { 70 }
 
     pub fn lit(typ:Crc<ResolvedType>) -> usize {
         if is_data(&typ) {
-            (prim_width(&typ) * BASIC_ALLOC) + STACK_READ + STACK_PUSH + BASIC_ALLOC
+            13 + prim_width(&typ)/50
         } else {
-            BASIC_ALLOC + STACK_READ + STACK_PUSH + BASIC_ALLOC
+            7
         }
     }
 
     pub fn module_index() -> usize {
-        (20 * BASIC_ALLOC) + STACK_READ + STACK_PUSH + BASIC_ALLOC
+        13
     }
 
     pub fn unpack(fields:usize) -> usize {
-        STACK_READ + fields*STACK_PUSH
+        3 + fields/2
     }
 
     pub fn field() -> usize {
-        STACK_READ + STACK_PUSH
+        4
     }
 
     pub fn pack(fields:usize) -> usize {
-        fields*STACK_READ + STACK_PUSH + BASIC_ALLOC
+        13 + fields
     }
 
     pub fn switch() -> usize {
-        STACK_READ + DISPATCH
+        16
+    }
+
+    pub fn ret(rets:usize) -> usize {
+        5 + 5*rets
+    }
+
+    pub fn throw() -> usize {
+        5
     }
 
     pub fn try(catches:usize) -> usize {
-        catches*BASIC_OP + FRAME_PUSH //tries need an extra frame
+        16 + catches //catches is a educated guess as the measurements where flawed*/
     }
 }

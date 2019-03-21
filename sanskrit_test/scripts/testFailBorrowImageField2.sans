@@ -1,0 +1,6 @@
+module TestFailBorrowImageField2 {
+    private fun Test[<Embed> A](a:TestSucAdt.Wrapper[A]):(borrowed(a) b:%A){
+       b = &field[0] a:TestSucAdt.Wrapper[A];
+       return b;
+    };
+}

@@ -61,8 +61,10 @@ Case:Case = {
 };
 
 Type:Type = {
-    <main:Ref> "[" <applies:Comma<Type>> "]" => Type{main,applies},
-    <main:Ref> => Type{main,applies:vec![]},
+    <main:Ref> "[" <applies:Comma<Type>> "]" => Type{main,applies,is_image:false},
+    <main:Ref> => Type{main,applies:vec![],is_image:false},
+    "%" <main:Ref> "[" <applies:Comma<Type>> "]" => Type{main,applies,is_image:true},
+    "%" <main:Ref> => Type{main,applies:vec![],is_image:true},
 };
 
 Ref:Ref = {
@@ -97,6 +99,7 @@ OpCode:OpCode = {
     <vars:Assigns> "let" <b:Block> => OpCode::Let(vars, Box::new(b)),
     "let" <b:Block> => OpCode::Let(vec![], Box::new(b)),
     <id:Id> "=" "copy" <var:Id> => OpCode::Copy(id,var),
+    <id:Id> "=" "image" <var:Id> => OpCode::Image(id,var),
     <id:Id> "=" <var:Id> => OpCode::Fetch(id,var,false),
     <id:Id> "=" "&" <var:Id> => OpCode::Fetch(id,var,true),
     "drop" <id:Id> => OpCode::Drop(id),

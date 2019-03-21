@@ -201,7 +201,7 @@ pub trait LinearStack<T:Clone, V:MicroVecBuilder<usize>>  {
         Ok(elem)
     }
 
-    //hides an element (by consuming it), the caller is responsible for calling show
+    //hides an element (by marking consuming it), the caller is responsible for calling show
     // a hidden element can not be consumed, locked, or hidden again
     fn hide(&mut self, index:ValueRef) -> Result<()>{
         // Get the index (as we not consuming it it is safe to access non-locals they are not consumed)
@@ -215,8 +215,7 @@ pub trait LinearStack<T:Clone, V:MicroVecBuilder<usize>>  {
         Ok(())
     }
 
-    //hides an element (by consuming it), the caller is responsible for calling unhide
-    // a hidden element can not be consumed, locked, or hidden again
+    //shows an element (by ubconsuming it)
     fn show(&mut self, index:ValueRef) -> Result<()>{
         // Get the index (as we not consuming it it is safe to access non-locals they are not consumed)
         let res = self.absolute_index(index)?;
@@ -236,10 +235,10 @@ pub trait LinearStack<T:Clone, V:MicroVecBuilder<usize>>  {
         // Get the element
         let elem = self.get_elem_absolute(res)?;
         //Copy the original
-        let mut orig =  elem.clone();
+        let mut orig = elem.clone();
         //Lock the existing one
         elem.lock(amount, true)?;
-        //overwrite the locking with a single one
+        //overwrite the locking of the new one with a single one
         let mut mv_builder = self.generate_vec(1)?;
         mv_builder.push(res)?;
         orig.status.borrowing = mv_builder.finish();
@@ -447,7 +446,6 @@ pub trait LinearStack<T:Clone, V:MicroVecBuilder<usize>>  {
             //make the element visible again (it is sure that each is used only once)
             self.show(*index)?;
             //The Function consumes the Element
-            // will trigger insertion into captures (thats why just keeping it hidden would not work)
             if *consume  {
                self.consume(*index)?;
             }
@@ -459,7 +457,7 @@ pub trait LinearStack<T:Clone, V:MicroVecBuilder<usize>>  {
             if borrows.is_empty() {
                 self.push_elem(Elem::owned(typ.clone()))?
             } else {
-                //The output os burrowed, so we need to lock the targeted elems and change the refs to absolute ones
+                //The output is burrowed, so we need to lock the targeted elems and change the refs to absolute ones
                 let mut absolute = self.generate_vec(borrows.len())?;
                 //Borrow the regular borrows
                 for borrow in borrows.iter() {

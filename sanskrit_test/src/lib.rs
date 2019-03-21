@@ -8,7 +8,9 @@ extern crate sanskrit_interpreter;
 extern crate sanskrit_runtime;
 extern crate sanskrit_common;
 extern crate sanskrit_memory_store;
-
+extern crate ed25519_dalek;
+extern crate sha2;
+extern crate rand;
 extern crate test;
 
 pub mod script_test;

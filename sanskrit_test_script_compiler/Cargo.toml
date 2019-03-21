@@ -7,7 +7,6 @@ authors = ["tawaren <markus.knecht85@gmail.com>"]
 lalrpop = "0.16.2"
 
 [dependencies]
-blake2-rfc = "0.2.18"
 arrayref = "0.3.5"
 lalrpop-util = "0.16.2"
 regex = "0.2.1"
@@ -17,6 +16,7 @@ itertools = "0.8.0"
 ed25519-dalek = "0.8.1"
 sha2 = "0.7.0"
 rand = "0.6.1"
+
 
 [dependencies.sanskrit_common]
 path = "../sanskrit_common"

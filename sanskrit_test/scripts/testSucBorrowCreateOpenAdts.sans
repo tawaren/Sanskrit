@@ -5,6 +5,16 @@ module TestSucBorrowCreateOpenAdts {
         return w;
     };
 
+    public fun CreateImageWrapper[<Embed> T](t:%T):(borrowed(t) res: %TestSucOpenAdt.Wrapper[T]) {
+        w = &pack %TestSucOpenAdt.Wrapper[T]#Ctr(t);
+        return w;
+    };
+
+    public fun CreateWrapperImage[<Embed> T](t:%T):(borrowed(t) res: TestSucOpenAdt.Wrapper[%T]) {
+        w = &pack TestSucOpenAdt.Wrapper[%T]#Ctr(t);
+        return w;
+    };
+
     public fun CreateSome[<Embed> T](t:T):(borrowed(t) res: TestSucOpenAdt.Option[T]) {
         some = &pack TestSucOpenAdt.Option[T]#Some(t);
         return some;

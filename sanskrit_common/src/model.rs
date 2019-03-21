@@ -80,7 +80,7 @@ pub enum NativeError {
 }
 
 //Most vectors used in sanskrit have a max len of 255, in some places more is needed
-#[derive(Eq, PartialEq, Hash, Clone, Debug, Parsable, Serializable)]
+#[derive(Eq, PartialEq, Hash, Clone, Debug)]
 pub struct LargeVec<T>(pub Vec<T>);
 
 //Represents a Identifier for a constructor of a specific Adt

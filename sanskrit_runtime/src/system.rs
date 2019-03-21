@@ -4,7 +4,7 @@ use sanskrit_common::arena::VirtualHeapArena;
 use model::RuntimeType;
 use sanskrit_common::capabilities::CapSet;
 
-const SYSTEM_MODULE: Hash = [156, 42, 226, 205, 167, 95, 204, 175, 157, 192, 59, 231, 2, 220, 13, 79, 105, 8, 180, 111];
+const SYSTEM_MODULE: Hash = [194, 165, 165, 93, 226, 58, 6, 108, 136, 209, 35, 57, 166, 82, 25, 159, 54, 54, 239, 136];
 
 const ENTRY_OFFSET:u8 = 0;
 const SINGLETON_OFFSET:u8 = 1;

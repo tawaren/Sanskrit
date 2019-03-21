@@ -4,7 +4,8 @@ use script_stack::StackEntry;
 use sanskrit_common::errors::*;
 use model::*;
 use sanskrit_common::arena::*;
-use byteorder::{LittleEndian, ByteOrder};
+use sanskrit_common::encoding::EncodingByteOrder;
+use byteorder::{ByteOrder};
 use CONFIG;
 use sanskrit_interpreter::model::Object;
 
@@ -46,7 +47,7 @@ impl<'a> CacheSlotMap<'a> {
         let mut offset = self.salt.2;
         //could be improved by incorperating more bits when offseting
         loop {
-            let val = ((LittleEndian::read_u16(&key[try..]).rotate_right(rot) + offset) % self.slots.len() as u16) as usize;
+            let val = ((EncodingByteOrder::read_u16(&key[try..]).rotate_right(rot) + offset) % self.slots.len() as u16) as usize;
             match &self.slots[val] {
                 None => return SlotResult::Empty(val),
                 Some((k,_)) if k == key => return SlotResult::Full(val),

@@ -9,7 +9,7 @@ use environment::Environment;
 use sanskrit_common::encoding::*;
 use transaction_parser;
 use script::Compiler as MCompiler;
-use ed25519_dalek::Keypair;
+use ed25519_dalek::*;
 use sha2::{Sha512};
 use rand::rngs::OsRng;
 use sanskrit_runtime::model::Transaction as RTransaction;

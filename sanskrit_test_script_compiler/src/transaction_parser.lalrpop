@@ -14,7 +14,6 @@ Transaction:Transaction = {
 ScriptCode:ScriptCode = {
     <id:Id> "=" "lit" <lit:Lit> ":" <typ:Type> => ScriptCode::Lit(id, lit, typ),
     <id:Id> "=" "wit" <lit:Lit> ":" <typ:Type> => ScriptCode::Lit(id, lit, typ),
-    <id:Id> "=" "ref_lit" "'" <val:Id> "'" => ScriptCode::RefGen(id,val),
     <id:Id> "=" "copy" <var:Id> => ScriptCode::Copy(id,var),
     <id:Id> "=" <var:Id> => ScriptCode::Fetch(id,var,false),
     <id:Id> "=" "&" <var:Id> => ScriptCode::Fetch(id,var,true),
@@ -34,8 +33,10 @@ ScriptCode:ScriptCode = {
 };
 
 Type:Type = {
-    <main:Ref> "[" <applies:Comma<Type>> "]" => Type{main,applies},
-    <main:Ref> => Type{main,applies:vec![]},
+    <main:Ref> "[" <applies:Comma<Type>> "]" => Type{main,applies,is_image:false},
+    <main:Ref> => Type{main,applies:vec![],is_image:false},
+    "%" <main:Ref> "[" <applies:Comma<Type>> "]" => Type{main,applies,is_image:true},
+    "%" <main:Ref> => Type{main,applies:vec![],is_image:true},
 };
 
 Ref:Ref = {

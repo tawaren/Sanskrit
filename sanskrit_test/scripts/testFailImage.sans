@@ -1,0 +1,7 @@
+module TestFailImage {
+
+    private fun Test[<Embed> A](consume a:A):(b:A){
+       b = image a;
+       return b;
+    };
+}

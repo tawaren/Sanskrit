@@ -101,10 +101,10 @@ impl NativeAdtType {
 
 pub fn lit_typ<'a,'h>(desc:LitDesc, size:u16, alloc:&'a VirtualHeapArena<'h>) -> Result<Ptr<'a,RuntimeType<'a>>>{
     match desc {
-        LitDesc::Ref => {
+        LitDesc::Id => {
             if size != 20 {return literal_data_error()}
             resolve_runtime_leaf_type(NativeType::PublicId, SlicePtr::empty(), alloc)
-        },
+        }
         LitDesc::Data => resolve_runtime_leaf_type(NativeType::Data(size), SlicePtr::empty(), alloc),
         LitDesc::I8 => {
             if size != 1 {return literal_data_error()}

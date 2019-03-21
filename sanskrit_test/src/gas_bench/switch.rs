@@ -703,11 +703,6 @@ mod branch_8 {
             execute_code(b, |a|vec![vec![a.alloc(Object::Adt(0,SlicePtr::empty())).unwrap()]], |a,ins|build(a,32,BRANCH, ins[0],RET), RET,true);
         }
 
-        #[bench]
-        fn bench_64(b: &mut Bencher){
-            execute_code(b, |a|vec![vec![a.alloc(Object::Adt(0,SlicePtr::empty())).unwrap()]], |a,ins|build(a,64,BRANCH, ins[0],RET), RET,true);
-        }
-
     }
 
     #[cfg(test)]
@@ -743,11 +738,6 @@ mod branch_8 {
         #[bench]
         fn bench_32(b: &mut Bencher){
             execute_code(b, |a|vec![vec![a.alloc(Object::Adt(0,SlicePtr::empty())).unwrap()]], |a,ins|build(a,32,BRANCH, ins[0],RET), RET,true);
-        }
-
-        #[bench]
-        fn bench_64(b: &mut Bencher){
-            execute_code(b, |a|vec![vec![a.alloc(Object::Adt(0,SlicePtr::empty())).unwrap()]], |a,ins|build(a,64,BRANCH, ins[0],RET), RET,true);
         }
 
     }
@@ -787,10 +777,6 @@ mod branch_8 {
             execute_code(b, |a|vec![vec![a.alloc(Object::Adt(0,SlicePtr::empty())).unwrap()]], |a,ins|build(a,32,BRANCH, ins[0],RET), RET,true);
         }
 
-        #[bench]
-        fn bench_64(b: &mut Bencher){
-            execute_code(b, |a|vec![vec![a.alloc(Object::Adt(0,SlicePtr::empty())).unwrap()]], |a,ins|build(a,64,BRANCH, ins[0],RET), RET,true);
-        }
     }
 
     #[cfg(test)]
@@ -828,10 +814,6 @@ mod branch_8 {
             execute_code(b, |a|vec![vec![a.alloc(Object::Adt(0,SlicePtr::empty())).unwrap()]], |a,ins|build(a,32,BRANCH, ins[0],RET), RET,true);
         }
 
-        #[bench]
-        fn bench_64(b: &mut Bencher){
-            execute_code(b, |a|vec![vec![a.alloc(Object::Adt(0,SlicePtr::empty())).unwrap()]], |a,ins|build(a,64,BRANCH, ins[0],RET), RET,true);
-        }
     }
 
     #[cfg(test)]
@@ -869,9 +851,5 @@ mod branch_8 {
             execute_code(b, |a|vec![vec![a.alloc(Object::Adt(0,SlicePtr::empty())).unwrap()]], |a,ins|build(a,32,BRANCH, ins[0],RET), RET,true);
         }
 
-        #[bench]
-        fn bench_64(b: &mut Bencher){
-            execute_code(b, |a|vec![vec![a.alloc(Object::Adt(0,SlicePtr::empty())).unwrap()]], |a,ins|build(a,64,BRANCH, ins[0],RET), RET,true);
-        }
     }
 }

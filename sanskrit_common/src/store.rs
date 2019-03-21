@@ -1,8 +1,8 @@
 use errors::*;
 use encoding::*;
 use alloc::prelude::*;
-use blake2_rfc::blake2b::{Blake2b};
 use model::Hash;
+use hashing::*;
 
 //Trait representing a store
 //Allows it to be flexible from Temporary in Memeory, over stateless in Memeory to persistent
@@ -19,7 +19,7 @@ pub trait Store {
     fn replace(&self, class:StorageClass, key:Hash, data:Vec<u8>) -> Result<()> ;
     //Lists all elems from that category
     //just for debug and test, not suitable for rest as it copies the whole store to memory
-    fn list(&self, class:StorageClass) -> Vec<(Hash, Vec<u8>)>;
+    //fn list(&self, class:StorageClass) -> Vec<(Hash, Vec<u8>)>;
 
     //helper
     fn parsed_get<'a, P:Parsable<'a>, A: ParserAllocator>(&self, class:StorageClass, key: &Hash, max_dept:usize, alloc:&'a A) -> Result<P>{
@@ -44,15 +44,11 @@ pub enum StorageClass{
 //Helper to calc the key for a storage slot
 pub fn store_hash(data:&[&[u8]]) -> Hash {
     //Make a 20 byte digest hascher
-    let mut context = Blake2b::new(20);
+    let mut context = HashingDomain::Code.get_domain_hasher();
     //push the data into it
     for d in data {
         context.update(*d);
     }
     //calc the Hash
-    let hash = context.finalize();
-    //generate a array to the hash
-    let hash_data_ref = array_ref!(hash.as_bytes(),0,20);
-    //get ownership and return
-    hash_data_ref.to_owned()
+    context.finalize()
 }

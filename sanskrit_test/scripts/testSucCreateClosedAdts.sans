@@ -37,6 +37,16 @@ module TestSucCreateClosedAdts {
             return w;
         };
 
+        public fun CreateImageWrapper[<Embed> T](consume t:%T):(res: %.Wrapper[T]) {
+            w = pack %.Wrapper[T]#Ctr(t);
+            return w;
+        };
+
+        public fun CreateWrapperImage[<Embed> T](consume t:%T):(res: .Wrapper[%T]) {
+            w = pack .Wrapper[%T]#Ctr(t);
+            return w;
+        };
+
         public fun CreateNone[<Embed> T]():(res: .Option[T]) {
             none = pack .Option[T]#None();
             return none;

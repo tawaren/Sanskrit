@@ -142,7 +142,7 @@ impl Store for BTreeMapStore {
     }
 
     //list all in the store section (this should be used for debug and test only as it would be expensive in production)
-    fn list(&self, class: StorageClass) -> Vec<(Hash, Vec<u8>)> {
+    /*fn list(&self, class: StorageClass) -> Vec<(Hash, Vec<u8>)> {
         fn process(map:&BTreeMap<Hash, Vec<u8>>) -> Vec<(Hash, Vec<u8>)> {
             //clone everithing into mem
             map.iter().map(|(h,v)|(*h,v.clone())).collect()
@@ -154,5 +154,5 @@ impl Store for BTreeMapStore {
             StorageClass::Module => process(&self.0.borrow().modules),
             StorageClass::Elem => process(&self.0.borrow().elems),
         }
-    }
+    }*/
 }

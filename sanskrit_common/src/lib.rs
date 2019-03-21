@@ -22,3 +22,4 @@ pub mod linear_stack;
 pub mod model;
 pub mod capabilities;
 pub mod arena;
+pub mod hashing;

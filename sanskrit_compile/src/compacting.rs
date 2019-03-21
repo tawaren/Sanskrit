@@ -244,11 +244,11 @@ impl<'b,'h> Compactor<'b,'h> {
 
     //compacts an expression (block)
     fn process_exp<S:Store>(&mut self, exp:&Exp, ret_point:ReturnPoint, context:&Context<S>) -> Result<Ptr<'b,RExp<'b>>>{
-        //account for the frame
-        self.state.use_gas(gas::frame_process());
         //differentiate between Return and Throw
         Ok(self.alloc.alloc(match *exp {
             Exp::Ret(ref opcodes, ref returns, ref _drops) => {
+                //account for the returnd
+                self.state.use_gas(gas::ret(returns.len()));
                 // add the frame
                 self.state.add_frame();
                 //in case of a return we need to find out which opcodes we can eliminate
@@ -258,7 +258,6 @@ impl<'b,'h> Compactor<'b,'h> {
                     match self.process_opcode(code, context)? {
                         None => {}, //can be eliminated
                         Some(n_code) => {
-                            self.state.use_gas(gas::op_process());
                             new_opcodes.push(n_code)  //still needed but some things are stripped Aaway
                         },
                     }
@@ -277,7 +276,8 @@ impl<'b,'h> Compactor<'b,'h> {
                 RExp::Ret(new_opcodes.finish(),adapted)
             },
             Exp::Throw(err) => {
-                //Unwind the runtime and compiletime stack (todo: still necessary???)
+                self.state.use_gas(gas::throw());
+                //Unwind the runtime and compiletime stack
                 self.state.rewind(ret_point);
                 //Generate and return the optimized Throw
                 RExp::Throw(self.convert_err(err.fetch(context)?)?)
@@ -339,7 +339,7 @@ impl<'b,'h> Compactor<'b,'h> {
         let r_typ = typ.fetch(context)?;
         let lit_desc = match *r_typ {
             ResolvedType::Native { typ:NativeType::Data(_), .. } => LitDesc::Data,
-            ResolvedType::Native { typ:NativeType::PublicId, .. } => LitDesc::Ref,
+            ResolvedType::Native { typ:NativeType::PublicId, .. } => LitDesc::Id,
             ResolvedType::Native { typ:NativeType::SInt(1), .. } => LitDesc::I8,
             ResolvedType::Native { typ:NativeType::UInt(1), .. } => LitDesc::U8,
             ResolvedType::Native { typ:NativeType::SInt(2), .. } => LitDesc::I16,
@@ -362,7 +362,8 @@ impl<'b,'h> Compactor<'b,'h> {
     }
 
     fn let_<S:Store>(&mut self, exp:&Exp, context:&Context<S>) -> Result<Option<ROpCode<'b>>> {
-        //All cost for let are in process_exp/op_process
+        //cost
+        self.state.use_gas(gas::_let());
         //capture current stack positions
         let ret_point = self.state.return_point();
         //process the nested expression
@@ -553,7 +554,7 @@ impl<'b,'h> Compactor<'b,'h> {
                         //account for the ressources
                         self.state.include_call_resources(resources);
                         //return the essential info
-                        (ROpCode::Invoke(index,adapted),rets,gas::call(fun_comp.params.len())) //gas is already accounted for -- Maybe call cost???
+                        (ROpCode::Invoke(index,adapted),rets,gas::call(fun_comp.params.len()))
                     }
                 }
             },

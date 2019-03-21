@@ -77,7 +77,7 @@ fn bench_data20(b: &mut Bencher){
 
 #[bench]
 fn bench_ref(b: &mut Bencher){
-    execute_script(b, |_| vec![vec![]] , |a,_|ScriptCode::Lit(a.copy_alloc_slice(&[31;20]).unwrap(), LitDesc::Ref), 1, true);
+    execute_script(b, |_| vec![vec![]], |a,_|ScriptCode::Lit(a.copy_alloc_slice(&[31;20]).unwrap(), LitDesc::Id), 1, true);
 }
 
 #[bench]
@@ -130,7 +130,7 @@ fn bench_all(b: &mut Bencher){
             10 => ScriptCode::Lit(a.copy_alloc_slice(&[31u8;1]).unwrap(),LitDesc::Data),
             11 => ScriptCode::Lit(a.copy_alloc_slice(&[31u8;10]).unwrap(),LitDesc::Data),
             12 => ScriptCode::Lit(a.copy_alloc_slice(&[31u8;20]).unwrap(),LitDesc::Data),
-            13 => ScriptCode::Lit(a.copy_alloc_slice(&[31u8;20]).unwrap(),LitDesc::Ref),
+            13 => ScriptCode::Lit(a.copy_alloc_slice(&[31u8;20]).unwrap(),LitDesc::Id),
             14 => ScriptCode::Lit(a.copy_alloc_slice(&[31u8;50]).unwrap(),LitDesc::Data),
             15 => ScriptCode::Lit(a.copy_alloc_slice(&[31u8;100]).unwrap(),LitDesc::Data),
             16 => ScriptCode::Lit(a.copy_alloc_slice(&[31u8;200]).unwrap(),LitDesc::Data),

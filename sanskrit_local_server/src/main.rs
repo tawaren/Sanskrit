@@ -31,20 +31,18 @@ use sanskrit_deploy::deploy_module;
 use sanskrit_compile::compile_module;
 use sanskrit_test_script_compiler::transaction::CompiledTransactions;
 use sanskrit_runtime::execute;
-use sanskrit_common::store::store_hash;
-use sanskrit_common::store::Store;
-use sanskrit_common::store::StorageClass;
+use sanskrit_common::store::*;
 use sanskrit_common::encoding::*;
 use sanskrit_core::model::Module;
-use sanskrit_common::model::Hash;
-use sanskrit_runtime::model::StoreElem;
+use sanskrit_common::model::*;
+use sanskrit_common::hasher::*;
+
 use std::collections::HashMap;
 use sled::Tree;
 use rand::rngs::OsRng;
 use sha2::Sha512;
 use ed25519_dalek::Keypair;
 use hex::encode;
-use blake2_rfc::blake2b::{Blake2b};
 use sanskrit_common::arena::Heap;
 
 struct State<'a> {
@@ -163,7 +161,7 @@ pub fn main() {
                     },
                     "account" => {
                         let subs = state.get_account(elems[1].clone());
-                        println!("name:{:?} address:0x{:?} pk:0x{:?}", elems[1].clone(), encode(hash(&subs.public.to_bytes())) , encode(subs.public.to_bytes()));
+                        println!("name:{:?} address:0x{:?} pk:0x{:?}", elems[1].clone(), encode(DomainHasher::Account.hash(&subs.public.to_bytes())) , encode(subs.public.to_bytes()));
                     }
                     "list" =>  match elems[1].to_lowercase().as_ref() {
                         "module" => {
@@ -205,18 +203,4 @@ pub fn main() {
         }
     }
     rl.save_history("history.txt").unwrap();
-}
-
-//Helper to calc the a hash
-fn hash(data:&[u8]) -> Hash {
-    //Make a 20 byte digest hascher
-    let mut context = Blake2b::new(20);
-    //push the data into it
-    context.update(data);
-    //calc the Hash
-    let hash = context.finalize();
-    //generate a array to the hash
-    let hash_data_ref = array_ref!(hash.as_bytes(),0,20);
-    //get ownership and return
-    hash_data_ref.to_owned()
 }

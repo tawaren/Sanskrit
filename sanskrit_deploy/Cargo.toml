@@ -6,6 +6,8 @@ authors = ["tawaren <markus.knecht85@gmail.com>"]
 [features]
 default = ["std"]
 std = []
+test = []
+
 
 [dependencies.sanskrit_common]
 path = "../sanskrit_common"

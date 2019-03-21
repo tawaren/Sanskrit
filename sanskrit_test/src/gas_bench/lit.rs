@@ -104,7 +104,7 @@ fn bench_all_int(b: &mut Bencher){
         }
     }
     let mut num = 0;
-    execute_code(b, |a|vec![vec![]], |a,_|build_op(a,&mut num), 1,true);
+    execute_code(b, |_|vec![vec![]], |a,_|build_op(a,&mut num), 1,true);
 }
 
 #[bench]
@@ -132,5 +132,5 @@ fn bench_all(b: &mut Bencher){
         }
     }
     let mut num = 0;
-    execute_code(b, |a|vec![vec![]], |a,_|build_op(a,&mut num), 1,true);
+    execute_code(b, |_|vec![vec![]], |a,_|build_op(a,&mut num), 1,true);
 }

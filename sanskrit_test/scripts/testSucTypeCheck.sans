@@ -42,6 +42,41 @@ module TestSucTypeCheck{
         return b;
    };
 
+   fun TestFun71[<Embed> A](consume a:%TestSucAdt.Wrapper[A]):(b:%A){
+        b = unpack a:%TestSucAdt.Wrapper[A];
+        return b;
+   };
+
+   fun TestFun72[<Embed> A](consume a:TestSucAdt.Wrapper[%A]):(b:%A){
+        b = unpack a:TestSucAdt.Wrapper[%A];
+        return b;
+   };
+
+   fun TestFun73[<Embed> A](a:%TestSucAdt.Wrapper[A]):(borrowed(a) b:%A){
+        b = &unpack a:%TestSucAdt.Wrapper[A];
+        return b;
+   };
+
+   fun TestFun74[<Embed> A](a:TestSucAdt.Wrapper[%A]):(borrowed(a) b:%A){
+        b = &unpack a:TestSucAdt.Wrapper[%A];
+        return b;
+   };
+
+   fun TestFun75[<Embed> A](consume a:%TestSucAdt.Wrapper[A]):(b:%A){
+        b = field[0] a:%TestSucAdt.Wrapper[A];
+        return b;
+   };
+
+   fun TestFun76[<Embed> A](a:%TestSucAdt.Wrapper[A]):(borrowed(a) b:%A){
+       b = &field[0] a:%TestSucAdt.Wrapper[A];
+       return b;
+   };
+
+   fun TestFun77[<Embed> A](a:A):(b:%A){
+        b = image a;
+        return b;
+   };
+
    fun TestFun8[<Embed> A](a:TestSucAdt.Wrapper[A]):(borrowed(a) b:A){
         b = &unpack a:TestSucAdt.Wrapper[A];
         return b;
@@ -67,6 +102,34 @@ module TestSucTypeCheck{
        return c;
    };
 
+   fun TestFun101[<Embed, Drop> A](consume a:%TestSucAdt.Option[A], consume b:%A):(c:%A){
+      c = switch a:%TestSucAdt.Option[A] {
+           None() => {
+               d = b;
+               return d;
+           };
+           Some(d) => {
+               drop b;
+               return d;
+           };
+      };
+      return c;
+   };
+
+   fun TestFun102[<Embed, Drop> A](consume a:TestSucAdt.Option[%A], consume b:%A):(c:%A){
+     c = switch a:TestSucAdt.Option[%A] {
+          None() => {
+              d = b;
+              return d;
+          };
+          Some(d) => {
+              drop b;
+              return d;
+          };
+     };
+     return c;
+   };
+
    fun TestFun11[<Embed, Copy, Drop> A](a:TestSucAdt.Option[A], b:A):(c:A){
       c = &switch a:TestSucAdt.Option[A] {
            None() => {
@@ -79,6 +142,34 @@ module TestSucTypeCheck{
            };
       };
       return c;
+   };
+
+   fun TestFun111[<Embed, Copy, Drop> A](a:%TestSucAdt.Option[A], b:%A):(c:%A){
+     c = &switch a:%TestSucAdt.Option[A] {
+          None() => {
+                 e = copy b;
+                 return e;
+          };
+          Some(d) => {
+              e = copy d;
+              return e;
+          };
+     };
+     return c;
+   };
+
+   fun TestFun112[<Embed, Copy, Drop> A](a:TestSucAdt.Option[%A], b:%A):(c:%A){
+    c = &switch a:TestSucAdt.Option[%A] {
+         None() => {
+                e = copy b;
+                return e;
+         };
+         Some(d) => {
+             e = copy d;
+             return e;
+         };
+    };
+    return c;
    };
 
    fun TestFun12[<Embed, Copy, Drop> A](a:TestSucAdt.Wrapper[TestSucAdt.Option[A]], b:A):(c:A){

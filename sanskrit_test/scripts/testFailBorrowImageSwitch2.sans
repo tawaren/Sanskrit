@@ -1,0 +1,20 @@
+module TestFailBorrowImageSwitch2 {
+
+    type <Consume, Inspect> X[<Embed> A] {
+        X(A);
+        Y(A);
+    };
+
+
+    private fun Test[<Embed> A](a:.X[A]):(borrowed(a) b:%A){
+       b = &switch a:.X[A] {
+            X(a) => {
+                return a;
+            };
+            Y(a) => {
+                return a;
+            };
+       };
+       return b;
+    };
+}

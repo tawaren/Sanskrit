@@ -4,14 +4,15 @@ use sanskrit_common::errors::*;
 use sanskrit_common::model::*;
 use sanskrit_common::linear_stack::*;
 use sanskrit_common::store::*;
+use sanskrit_common::encoding::EncodingByteOrder;
 use model::*;
 use native::*;
-use byteorder::{LittleEndian, ByteOrder};
+use byteorder::{ByteOrder};
 use elem_store::ElemStore;
 use sanskrit_common::arena::*;
 use CONFIG;
 use system::is_entry;
-use sanskrit_interpreter::hashing::HashingDomain;
+use sanskrit_common::hashing::*;
 use sanskrit_interpreter::model::*;
 use elem_store::extract_key;
 use descriptors::*;
@@ -35,19 +36,17 @@ pub struct Executor<'a, 'h, S:Store>{
 //generates a new hash from a hash (usually txtHash) and a counter
 pub fn unique_hash<'a, 'h>(base: &Hash, domain: HashingDomain, ctr: u64, alloc:&'a VirtualHeapArena<'h>) -> Result<Object<'a>> {
     //create the hasher
-    let mut context = domain.get_domain_hasher(28);
+    let mut context = domain.get_domain_hasher();
     //prepare the counter
     let mut input = [0u8; 8];
-    LittleEndian::write_u64(&mut input, ctr);
+    EncodingByteOrder::write_u64(&mut input, ctr);
     //update the hasher with all information
     context.update(&input);
     context.update(base);
     //create the hash
-    let hash = context.finalize();
-    //generate a array to the hash
-    let hash_data_ref = array_ref!(hash.as_bytes(),0,20);
+    let hash = context.alloc_finalize(&alloc)?;
     //get ownership and return
-    Ok(Object::Data(alloc.copy_alloc_slice(hash_data_ref)?))
+    Ok(Object::Data(hash))
 }
 
 
@@ -166,6 +165,11 @@ impl<'a, 'h, S:Store> Executor<'a,'h,S> {
                 let desc = self.store.backend.parsed_get::<AdtDescriptor, VirtualHeapArena>(StorageClass::AdtDesc, &self.elem_key(*imp, *offset)?, CONFIG.max_structural_dept, &code_alloc)?;
                 let res = (false,build_type_from_desc(&desc, b_applies, self.alloc)?);
                 Ok(res)
+            }
+            TypeApplyRef::Image(inner) => {
+                Ok((false,self.alloc.alloc(RuntimeType::Image {
+                    typ: self.resolve_type(&*inner)?.1
+                })?))
             }
         }
     }

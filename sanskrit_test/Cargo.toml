@@ -6,6 +6,11 @@ authors = ["tawaren <markus.knecht85@gmail.com>"]
 [build-dependencies]
 lalrpop = "0.16.2"
 
+[dependencies]
+ed25519-dalek = "0.8.1"
+sha2 = "0.7.0"
+rand = "0.6.1"
+
 [dependencies.sanskrit_common]
 path = "../sanskrit_common"
 version = "0.1.0"
@@ -25,6 +30,7 @@ version = "0.1.0"
 [dependencies.sanskrit_deploy]
 path = "../sanskrit_deploy"
 version = "0.1.0"
+features=["test", "std"]
 
 [dependencies.sanskrit_compile]
 path = "../sanskrit_compile"

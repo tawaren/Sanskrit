@@ -9,6 +9,17 @@ module TestSucCreateOpenAdts {
         return w;
     };
 
+    public fun CreateImageWrapper[<Embed> T](consume t:%T):(res: %TestSucOpenAdt.Wrapper[T]) {
+        w = pack %TestSucOpenAdt.Wrapper[T]#Ctr(t);
+        return w;
+    };
+
+    public fun CreateWrapperImage[<Embed> T](consume t:%T):(res: TestSucOpenAdt.Wrapper[%T]) {
+        w = pack TestSucOpenAdt.Wrapper[%T]#Ctr(t);
+        return w;
+    };
+
+
     public fun CreateNone[<Embed> T]():(res: TestSucOpenAdt.Option[T]) {
         none = pack TestSucOpenAdt.Option[T]#None();
         return none;

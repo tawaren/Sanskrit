@@ -431,6 +431,79 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected="Type mismatch")]
+    fn unpack_image_type_fail() {
+        parse_and_compile("testFailImageUnpack").unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected="Type mismatch")]
+    fn unpack_image_type_fail2() {
+        parse_and_compile("testFailImageUnpack2").unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected="Type mismatch")]
+    fn unpack_image_type_fail3() {
+        parse_and_compile("testFailImageUnpack3").unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected="Type mismatch")]
+    fn field_image_type_fail() {
+        parse_and_compile("testFailImageField").unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected="Type mismatch")]
+    fn field_image_type_fail2() {
+        parse_and_compile("testFailImageField").unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected="Type mismatch")]
+    fn field_image_type_fail3() {
+        parse_and_compile("testFailImageField3").unwrap();
+    }
+
+
+    #[test]
+    #[should_panic(expected="Type mismatch")]
+    fn borrow_unpack_image_type_fail() {
+        parse_and_compile("testFailBorrowImageUnpack").unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected="Type mismatch")]
+    fn borrow_unpack_image_type_fail2() {
+        parse_and_compile("testFailBorrowImageUnpack2").unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected="Type mismatch")]
+    fn borrow_unpack_image_type_fail3() {
+        parse_and_compile("testFailBorrowImageUnpack3").unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected="Type mismatch")]
+    fn borrow_field_image_type_fail() {
+        parse_and_compile("testFailBorrowImageField").unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected="Type mismatch")]
+    fn borrow_field_image_type_fail2() {
+        parse_and_compile("testFailBorrowImageField2").unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected="Type mismatch")]
+    fn borrow_field_image_type_fail3() {
+        parse_and_compile("testFailBorrowImageField3").unwrap();
+    }
+
+    #[test]
     #[should_panic(expected="Input not allowed to be borrowed")]
     fn borrow_unpack_fail() {
         parse_and_compile("testFailBorrowUnpack").unwrap();
@@ -478,6 +551,72 @@ mod tests {
         parse_and_compile("testFailBorrowSwitch").unwrap();
     }
 
+    #[test]
+    #[should_panic(expected="Type mismatch")]
+    fn switch_image_fail() {
+        parse_and_compile("testFailImageSwitch").unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected="Type mismatch")]
+    fn switch_image_fail2() {
+        parse_and_compile("testFailImageSwitch2").unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected="Type mismatch")]
+    fn switch_image_fail3() {
+        parse_and_compile("testFailImageSwitch3").unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected="Type mismatch")]
+    fn borrow_switch_image_fail() {
+        parse_and_compile("testFailBorrowImageSwitch").unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected="Type mismatch")]
+    fn image_fail() {
+        parse_and_compile("testFailImage").unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected="Type mismatch")]
+    fn image_fail2() {
+        parse_and_compile("testFailImage2").unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected="Type mismatch")]
+    fn borrow_switch_image_fail2() {
+        parse_and_compile("testFailBorrowImageSwitch2").unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected="Type mismatch")]
+    fn borrow_switch_image_fail3() {
+        parse_and_compile("testFailBorrowImageSwitch3").unwrap();
+    }
+
+
+    #[test]
+    #[should_panic(expected="Type mismatch")]
+    fn pack_image_type_fail() {
+        parse_and_compile("testFailImagePack").unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected="Type mismatch")]
+    fn pack_image_type_fail2() {
+        parse_and_compile("testFailImagePack2").unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected="Type mismatch")]
+    fn pack_image_type_fail3() {
+        parse_and_compile("testFailImagePack3").unwrap();
+    }
 
     #[test]
     #[should_panic(expected="Required capability is missing")]

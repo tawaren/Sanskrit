@@ -364,3 +364,4 @@ mod invoke;
 mod switch;
 
 mod script_lit;
+mod sig;

@@ -2,12 +2,13 @@ use alloc::prelude::*;
 use alloc::collections::BTreeSet;
 use alloc::collections::BTreeMap;
 use alloc::rc::Rc;
-use byteorder::{LittleEndian, ByteOrder};
+use byteorder::{BigEndian, ByteOrder};
 use errors::*;
 use core::ops::Deref;
 use model::*;
 use arena::*;
 
+pub type EncodingByteOrder = BigEndian;
 
 pub trait ParserAllocator {
     fn poly_alloc<T:Sized + Copy + VirtualSize>(&self, val: T) -> Result<Ptr<T>>;
@@ -80,6 +81,8 @@ pub trait Parsable<'a> where Self:Sized {
 }
 
 //the state during serialization
+//todo: can we get along with arena??
+//      can we directly serialize to store??
 #[derive(Default)]
 pub struct Serializer{
     out:Vec<u8>,
@@ -173,7 +176,7 @@ impl<'a,T:Parsable<'a>> Parsable<'a> for Vec<T>{
 
 impl<T:Serializable> Serializable for Vec<T>{
     fn serialize(&self, s:&mut Serializer) -> Result<()> {
-        assert!(self.len() <= 255);
+        assert!(self.len() <= u8::max_value() as usize);
         s.produce_byte(self.len() as u8);
         s.increment_depth()?;
         for elem in self {
@@ -183,6 +186,33 @@ impl<T:Serializable> Serializable for Vec<T>{
         Ok(())
     }
 }
+
+impl<'a,T:Parsable<'a>> Parsable<'a> for LargeVec<T>{
+    fn parse<A: ParserAllocator>(p: &mut Parser, alloc:&'a A) -> Result<Self> {
+        let len = u16::parse(p,alloc)?;
+        let mut elems = Vec::with_capacity(len as usize);
+        p.increment_depth()?;
+        for _ in 0..len {
+            elems.push(Parsable::parse(p,alloc)?);
+        }
+        p.decrement_depth();
+        Ok(LargeVec(elems))
+    }
+}
+
+impl<T:Serializable> Serializable for LargeVec<T>{
+    fn serialize(&self, s:&mut Serializer) -> Result<()> {
+        assert!(self.0.len() <= u16::max_value() as usize);
+        (self.0.len() as u16).serialize(s)?;
+        s.increment_depth()?;
+        for elem in &self.0 {
+            elem.serialize(s)?;
+        }
+        s.decrement_depth();
+        Ok(())
+    }
+}
+
 
 impl<'a> Parsable<'a> for Hash {
     fn parse<A: ParserAllocator>(p: &mut Parser, _alloc:&'a A) -> Result<Self> {
@@ -400,13 +430,13 @@ impl VirtualSize for u8{
 
 impl<'a> Parsable<'a> for u16 {
     fn parse<A: ParserAllocator>(p: &mut Parser, _alloc:&'a A) -> Result<Self> {
-        Ok(LittleEndian::read_u16(p.consume_bytes(2)?))
+        Ok(EncodingByteOrder::read_u16(p.consume_bytes(2)?))
     }
 }
 
 impl Serializable for u16 {
     fn serialize(&self, s:&mut Serializer) -> Result<()> {
-        LittleEndian::write_u16(s.get_buf(2),*self);
+        EncodingByteOrder::write_u16(s.get_buf(2),*self);
         Ok(())
     }
 }
@@ -417,13 +447,13 @@ impl VirtualSize for u16{
 
 impl<'a> Parsable<'a> for u32 {
     fn parse<A: ParserAllocator>(p: &mut Parser, _alloc:&'a A) -> Result<Self> {
-        Ok(LittleEndian::read_u32(p.consume_bytes(4)?))
+        Ok(EncodingByteOrder::read_u32(p.consume_bytes(4)?))
     }
 }
 
 impl Serializable for u32 {
     fn serialize(&self, s:&mut Serializer) -> Result<()> {
-        LittleEndian::write_u32(s.get_buf(4),*self);
+        EncodingByteOrder::write_u32(s.get_buf(4),*self);
         Ok(())
     }
 }
@@ -434,13 +464,13 @@ impl VirtualSize for u32{
 
 impl<'a> Parsable<'a> for u64 {
     fn parse<A: ParserAllocator>(p: &mut Parser, _alloc:&'a A) -> Result<Self> {
-        Ok(LittleEndian::read_u64(p.consume_bytes(8)?))
+        Ok(EncodingByteOrder::read_u64(p.consume_bytes(8)?))
     }
 }
 
 impl Serializable for u64 {
     fn serialize(&self, s:&mut Serializer) -> Result<()> {
-        LittleEndian::write_u64(s.get_buf(8),*self);
+        EncodingByteOrder::write_u64(s.get_buf(8),*self);
         Ok(())
     }
 }
@@ -451,13 +481,13 @@ impl VirtualSize for u64{
 
 impl<'a> Parsable<'a> for u128 {
     fn parse<A: ParserAllocator>(p: &mut Parser, _alloc:&'a A) -> Result<Self> {
-        Ok(LittleEndian::read_u128(p.consume_bytes(16)?))
+        Ok(EncodingByteOrder::read_u128(p.consume_bytes(16)?))
     }
 }
 
 impl Serializable for u128 {
     fn serialize(&self, s:&mut Serializer) -> Result<()> {
-        LittleEndian::write_u128(s.get_buf(16),*self);
+        EncodingByteOrder::write_u128(s.get_buf(16),*self);
         Ok(())
     }
 }
@@ -489,13 +519,13 @@ impl VirtualSize for i8{
 
 impl<'a> Parsable<'a> for i16 {
     fn parse<A: ParserAllocator>(p: &mut Parser, _alloc:&'a A) -> Result<Self> {
-        Ok(LittleEndian::read_i16(p.consume_bytes(2)?))
+        Ok(EncodingByteOrder::read_i16(p.consume_bytes(2)?))
     }
 }
 
 impl Serializable for i16 {
     fn serialize(&self, s:&mut Serializer) -> Result<()> {
-        LittleEndian::write_i16(s.get_buf(2),*self);
+        EncodingByteOrder::write_i16(s.get_buf(2),*self);
         Ok(())
     }
 }
@@ -506,13 +536,13 @@ impl VirtualSize for i16{
 
 impl<'a> Parsable<'a> for i32 {
     fn parse<A: ParserAllocator>(p: &mut Parser, _alloc:&'a A) -> Result<Self> {
-        Ok(LittleEndian::read_i32(p.consume_bytes(4)?))
+        Ok(EncodingByteOrder::read_i32(p.consume_bytes(4)?))
     }
 }
 
 impl Serializable for i32 {
     fn serialize(&self, s:&mut Serializer) -> Result<()> {
-        LittleEndian::write_i32(s.get_buf(4),*self);
+        EncodingByteOrder::write_i32(s.get_buf(4),*self);
         Ok(())
     }
 }
@@ -523,13 +553,13 @@ impl VirtualSize for i32{
 
 impl<'a> Parsable<'a> for i64 {
     fn parse<A: ParserAllocator>(p: &mut Parser, _alloc:&'a A) -> Result<Self> {
-        Ok(LittleEndian::read_i64(p.consume_bytes(4)?))
+        Ok(EncodingByteOrder::read_i64(p.consume_bytes(4)?))
     }
 }
 
 impl Serializable for i64 {
     fn serialize(&self, s:&mut Serializer) -> Result<()> {
-        LittleEndian::write_i64(s.get_buf(4),*self);
+        EncodingByteOrder::write_i64(s.get_buf(4),*self);
         Ok(())
     }
 }
@@ -540,13 +570,13 @@ impl VirtualSize for i64{
 
 impl<'a> Parsable<'a> for i128 {
     fn parse<A: ParserAllocator>(p: &mut Parser, _alloc:&'a A) -> Result<Self> {
-        Ok(LittleEndian::read_i128(p.consume_bytes(4)?))
+        Ok(EncodingByteOrder::read_i128(p.consume_bytes(4)?))
     }
 }
 
 impl Serializable for i128 {
     fn serialize(&self, s:&mut Serializer) -> Result<()> {
-        LittleEndian::write_i128(s.get_buf(4),*self);
+        EncodingByteOrder::write_i128(s.get_buf(4),*self);
         Ok(())
     }
 }

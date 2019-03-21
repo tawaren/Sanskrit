@@ -62,7 +62,7 @@ pub enum TypeApplyRef<#[AllocLifetime] 'c> {
     ArgTypeOf(ValueRef, SlicePtr<'c, u8>),
     Native(NativeType, SlicePtr<'c, Ptr<'c,TypeApplyRef<'c>>>),
     Module(ImpRef, u8,  SlicePtr<'c, Ptr<'c,TypeApplyRef<'c>>>),
-
+    Image(Ptr<'c,TypeApplyRef<'c>>),
 }
 
 #[derive(Copy, Clone, Debug, Parsable, Serializable, VirtualSize)]

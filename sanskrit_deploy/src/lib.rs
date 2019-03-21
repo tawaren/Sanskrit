@@ -7,10 +7,18 @@ extern crate alloc;
 extern crate sanskrit_common;
 extern crate sanskrit_core;
 
-pub mod code_type_checker;
+
+
+
+#[cfg(feature = "test")]
 pub mod linear_type_stack;
-pub mod validate;
-pub mod native;
+
+#[cfg(not(feature = "test"))]
+mod linear_type_stack;
+mod validate;
+mod native;
+mod code_type_checker;
+
 
 use sanskrit_common::store::*;
 use sanskrit_common::errors::*;

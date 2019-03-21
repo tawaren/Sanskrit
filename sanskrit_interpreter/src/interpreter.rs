@@ -1,13 +1,13 @@
-use alloc::prelude::*;
 use sanskrit_common::model::*;
 use sanskrit_common::errors::*;
 use model::*;
 
-use byteorder::{LittleEndian, ByteOrder};
+use byteorder::{ByteOrder};
 use num_traits::ToPrimitive;
-use blake2_rfc::blake2b::{Blake2b};
-use hashing::HashingDomain;
+use sanskrit_common::hashing::*;
 use sanskrit_common::arena::*;
+use sanskrit_common::encoding::EncodingByteOrder;
+
 
 //enum to indicate if a block had a result or an error as return
 #[derive(Copy, Clone, Debug)]
@@ -40,94 +40,94 @@ pub struct ExecutionContext<'script,'code, 'interpreter, 'execution, 'heap> {
 pub fn create_lit_object<'script, 'heap>(data:&[u8], typ:LitDesc, alloc:&'script VirtualHeapArena<'heap>) -> Result<Ptr<'script,Object<'script>>> {
     //find out which literal to create
     alloc.alloc(match typ {
-        LitDesc::Ref | LitDesc::Data => Object::Data(alloc.copy_alloc_slice(data)?),
+        LitDesc::Id | LitDesc::Data => Object::Data(alloc.copy_alloc_slice(data)?),
         LitDesc::I8 => Object::I8(data[0] as i8),
         LitDesc::U8 => Object::U8(data[0]),
-        LitDesc::I16 => Object::I16(LittleEndian::read_i16(data)),
-        LitDesc::U16 => Object::U16(LittleEndian::read_u16(data)),
-        LitDesc::I32 => Object::I32(LittleEndian::read_i32(data)),
-        LitDesc::U32 => Object::U32(LittleEndian::read_u32(data)),
-        LitDesc::I64 => Object::I64(LittleEndian::read_i64(data)),
-        LitDesc::U64 => Object::U64(LittleEndian::read_u64(data)),
-        LitDesc::I128 => Object::I128(LittleEndian::read_i128(data)),
-        LitDesc::U128 => Object::U128(LittleEndian::read_u128(data)),
+        LitDesc::I16 => Object::I16(EncodingByteOrder::read_i16(data)),
+        LitDesc::U16 => Object::U16(EncodingByteOrder::read_u16(data)),
+        LitDesc::I32 => Object::I32(EncodingByteOrder::read_i32(data)),
+        LitDesc::U32 => Object::U32(EncodingByteOrder::read_u32(data)),
+        LitDesc::I64 => Object::I64(EncodingByteOrder::read_i64(data)),
+        LitDesc::U64 => Object::U64(EncodingByteOrder::read_u64(data)),
+        LitDesc::I128 => Object::I128(EncodingByteOrder::read_i128(data)),
+        LitDesc::U128 => Object::U128(EncodingByteOrder::read_u128(data)),
     })
 }
 
 //Helper to hash objects structurally
 //2 Bytes encode length of Data or Num of fields
-fn object_hash(obj:&Object, context: &mut Blake2b) {
+fn object_hash(obj:&Object, context: &mut Hasher) {
     //cost: relative to: Object size
     match *obj {
         Object::I8(data) => {
             let mut input = [0; 3];
-            LittleEndian::write_u16(&mut input[0..], 1);
+            EncodingByteOrder::write_u16(&mut input[0..], 1);
             input[2] = data as u8;
             context.update(&input);
         },
         Object::U8(data) => {
             let mut input = [0; 3];
-            LittleEndian::write_u16(&mut input[0..], 1);
+            EncodingByteOrder::write_u16(&mut input[0..], 1);
             input[2] = data;
             context.update(&input);
         },
         Object::I16(data) => {
             let mut input = [0; 4];
-            LittleEndian::write_u16(&mut input[0..], 2);
-            LittleEndian::write_i16(&mut input[2..], data);
+            EncodingByteOrder::write_u16(&mut input[0..], 2);
+            EncodingByteOrder::write_i16(&mut input[2..], data);
             context.update(&input);
         },
         Object::U16(data) => {
             let mut input = [0; 4];
-            LittleEndian::write_u16(&mut input[0..], 2);
-            LittleEndian::write_u16(&mut input[2..], data);
+            EncodingByteOrder::write_u16(&mut input[0..], 2);
+            EncodingByteOrder::write_u16(&mut input[2..], data);
             context.update(&input);
         },
         Object::I32(data) => {
             let mut input = [0; 6];
-            LittleEndian::write_u16(&mut input[0..], 4);
-            LittleEndian::write_i32(&mut input[2..], data);
+            EncodingByteOrder::write_u16(&mut input[0..], 4);
+            EncodingByteOrder::write_i32(&mut input[2..], data);
             context.update(&input);
         },
         Object::U32(data) => {
             let mut input = [0; 6];
-            LittleEndian::write_u16(&mut input[0..], 4);
-            LittleEndian::write_u32(&mut input[2..], data);
+            EncodingByteOrder::write_u16(&mut input[0..], 4);
+            EncodingByteOrder::write_u32(&mut input[2..], data);
             context.update(&input);
         },
         Object::I64(data) => {
             let mut input = [0; 10];
-            LittleEndian::write_u16(&mut input[0..], 8);
-            LittleEndian::write_i64(&mut input[2..], data);
+            EncodingByteOrder::write_u16(&mut input[0..], 8);
+            EncodingByteOrder::write_i64(&mut input[2..], data);
             context.update(&input);
         },
         Object::U64(data) => {
             let mut input = [0; 10];
-            LittleEndian::write_u16(&mut input[0..], 8);
-            LittleEndian::write_u64(&mut input[2..], data);
+            EncodingByteOrder::write_u16(&mut input[0..], 8);
+            EncodingByteOrder::write_u64(&mut input[2..], data);
             context.update(&input);
         },
         Object::I128(data) => {
             let mut input = [0; 18];
-            LittleEndian::write_u16(&mut input[0..], 16);
-            LittleEndian::write_i128(&mut input[2..], data);
+            EncodingByteOrder::write_u16(&mut input[0..], 16);
+            EncodingByteOrder::write_i128(&mut input[2..], data);
             context.update(&input);
         },
         Object::U128(data) => {
             let mut input = [0; 18];
-            LittleEndian::write_u16(&mut input[0..], 16);
-            LittleEndian::write_u128(&mut input[2..], data);
+            EncodingByteOrder::write_u16(&mut input[0..], 16);
+            EncodingByteOrder::write_u128(&mut input[2..], data);
             context.update(&input);
         },
         Object::Data(data) => {
             let mut prefix = [0; 2];
-            LittleEndian::write_u16(&mut prefix, data.len() as u16);
+            EncodingByteOrder::write_u16(&mut prefix, data.len() as u16);
             context.update(&prefix);
             context.update(&data);
         },
         Object::Adt(tag, nested) => {
             let mut prefix = [0; 3];
-            LittleEndian::write_u16(&mut prefix, nested.len() as u16);
+            EncodingByteOrder::write_u16(&mut prefix, nested.len() as u16);
             prefix[2] = tag;
             context.update(&prefix);
             for d in nested.iter() {
@@ -187,7 +187,6 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
                                 pos+=1;
                                 match self.execute_op_code(&op_seq[pos-1])? {
                                     Continuation::Next => {},
-                                    //if it is an error propagate it
                                     Continuation::Cont(n_exp,n_stack_hight) => {
                                         self.frames.push(Frame::Exp { exp, pos, stack_height })?;
                                         self.frames.push(Frame::Exp { exp:n_exp, pos:0, stack_height:n_stack_hight })?;
@@ -763,36 +762,13 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
         //cost: constant |relative Part in object_hash|
         let top = self.get(val)?;
         //Make a 20 byte digest hascher
-        let mut context = HashingDomain::Object.get_domain_hasher(-1); //-1 is used for dynamic sized input (Sadly no better option
+        let mut context = HashingDomain::Object.get_domain_hasher();
         //fill the hash
         object_hash(&top, &mut context);
         //calc the Hash
-        let hash = context.finalize();
-        //generate a array to the hash
-        let hash_data_ref = array_ref!(hash.as_bytes(),0,20);
+        let hash_data = context.alloc_finalize(&self.alloc)?;
         //get ownership and return
-        self.stack.push(self.alloc.alloc(Object::Data(self.alloc.copy_alloc_slice(hash_data_ref)?))?)?;
-        Ok(Continuation::Next)
-    }
-
-    //hashes data input
-    fn hash(&mut self, ValueRef(val1):ValueRef, domain:HashingDomain) -> Result<Continuation<'code>>  {
-        //Get the first value
-        let val = self.get(val1)?;
-        let data1 = match *val {
-            Object::Data(ref data) => data,
-            _ => unreachable!()
-        };
-
-        let mut context = domain.get_domain_hasher(data1.len() as i32);
-        //fill the hash with value
-        context.update(&data1);
-        //calc the Hash
-        let hash = context.finalize();
-        //generate a array to the hash
-        let hash_data_ref = array_ref!(hash.as_bytes(),0,20);
-        //get ownership and return
-        self.stack.push(self.alloc.alloc(Object::Data(self.alloc.copy_alloc_slice(hash_data_ref)?))?)?;
+        self.stack.push(self.alloc.alloc(Object::Data(hash_data))?)?;
         Ok(Continuation::Next)
     }
 
@@ -811,17 +787,15 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
             _ => unreachable!()
         };
 
-        let mut context = domain.get_domain_hasher((data1.len()+data2.len()) as i32);
+        let mut context = domain.get_domain_hasher();
         //fill the hash with first value
         context.update(&data1);
         //fill the hash with second value
         context.update(&data2);
         //calc the Hash
-        let hash = context.finalize();
-        //generate a array to the hash
-        let hash_data_ref = array_ref!(hash.as_bytes(),0,20);
+        let hash_data = context.alloc_finalize(&self.alloc)?;
         //get ownership and return
-        self.stack.push(self.alloc.alloc(Object::Data(self.alloc.copy_alloc_slice(hash_data_ref)?))?)?;
+        self.stack.push(self.alloc.alloc(Object::Data(hash_data))?)?;
         Ok(Continuation::Next)
     }
 
@@ -833,15 +807,14 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
             Object::Data(ref data) => data,
             _ => unreachable!()
         };
-        let mut context = Blake2b::new(20);
+        //Plain is an exception and allowed to be called with no domain as it is always used as data
+        let mut context = Hasher::new();
         //fill the hash
         context.update(&data);
         //calc the Hash
-        let hash = context.finalize();
-        //generate a array to the hash
-        let hash_data_ref = array_ref!(hash.as_bytes(),0,20);
+        let hash_data = context.alloc_finalize(&self.alloc)?;
         //get ownership and return
-        self.stack.push(self.alloc.alloc(Object::Data(self.alloc.copy_alloc_slice(hash_data_ref)?))?)?;
+        self.stack.push(self.alloc.alloc(Object::Data(hash_data))?)?;
         Ok(Continuation::Next)
     }
 
@@ -851,10 +824,7 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
         self.stack.push(self.alloc.alloc(match (&*self.get(val1)?, &*self.get(val2)?) {
             (Object::Data(ref op1), Object::Data(ref op2)) => {
                 //build a new data vector from the inputs
-                let mut conc = Vec::with_capacity(op1.len()+op2.len());
-                conc.extend(op1.iter());
-                conc.extend(op2.iter());
-                Object::Data(self.alloc.copy_alloc_slice(&conc)?)
+                Object::Data(self.alloc.merge_alloc_slice(op1,op2)?)
             },
             _ => unreachable!()
         })?)?;
@@ -946,43 +916,43 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
             Object::I8(data) => Object::Data(self.alloc.copy_alloc_slice(&[*data as u8])?),
             Object::U8(data) => Object::Data(self.alloc.copy_alloc_slice(&[*data])?),
             Object::I16(data) => {
-                let mut input = vec![0; 2];
-                LittleEndian::write_i16(&mut input, *data);
+                let mut input = [0; 2];
+                EncodingByteOrder::write_i16(&mut input, *data);
                 Object::Data(self.alloc.copy_alloc_slice(&input)?)
             },
             Object::U16(data) => {
-                let mut input = vec![0; 2];
-                LittleEndian::write_u16(&mut input, *data);
+                let mut input = [0; 2];
+                EncodingByteOrder::write_u16(&mut input, *data);
                 Object::Data(self.alloc.copy_alloc_slice(&input)?)
             },
             Object::I32(data) => {
-                let mut input = vec![0; 4];
-                LittleEndian::write_i32(&mut input, *data);
+                let mut input = [0; 4];
+                EncodingByteOrder::write_i32(&mut input, *data);
                 Object::Data(self.alloc.copy_alloc_slice(&input)?)
             },
             Object::U32(data) => {
-                let mut input = vec![0; 4];
-                LittleEndian::write_u32(&mut input, *data);
+                let mut input = [0; 4];
+                EncodingByteOrder::write_u32(&mut input, *data);
                 Object::Data(self.alloc.copy_alloc_slice(&input)?)
             },
             Object::I64(data) => {
-                let mut input = vec![0; 8];
-                LittleEndian::write_i64(&mut input, *data);
+                let mut input = [0; 8];
+                EncodingByteOrder::write_i64(&mut input, *data);
                 Object::Data(self.alloc.copy_alloc_slice(&input)?)
             },
             Object::U64(data) => {
-                let mut input = vec![0; 8];
-                LittleEndian::write_u64(&mut input, *data);
+                let mut input = [0; 8];
+                EncodingByteOrder::write_u64(&mut input, *data);
                 Object::Data(self.alloc.copy_alloc_slice(&input)?)
             },
             Object::I128(data) => {
-                let mut input = vec![0; 16];
-                LittleEndian::write_i128(&mut input, *data);
+                let mut input = [0; 16];
+                EncodingByteOrder::write_i128(&mut input, *data);
                 Object::Data(self.alloc.copy_alloc_slice(&input)?)
             },
             Object::U128(data) => {
-                let mut input = vec![0; 16];
-                LittleEndian::write_u128(&mut input, *data);
+                let mut input = [0; 16];
+                EncodingByteOrder::write_u128(&mut input, *data);
                 Object::Data(self.alloc.copy_alloc_slice(&input)?)
             },
             _ => unreachable!(),
