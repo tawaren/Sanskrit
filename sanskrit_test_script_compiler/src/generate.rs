@@ -24,7 +24,7 @@ impl Block {
                 let err_ref = imp.import_err_ref(err)?;
                 Ok(Exp::Throw(err_ref))
             },
-            Block::Return(ref codes, ref rets, ref drops) => {
+            Block::Return(ref codes, ref rets/*, ref drops*/) => {
                 let reg = Region(HashMap::new());
                 let height = env.stack_depth;
                 env.frames.push(reg);
@@ -33,10 +33,10 @@ impl Block {
                 }
                 let op_codes = LargeVec(codes.iter().map(|c|c.compile(env, imp)).collect::<Result<_,_>>()?);
                 let ref_vals = rets.iter().map(|id|env.get_id_pos(id).unwrap()).collect();
-                let drop_vals = drops.iter().map(|id|env.get_id_pos(id).unwrap()).collect();
+                //let drop_vals = drops.iter().map(|id|env.get_id_pos(id).unwrap()).collect();
                 env.frames.pop();
                 env.stack_depth = height;
-                Ok(Exp::Ret(op_codes,ref_vals, drop_vals))
+                Ok(Exp::Ret(op_codes,ref_vals/*, drop_vals*/))
             },
         }
     }
@@ -108,13 +108,18 @@ impl OpCode {
                 Ok(ROpCode::CopyField(from_v,t,no))
             },
 
-            OpCode::Drop(ref val) => {
+            OpCode::Discard(ref val) => {
                 let from_v = env.get_id_pos(&val).unwrap();
-                Ok(ROpCode::Drop(from_v))
+                Ok(ROpCode::Discard(from_v))
             },
-            OpCode::Free(ref val) => {
+            OpCode::DiscardMany(ref vals) => {
+                let inputs = vals.iter().map(|id|env.get_id_pos(id).unwrap()).collect();
+                Ok(ROpCode::DiscardMany(inputs))
+            },
+            OpCode::DiscardBorrowed(ref val, ref borrows) => {
+                let borrows_v = borrows.iter().map(|id|env.get_id_pos(id).unwrap()).collect();
                 let from_v = env.get_id_pos(&val).unwrap();
-                Ok(ROpCode::Free(from_v))
+                Ok(ROpCode::DiscardBorrowed(from_v, borrows_v))
             },
 
             OpCode::Unpack(ref assigs, ref val, ref typ, borrow) => {

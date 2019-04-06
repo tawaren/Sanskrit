@@ -4,7 +4,7 @@ module TestFailTryReturnDrop {
    fun TestFunApply[<Copy, Drop> A](consume a:A):(c:A) {
        c = try {
           b = a;
-          discard (b);
+          discard b;
           return b;
        } catch {
          .X => {

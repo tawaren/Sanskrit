@@ -47,7 +47,6 @@ module BitOps {
     public fun ErrorGetBit(a:$data8,b:$u16):(r:$bool) {
         r = try {
             c = call $GetBit[$data8,$u16](a,b);
-            drop c;
             r = pack $bool#false();
             return r;
         } catch {
@@ -62,7 +61,6 @@ module BitOps {
     public risky<$IndexError> fun SetBit(a:$data8,b:$u8):(c:$data8) {
         n = pack $bool#true();
         c = call $SetBit[$data8,$u8](a,b,n);
-        drop n;
         return c;
     };
 
@@ -71,8 +69,6 @@ module BitOps {
         r = try {
             n = pack $bool#true();
             c = call $SetBit[$data8,$u16](a,b,n);
-            drop c;
-            drop n;
             r = pack $bool#false();
             return r;
         } catch {
@@ -87,7 +83,6 @@ module BitOps {
     public risky<$IndexError> fun UnSetBit(a:$data8,b:$u8):(c:$data8) {
         n = pack $bool#false();
         c = call $SetBit[$data8,$u8](a,b,n);
-        drop n;
         return c;
     };
 
@@ -95,8 +90,6 @@ module BitOps {
         r = try {
             n = pack $bool#false();
             c = call $SetBit[$data8,$u16](a,b,n);
-            drop c;
-            drop n;
             r = pack $bool#false();
             return r;
         } catch {

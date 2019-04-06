@@ -1,7 +1,12 @@
 module TestFailConsumeBorrowed {
-    private fun Test[<Drop> A](a:A):(){
+
+   type <Drop, Embed> X[<Embed> T]{
+        Ctr(T);
+   };
+
+   private fun Test[<Embed,Drop> A](a:A):(){
        b = &a;
-       drop b;
+       c = pack .X[A]#Ctr(b);
        return;
-    };
+   };
 }

@@ -6,7 +6,7 @@ module TestFailConsumeMoved3 {
 
     private fun Test[<Embed, Drop> A](consume a:.X[A]):(b:A){
        b = unpack a:.X[A];
-       drop a;
+       discard a;
        return b;
     };
 }

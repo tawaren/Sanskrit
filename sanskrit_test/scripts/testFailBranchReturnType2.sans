@@ -5,7 +5,6 @@ module TestFailBranchReturnType2 {
         (a3,b3) = try {
             a2 = a;
             b2 = b;
-            discard (b2);
             return (a2);
         } catch {
             .X => {

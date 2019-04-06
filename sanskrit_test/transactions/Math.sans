@@ -13,7 +13,6 @@ module Math {
     public fun ErrorAdd(a:$u8,b:$u8):(r:$bool) {
         r = try {
             c = call $Add[$u8](a,b);
-            drop c;
             r = pack $bool#false();
             return r;
         } catch {
@@ -38,7 +37,6 @@ module Math {
     public fun ErrorSub(a:$u8,b:$u8):(r:$bool) {
         r = try {
             c = call $Sub[$u8](a,b);
-            drop c;
             r = pack $bool#false();
             return r;
         } catch {
@@ -63,7 +61,6 @@ module Math {
     public fun ErrorMul(a:$u8,b:$u8):(r:$bool) {
         r = try {
             c = call $Mul[$u8](a,b);
-            drop c;
             r = pack $bool#false();
             return r;
         } catch {
@@ -88,7 +85,6 @@ module Math {
     public fun ErrorDiv(a:$u8,b:$u8):(r:$bool) {
         r = try {
             c = call $Div[$u8](a,b);
-            drop c;
             r = pack $bool#false();
             return r;
         } catch {
@@ -103,7 +99,6 @@ module Math {
     public fun ErrorDiv2(a:$i8,b:$i8):(r:$bool) {
         r = try {
             c = call $Div[$i8](a,b);
-            drop c;
             r = pack $bool#false();
             return r;
         } catch {

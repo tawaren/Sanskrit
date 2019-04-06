@@ -10,13 +10,11 @@ module TestFailBranchReturnType7 {
             Z() => {
                  a2 = a;
                  b2 = b;
-                 discard (b2);
                  return (a2);
             };
             A() => {
                  a2 = a;
                  b2 = b;
-                 discard (b2);
                  return (a2);
             };
             B() => {

@@ -8,7 +8,7 @@ module TestFailTryReturnDrop2 {
        } catch {
          .X => {
            b = a;
-           discard (b);
+           discard b;
            return b;
          };
        };

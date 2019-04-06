@@ -1,6 +1,8 @@
 module TestFailFunDoubleDrop {
    fun TestFunApply[<Drop> A](consume a:A):() {
        b = a;
-       discard (b,b);
+       discard b;
+       discard b;
+       return;
    };
 }

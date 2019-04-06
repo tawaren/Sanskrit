@@ -1,5 +1,0 @@
-module TestFailFunDrop {
-   fun TestFunApply[<Drop> A](consume a:A):() {
-       discard (a);
-   };
-}

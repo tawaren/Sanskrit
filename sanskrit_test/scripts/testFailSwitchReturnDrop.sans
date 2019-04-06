@@ -11,7 +11,7 @@ module TestFailSwitchReturnDrop {
           };
           None => {
             b2 = a2;
-            discard (b2);
+            discard b2;
             return b2;
           };
        };

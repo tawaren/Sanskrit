@@ -16,6 +16,8 @@ use alloc::collections::BTreeSet;
 use sanskrit_common::model::ValueRef;
 use sanskrit_core::utils::Crc;
 use alloc::prelude::*;
+use core::mem;
+use alloc::collections::btree_map::BTreeMap;
 
 
 #[derive(Default)]
@@ -26,7 +28,7 @@ pub struct LinearTypeStack {
 
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub enum ExprResult<'a>{
-    Return(&'a[ValueRef],&'a[ValueRef]),      //Defines the elements returned & dropedfrom a block (bernouli indexes)
+    Return(&'a[ValueRef]),      //Defines the elements returned from a block (bernouli indexes)
     Throw,                      // Tells that the block throws
 }
 
@@ -49,7 +51,6 @@ pub struct BranchInfo{
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum Migrate {
     Free,
-    Drop,
     Move(usize)
 }
 
@@ -115,53 +116,9 @@ impl LinearTypeStack {
         LinearTypeStack { stack: vec![], frames:vec![Frame{ start_index: 0, consumes: BTreeSet::new() }] }
     }
 
-    //steals the borrows from an element recursively
-    // This is only save if after this a return to free_border happens
-    // This will never steal across free border
-    // If unlock is true it will unlock the element at index if it is borrowed (after stealing)
-    //   Must be calle bottom up to work as it expects
-    fn steal_ret(&mut self, elem_pos:usize, free_border:usize, migrate:&[Migrate], index:usize, res:&mut BTreeSet<usize>, is_first:bool) -> Result<()>{
-        if index < free_border {
-            //as elem pos is > free_border we do not need stealing check
-            if !res.contains(&index) {
-                self.stack[index].lock(1, false)?;
-                res.insert(index);
-            }
-        } else {
-            let frame_pos = index - free_border;
-            match migrate[frame_pos] {
-                Migrate::Free | Migrate::Drop => {
-                    if self.stack[index].status.borrowing.is_empty() {
-                        return steal_violation();
-                    } else {
-                        for b in &self.stack[index].status.borrowing.clone() {
-                            //Prevents stealing from an element that was already processed with steal_ret
-                            // and enforces borrowing order ( can not borrow from an element deeper on the stack )
-                            self.steal_ret(elem_pos, free_border, migrate, *b, res, false)?
-                        }
-                    }
-                },
-                Migrate::Move(pos) => {
-                    //Prevents stealing from an element that will end up nearer to the top then the borrower
-                    // and enforces borrowing order ( can not borrow from an element deeper on the stack )
-                    // will be checked later again (but is here to prevent inconsistencies)
-                    if pos >= elem_pos { return steal_violation(); }
-                    if !res.contains(&pos) {
-                        //Tell it that it has a lock more on it
-                        self.stack[index].lock(1, false)?;
-                        res.insert(pos);
-                    }
-                }
-            }
-        }
-        //we have stolen the lock so unlock it (if this is the first steal)
-        if is_first { self.stack[index].unlock()?; }
-        Ok(())
-    }
-
     //Cleans up a frame by freeing or returning each parameter
     // it does additionally adapt the borrow indexes of the returned elements to account for the dropped ones
-    fn ret(&mut self, start_index:usize, rets:&[ValueRef], drops:&[ValueRef]) -> Result<()> {
+    fn ret(&mut self, start_index:usize, rets:&[ValueRef]) -> Result<()> {
         //Find out how many elements the frame has accumulated
         let frame_size = self.stack_depth()-start_index;
         //Make a vector that records from where to where returned elements are moved
@@ -185,21 +142,6 @@ impl LinearTypeStack {
             migrate[frame_index] = Migrate::Move(targ+start_index);
         }
 
-        //initialize the migration vector with drops
-        for val in drops {
-            // find the absolute index of the droped element
-            let index = self.absolute_index(*val)?;
-            //an element can only be droped if it is contained in the current frame
-            // Note: with an explicit Fetch or Copy this is still possible by moving it first into the frame
-            if index < start_index {return elem_out_of_frame()}
-            // find out to which index this correspond in the frame
-            let frame_index = index-start_index;
-            // check that the migration entry still free, if not this means the same element is returned twice
-            if migrate[frame_index] != Migrate::Free {return consuming_moved_error()}
-            // Make the migration entry
-            migrate[frame_index] = Migrate::Drop
-        }
-
         //check that the frame is not to big
         assert!(frame_size <= u16::max_value() as usize);
 
@@ -212,21 +154,42 @@ impl LinearTypeStack {
             let frame_index = index-start_index;
             //check if returned or freed
             match migrate[frame_index] {
-                Migrate::Free => self.free_internal(ValueRef(i as u16), false)?,
-                Migrate::Drop => self.stack[index].consume()?,
+                //Migrate::Free => self.free_internal(ValueRef(i as u16), false)?,
+                Migrate::Free => self.stack[index].ensure_freed(false)?,
+                //Adapt the moved elem
                 Migrate::Move(elem_pos) => {
-                    //if the returned is borrowed, steal borrows of non-returned
+                    //if the returned is borrowed, we may need to change borrow index to the new position
                     if !self.stack[index].status.borrowing.is_empty() {
-                        let mut new_borrows = BTreeSet::new();
-                        //steal from each borrowed
-                        for b in self.stack[index].status.borrowing.clone() {
-                            //unlocks it and then relocks the new borrow (done by steal_ret)
-                            self.steal_ret(elem_pos,start_index,&migrate,b,&mut new_borrows, true)?;
+                        let borrow_len = self.stack[index].status.borrowing.len();
+                        let mut new_borrows = Vec::with_capacity(borrow_len);
+                        //adapt each borrowed if necessary
+                        for b in &self.stack[index].status.borrowing {
+                            if *b < start_index {
+                                //as elem pos is > free_border we can keep it as it is
+                                new_borrows.push(*b);
+                            } else {
+                                match migrate[*b - start_index] {
+                                    //we can not borrow something that is not returned (as it will go out of scope)
+                                    Migrate::Free => {return free_error()}
+                                    //if we borrow from a return the position has to be changed
+                                    Migrate::Move(pos) => {
+                                        //Prevents stealing from an element that will end up nearer to the top then the borrower
+                                        // and enforces borrowing order ( can not borrow from an element deeper on the stack )
+                                        if pos >= elem_pos { return borrow_order_violation(); }
+                                        new_borrows.push(pos);
+                                    }
+                                }
+                            }
                         }
-                        //Set the new borrows
-                        self.stack[index].status.borrowing = new_borrows.into_iter().collect();
+                        //Set the new borrows (Sort them so post state checks pass)
+                        new_borrows.sort();
+                        self.stack[index].status.borrowing = new_borrows;
                     }
-                    self.stack[index].ensure_return()?
+                    //Make sure we can return it  (meaning it is not consumed, except if locked)
+                    //if it is locked, the locker is returned as well (this is guaranteed, as everything is returned or ensured to be freed (freed do not borrow))
+                    if self.stack[index].status.consumed && self.stack[index].status.locked == 0 {
+                        return consumed_cannot_be_returned_error()
+                    }
                 }
             }
         }
@@ -279,9 +242,9 @@ impl LinearTypeStack {
         //find out if we have to throw or to return and indicate it over the returned bool
         match ret {
             //We can return
-            ExprResult::Return(rets, drops) => {
+            ExprResult::Return(rets) => {
                 //do the return
-                self.ret(start_index, rets, drops)?;
+                self.ret(start_index, rets)?;
                 Ok(true)
             },
             //We have to throw
@@ -291,6 +254,49 @@ impl LinearTypeStack {
                 Ok(false)
             },
         }
+    }
+
+    pub fn steal(&mut self, src:ValueRef, trg:ValueRef) -> Result<()>{
+        let src_index:usize = self.absolute_index(src)?;
+        let trg_index:usize = self.absolute_index(trg)?;
+        //an alternative would be clone but that would alloc and this does not
+        let mut old = mem::replace(&mut self.stack[src_index].status.borrowing, Vec::with_capacity(0));
+        let repl = self.stack[trg_index].status.borrowing.slice();
+        if old.is_empty() || repl.is_empty() { return steal_violation() }
+
+        let mut borrow_dedup = BTreeSet::new();
+        let mut new_borrows = Vec::with_capacity(old.len()); //this suffices in most cases
+        for n in repl {
+            assert_eq!(borrow_dedup.insert(*n), true); // repl on itself should already be deduped
+            new_borrows.push(*n);
+        }
+        //seperate loop because first loop borrows immutable
+        for n in &new_borrows { self.stack[*n].lock(1,false)?; }
+        let mut found = false;
+        for b in old{
+            if b == trg_index {
+                //ups it was multiple times in the set
+                if found {return steal_violation()}
+                found = true;
+            } else {
+                if !borrow_dedup.contains(&b) {
+                    //borrow_dedup.insert(*b): old on itself should already be deduped
+                    new_borrows.push(b);
+                } else {
+                    //we already have it so it is locked one time to many
+                    &self.stack[b].unlock()?;
+                }
+            }
+        }
+        if !found {return steal_violation()}
+        self.stack[trg_index].unlock()?;
+        self.stack[src_index].status.borrowing = new_borrows;
+
+        if self.stack[trg_index].status.locked == 0 {
+            self.free_internal(trg, false)?
+        }
+
+        Ok(())
     }
 
     //open a new basic frame which does not branch and thus allowing it to consume outside elements
@@ -318,7 +324,7 @@ impl LinearTypeStack {
         //Do the return or the exit
         let is_res = if self.ret_or_exit(frame.start_index, &rets)? {
             //if this was a normal return check the result to be consistent
-            if let ExprResult::Return(res,_) = rets {
+            if let ExprResult::Return(res) = rets {
                 //check that the return is in bound
                 assert!(res.len() <= u16::max_value() as usize);
                 match br {
@@ -333,7 +339,7 @@ impl LinearTypeStack {
                     BranchInfo{results:Some((old_res, old_captures)), ..} => {
                         //Compare the old elems with the new one
                         for (old, new) in old_res.iter().zip((0..res.len()).rev()) {
-                            //Note: The Vec<usize>s in the were sorted by steal ret  -- so this is ok
+                            //Note: The Vec<usize>s in the were ret  -- so this is ok
                             if old != self.get_elem(ValueRef(new as u16))? {
                                 return branch_ret_mismatch();
                             }

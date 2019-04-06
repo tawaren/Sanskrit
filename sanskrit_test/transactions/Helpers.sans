@@ -28,84 +28,72 @@ module Helpers {
     public risky<.ValidationError> fun AssertEqU8(v1:$u8,v2:$u8):() {
         r = call $Eq[$u8](v1,v2);
         () = call .AssertTrue(r);
-        drop r;
         return;
     };
 
     public risky<.ValidationError> fun AssertEqI8(v1:$i8,v2:$i8):() {
         r = call $Eq[$i8](v1,v2);
         () = call .AssertTrue(r);
-        drop r;
         return;
     };
 
     public risky<.ValidationError> fun AssertEqU128(v1:$u128,v2:$u128):() {
         r = call $Eq[$u128](v1,v2);
         () = call .AssertTrue(r);
-        drop r;
         return;
     };
 
     public risky<.ValidationError> fun AssertEqI128(v1:$i128,v2:$i128):() {
         r = call $Eq[$i128](v1,v2);
         () = call .AssertTrue(r);
-        drop r;
         return;
     };
 
     public risky<.ValidationError> fun AssertEqData1(v1:$data1,v2:$data1):() {
         r = call $Eq[$data1](v1,v2);
         () = call .AssertTrue(r);
-        drop r;
         return;
     };
 
     public risky<.ValidationError> fun AssertEqData4(v1:$data4,v2:$data4):() {
         r = call $Eq[$data4](v1,v2);
         () = call .AssertTrue(r);
-        drop r;
         return;
     };
 
     public risky<.ValidationError> fun AssertEqData8(v1:$data8,v2:$data8):() {
         r = call $Eq[$data8](v1,v2);
         () = call .AssertTrue(r);
-        drop r;
         return;
     };
 
     public risky<.ValidationError> fun AssertEqData20(v1:$data20,v2:$data20):() {
         r = call $Eq[$data20](v1,v2);
         () = call .AssertTrue(r);
-        drop r;
         return;
     };
 
     public risky<.ValidationError> fun AssertEqObj(v1:SomeTypes.X[$u8],v2:SomeTypes.X[$u8]):() {
         r = call $Eq[SomeTypes.X[$u8]](v1,v2);
         () = call .AssertTrue(r);
-        drop r;
         return;
     };
 
     public risky<.ValidationError> fun AssertEqIndex(v1:$privateId,v2:$privateId):() {
         r = call $Eq[$privateId](v1,v2);
         () = call .AssertTrue(r);
-        drop r;
         return;
     };
 
     public risky<.ValidationError> fun AssertEqRef(v1:$publicId,v2:$publicId):() {
         r = call $Eq[$publicId](v1,v2);
         () = call .AssertTrue(r);
-        drop r;
         return;
     };
 
     public risky<.ValidationError> fun AssertEqBool(v1:$bool,v2:$bool):() {
         r = call $Eq[$bool](v1,v2);
         () = call .AssertTrue(r);
-        drop r;
         return;
     };
 
@@ -113,21 +101,18 @@ module Helpers {
     public risky<.ValidationError> fun AssertNotEqData20(v1:$data20,v2:$data20):() {
         r = call $Eq[$data20](v1,v2);
         () = call .AssertFalse(r);
-        drop r;
         return;
     };
 
     public risky<.ValidationError> fun AssertNotEqRef(v1:$publicId,v2:$publicId):() {
         r = call $Eq[$publicId](v1,v2);
         () = call .AssertFalse(r);
-        drop r;
         return;
     };
 
     public risky<.ValidationError> fun AssertNotEqIndex(v1:$privateId,v2:$privateId):() {
         r = call $Eq[$privateId](v1,v2);
         () = call .AssertFalse(r);
-        drop r;
         return;
     };
 

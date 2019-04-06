@@ -10,10 +10,26 @@ pub type Hash = [u8;20];
 pub struct ValueRef(pub u16);
 
 //Links that point to components in the storage
-#[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone, Debug, Parsable, Serializable)]
+#[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone, Debug)]
 pub enum ModuleLink{
     Remote(Hash),
-    This(Hash),
+    This(Hash), //Runtime Only (never serialized)
+}
+
+impl Serializable for ModuleLink {
+    fn serialize(&self, s: &mut Serializer) -> Result<()> {
+        match *self {
+            ModuleLink::Remote(h) => h.serialize(s)?,
+            ModuleLink::This(h) => h.serialize(s)?
+        };
+        Ok(())
+    }
+}
+
+impl<'a> Parsable<'a> for ModuleLink {
+    fn parse<A: ParserAllocator>(p: &mut Parser, alloc: &'a A) -> Result<ModuleLink> {
+        Ok(ModuleLink::Remote(Hash::parse(p,alloc)?))
+    }
 }
 
 impl ModuleLink {

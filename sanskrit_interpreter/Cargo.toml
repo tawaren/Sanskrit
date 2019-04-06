@@ -3,6 +3,12 @@ name = "sanskrit_interpreter"
 version = "0.1.0"
 authors = ["tawaren <markus.knecht85@gmail.com>"]
 
+[profile.release]
+opt-level = 'z'  # Optimize for size.
+lto = true
+codegen-units = 1
+panic = 'abort'
+
 [features]
 default = ["std"]
 std = []
@@ -10,8 +16,6 @@ std = []
 [dependencies]
 byteorder = { version = "1.2.6", features = ["i128"], default-features = false }
 num-traits = { version = "0.2", default-features = false}
-ed25519-dalek = "0.8.1"
-sha2 = "0.7.0"
 
 [dependencies.sanskrit_common]
 path = "../sanskrit_common"

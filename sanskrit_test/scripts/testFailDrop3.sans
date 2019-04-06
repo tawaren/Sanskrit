@@ -4,7 +4,7 @@ module TestFailDrop3 {
     };
 
     private fun Test(x:.X):(){
-       drop x;
+       discard x;
        return;
     };
 }

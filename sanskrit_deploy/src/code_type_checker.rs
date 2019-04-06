@@ -44,6 +44,40 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
         }
     }
 
+    fn clean_frame(&mut self, results:&ExprResult, start:usize) -> Result<()> {
+        //prepare a set of the values for predictable cheaper lookup costs
+        let mut keep_set = BTreeSet::new();
+        match results {
+            //if it is a return we have to check that the result types matches the function signature types
+            ExprResult::Return(rets) => {
+                for k in rets.iter() {
+                    keep_set.insert(*k);
+                }
+            }
+            ExprResult::Throw => {}
+        }
+
+        //how many values are on the stack
+        let frame_size = self.stack.stack_depth() - start;
+
+        //is the stack to big?
+        if frame_size > u16::max_value() as usize {
+            return size_limit_exceeded_error()
+        }
+
+        //check every item on the stack
+        for v in 0..(frame_size as u16) {
+            let target = ValueRef(v);
+            //if it is not returned try to discard it
+            if !keep_set.contains(&target) && !self.stack.can_be_released(target)? {
+                self.discard(target)?;
+            }
+        }
+
+        //all fine
+        Ok(())
+    }
+
     //Type checks a function in the current context
     pub fn type_check_function(&mut self, func:&FunctionComponent) -> Result<()>{
         //Capture risks declaration: Is later used to check if a throwing operation can be called
@@ -60,25 +94,18 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
         //Type check the Result
         match results {
             //if it is a return we have to check that the result types matches the function signature types
-            ExprResult::Return(r, drops) => {
+            ExprResult::Return(rets) => {
                 //Ensure the amount is correct
-                if r.len() != func.returns.len() {return num_return_mismatch()}
+                if rets.len() != func.returns.len() {return num_return_mismatch()}
                 //iterate over each return (deepest first)
-                for (val,t) in r.iter().zip(func.returns.iter()) {
+                for (val,t) in rets.iter().zip(func.returns.iter()) {
                     //Check if the returned value has the expected type
                     let ret_typ = t.typ.fetch(&self.context)?;
                     if self.stack.value_of(*val)? != ret_typ {return type_mismatch()}
                 }
 
-                for value in drops {
-                    //Get the Resolved Type of the target
-                    let v_typ = self.stack.value_of(*value)?;
-                    //Drop is only allowed for types with the Drop capability
-                    if !v_typ.get_caps().contains(NativeCap::Drop) {
-                        return capability_missing_error()
-                    }
-                }
-
+                //discard unneeded items
+                self.clean_frame(&results, func.params.len())?;
                 //Close the function body block (leaves just params & results on the Stack)
                 self.stack.end_block(block, results)?;
 
@@ -89,6 +116,8 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
             },
             //Probably rarely used but supported (Function that always fails)
             ExprResult::Throw => {
+                //discard unneeded items
+                self.clean_frame(&results, func.params.len())?;
                 //Close the function body block (leaves just params & results on the Stack)
                 self.stack.end_block(block, ExprResult::Throw)?;
 
@@ -105,13 +134,13 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
         //Find out if the expression returns a result or a failure
         match *exp {
             //If a return process the blocks opcode
-            Exp::Ret(ref op_seq, ref vals, ref drops) => {
+            Exp::Ret(ref op_seq, ref vals/*, ref drops*/) => {
                 //Type check the opcodes leading up to this Return
                 for op in &op_seq.0 {
                     self.type_check_op_code(op)?
                 }
                 //return the selected elements from the block
-                Ok(ExprResult::Return(&vals, &drops))
+                Ok(ExprResult::Return(&vals/*, &drops*/))
             },
 
             //If a throw check that it is declared
@@ -138,8 +167,9 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
             OpCode::CopyFetch(value) => self.fetch(value, FetchMode::Copy),
             OpCode::Fetch(value) => self.fetch(value, FetchMode::Consume),
             OpCode::BorrowFetch(value) => self.fetch(value, FetchMode::Borrow),
-            OpCode::Free(value) => self.free(value),
-            OpCode::Drop(value) => self.drop_(value),
+            OpCode::Discard(value) => self.discard(value),
+            OpCode::DiscardMany(ref values) => self.discard_many(values),
+            OpCode::DiscardBorrowed(value, ref borrows) => self.discard_borrowed(value, borrows),
             OpCode::BorrowUnpack(value, base_ref) => self.unpack(value, base_ref, FetchMode::Borrow, None),
             OpCode::Unpack(value, base_ref) => self.unpack(value, base_ref, FetchMode::Consume, None),
             OpCode::CopyUnpack(value, base_ref) => self.unpack(value, base_ref, FetchMode::Copy, None),
@@ -177,10 +207,14 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
 
     //_ as let is keyword
     fn let_(&mut self, bind:&Exp) -> Result<()> {
+        //capture frame start for clean up
+        let start_height = self.stack.stack_depth();
         //Tell the stack that a new scope has started
         let block = self.stack.start_block();
         //Type check the content of the Let
         let results = self.type_check_exp(bind)?;
+        //discard unneeded items
+        self.clean_frame(&results,start_height)?;
         //Close the scope leaving only the results on the Stack
         self.stack.end_block(block,results)
     }
@@ -221,24 +255,53 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
         type_mismatch()
     }
 
-    fn free(&mut self, value:ValueRef) -> Result<()> {
-        //Check tha it is accessible and borrowed
+
+    fn discard(&mut self, value:ValueRef) -> Result<()> {
+        if self.stack.is_borrowed(value)? {
+            //free the element (unlock it's dependencies)
+            self.stack.free(value)
+        } else {
+            //Get the Resolved Type of the target
+            let v_typ = self.stack.value_of(value)?;
+            //Drop is only allowed for types with the Drop capability
+            if !v_typ.get_caps().contains(NativeCap::Drop) {
+                return capability_missing_error()
+            }
+            //Tell the stack that the value is discarded so he can check the linearity constraints
+            self.stack.drop(value)
+        }
+    }
+
+    fn discard_many(&mut self, value:&[ValueRef]) -> Result<()> {
+        for v in value {
+            self.discard(*v)?
+        }
+        Ok(())
+    }
+
+    fn discard_borrowed(&mut self, value:ValueRef, borrows:&[ValueRef]) -> Result<()> {
+        //Check that trg they accessible and borrowed
         if !self.stack.is_borrowed(value)? {
             return borrow_missing()
         }
-        //free the element (unlock it's dependencies)
-        self.stack.free(value)
-    }
 
-    fn drop_(&mut self, value:ValueRef) -> Result<()> {
-        //Get the Resolved Type of the target
-        let v_typ = self.stack.value_of(value)?;
-        //Drop is only allowed for types with the Drop capability
-        if !v_typ.get_caps().contains(NativeCap::Drop) {
-            return capability_missing_error()
+        //process each steal
+        for src in borrows {
+            //Check that src accessible and borrowed
+            if !self.stack.is_borrowed(*src)? {
+                return borrow_missing()
+            }
+
+            //steal the dependency (unlock it)
+            self.stack.steal(*src,value)?
         }
-        //Tell the stack that the value is discarded so he can check the linearity constraints
-        self.stack.drop(value)
+
+        //ensure the element is freed
+        if !self.stack.can_be_released(value)? {
+            return steal_violation()
+        }
+
+        Ok(())
     }
 
     fn unpack(&mut self, value:ValueRef, typ:TypeRef, mode:FetchMode, tag:Option<Tag>) -> Result<()>{
@@ -394,6 +457,9 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
             return requested_ctr_missing()
         };
 
+
+        //capture frame start for clean up
+        let start_height = self.stack.stack_depth();
         //just a helper to make the loop simpler -- represents the types from the previous case (loop iter)
         let mut loop_res = None;
         //Tell the stack that a the control flow branches
@@ -403,6 +469,9 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
         for (i,case) in cases.iter().enumerate() {
             //if this is not the first iter then tell the stack that the next branch will be processed (will restore stack)
             if let Some(res) = loop_res {
+                //discard unneeded items
+                self.clean_frame( &res,start_height)?;
+                //go to next branch
                 self.stack.next_branch( &mut branching, res)?;
             }
             //unpack the elements into the branch
@@ -412,6 +481,8 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
             //pass intermediary result to next iter
             loop_res = Some(res);
         }
+        //discard unneeded items
+        self.clean_frame( &loop_res.unwrap(),start_height)?;
         //finish the branching, leaves the stack with the common elements
         self.stack.end_branching(branching, loop_res.unwrap())
     }
@@ -481,11 +552,14 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
 
         //Save the currently allowed Risks
         let old_risk = mem::replace(&mut self.risk,new_risks);
-
+        //capture frame start for clean up
+        let start_height = self.stack.stack_depth();
         // tell the stack to start a branching frame
         let mut branching = self.stack.start_branching();
         //Type check the Try block
         let results1 = self.type_check_exp(try)?;
+        //discard unneeded items
+        self.clean_frame(&results1, start_height)?;
         //Start first catch block
         self.stack.next_branch(&mut branching,results1)?;
         //The catch blocks can no longer throw the new risks (only try can) but can still throw the old ones
@@ -497,6 +571,9 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
         for (_,exp) in catches {
             //start new catch block if not done already
             if let Some(res) = loop_res {
+                //discard unneeded items
+                self.clean_frame(&res, start_height)?;
+                // go to next branch
                 self.stack.next_branch(&mut branching,res)?;
             }
             //type check the catch block
@@ -504,6 +581,8 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
             //pass result to next loop iter
             loop_res = Some(res);
         }
+        //discard unneeded items
+        self.clean_frame(&loop_res.unwrap(), start_height)?;
         //finish the try catch stack will only contain result types
         self.stack.end_branching(branching, loop_res.unwrap())
     }

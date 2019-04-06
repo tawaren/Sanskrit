@@ -6,7 +6,7 @@ module TestFailConsumeBorrowed2 {
 
     private fun Test[<Embed, Drop> A](a:A):(){
        b = &pack .X[A]#Ctr(a);
-       drop b;
+       c = pack .X[X[A]]#Ctr(b);
        return;
     };
 }

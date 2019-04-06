@@ -1,7 +1,7 @@
 module TestFailReturnMoved {
     private fun Test[<Drop> A](consume a:A):(a:A){
        b = a;
-       drop b;
+       discard b;
        return b;
     };
 }

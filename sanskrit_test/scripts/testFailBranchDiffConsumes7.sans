@@ -16,7 +16,7 @@ module TestFailBranchDiffConsumes7 {
             };
 
             B() => {
-                drop b;
+                discard b;
                 return;
             };
         };

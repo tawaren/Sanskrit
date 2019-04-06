@@ -6,7 +6,7 @@ module TestFailConsumeMoved2 {
 
     private fun Test[<Embed, Drop> A](consume a:A):(b:.X[A]){
        b = pack .X[A]#Ctr(a);
-       drop a;
+       discard a;
        return b;
     };
 }

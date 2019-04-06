@@ -11,6 +11,8 @@ module TestSucLinearity{
       b = &a;
       c = &b;
       d = &c;
+      discard c borrowedBy d;
+      discard b borrowedBy d;
       return d;
   };
 
@@ -21,6 +23,8 @@ module TestSucLinearity{
       e = &d;
       f = &e;
       g = &f;
+      discard f borrowedBy g;
+      discard e borrowedBy g;
       return (d,g);
     };
 
@@ -31,9 +35,6 @@ module TestSucLinearity{
       e = &d;
       f = &e;
       g = &f;
-      free g;
-      free f;
-      free e;
       return d;
   };
 
@@ -128,14 +129,12 @@ module TestSucLinearity{
 
   fun TestFun12[<Drop> A](consume a:A):() {
           b = a;
-          drop b;
           return;
   };
 
   fun TestFun13[<Drop> A](consume a:A):() {
         () = let  {
             b = a;
-            drop b;
             return;
         };
         return;
@@ -144,12 +143,10 @@ module TestSucLinearity{
   fun TestFun14[<Drop> A](consume a:A):() {
           () = try  {
               b = a;
-              drop b;
               return;
           } catch {
             .X => {
                 b = a;
-                drop b;
                 return;
             };
           };
@@ -160,17 +157,14 @@ module TestSucLinearity{
         () = switch e:.Enum  {
            A() => {
                 b = a;
-                drop b;
                 return;
            };
            B() => {
                b = a;
-               drop b;
                return;
            };
            C() => {
               b = a;
-              drop b;
               return;
            };
         };
@@ -181,17 +175,14 @@ module TestSucLinearity{
         c = &switch e:.Enum  {
            A() => {
                 b = a;
-                drop b;
                 return;
            };
            B() => {
                b = a;
-               drop b;
                return;
            };
            C() => {
               b = a;
-              drop b;
               return;
            };
         };
@@ -289,7 +280,6 @@ module TestSucLinearity{
   fun TestFun22[<Drop> A](consume a:A, consume b:A):(c:A) {
           c = a;
           d = b;
-          discard(d);
           return c;
   };
 
@@ -297,7 +287,6 @@ module TestSucLinearity{
         c = let  {
            c = a;
            d = b;
-           discard(d);
            return c;
         };
         return c;
@@ -307,13 +296,11 @@ module TestSucLinearity{
         c = try  {
                c = a;
                d = b;
-               discard(d);
                return c;
         } catch {
             .X => {
                c = a;
                d = b;
-               discard(d);
                return c;
             };
         };
@@ -324,13 +311,11 @@ module TestSucLinearity{
           c = try  {
                c = a;
                d = b;
-               discard(d);
                return c;
           } catch {
             .X => {
                c = a;
                d = b;
-               discard(d);
                return c;
             };
           };
@@ -342,19 +327,16 @@ module TestSucLinearity{
            A() => {
                c = a;
                d = b;
-               discard(d);
                return c;
            };
            B() => {
                c = a;
                d = b;
-               discard(d);
                return c;
            };
            C() => {
                c = a;
                d = b;
-               discard(d);
                return c;
            };
         };
@@ -366,19 +348,16 @@ module TestSucLinearity{
            A() => {
                c = a;
                d = b;
-               discard(d);
                return c;
            };
            B() => {
                c = a;
                d = b;
-               discard(d);
                return c;
            };
            C() => {
                c = a;
                d = b;
-               discard(d);
                return c;
            };
         };

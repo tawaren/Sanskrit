@@ -341,18 +341,6 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected="Borrowed value required")]
-    fn free_fail() {
-        parse_and_compile("testFailFree").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Borrowed value required")]
-    fn free_fail2() {
-        parse_and_compile("testFailFree2").unwrap();
-    }
-
-    #[test]
     #[should_panic(expected="An apply must have all capabilities required by the generic")]
     fn persist_fail() {
         parse_and_compile("testFailPersist").unwrap();
@@ -716,19 +704,19 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected="Consuming moved slot is forbidden")]
+    #[should_panic(expected="Input not allowed to be borrowed")]
     fn consume_borrowed_fail() {
         parse_and_compile("testFailConsumeBorrowed").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Consuming moved slot is forbidden")]
+    #[should_panic(expected="Input not allowed to be borrowed")]
     fn consume_borrowed_fail2() {
         parse_and_compile("testFailConsumeBorrowed2").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Consuming moved slot is forbidden")]
+    #[should_panic(expected="Input not allowed to be borrowed")]
     fn consume_borrowed_fail3() {
         parse_and_compile("testFailConsumeBorrowed3").unwrap();
     }
@@ -770,19 +758,19 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected="Only consumed and not locked elem slots can be freed")]
+    #[should_panic(expected="Required capability is missing")]
     fn free_unconsumed_fail() {
         parse_and_compile("testFailFreeUnconsumed").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Only consumed and not locked elem slots can be freed")]
+    #[should_panic(expected="Required capability is missing")]
     fn free_unconsumed_fail2() {
         parse_and_compile("testFailFreeUnconsumed2").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Only consumed and not locked elem slots can be freed")]
+    #[should_panic(expected="Required capability is missing")]
     fn free_unconsumed_fail3() {
         parse_and_compile("testFailFreeUnconsumed3").unwrap();
     }
@@ -818,39 +806,39 @@ mod tests {
     }
     
     #[test]
-    #[should_panic(expected="can not steal borrows")]
-    fn steal_dropped_fail() {
-        parse_and_compile("testFailStealDropped").unwrap();
+    #[should_panic(expected="Consuming moved slot is forbidden")]
+    fn ret_borrow_dropped_fail() {
+        parse_and_compile("testFailRetBorrowDropped").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="can not steal borrows")]
-    fn steal_dropped_fail2() {
-        parse_and_compile("testFailStealDropped2").unwrap();
+    #[should_panic(expected="Consuming moved slot is forbidden")]
+    fn ret_borrow_dropped_fail2() {
+        parse_and_compile("testFailRetBorrowDropped2").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="can not steal borrows")]
-    fn steal_dropped_fail3() {
-        parse_and_compile("testFailStealDropped3").unwrap();
+    #[should_panic(expected="Consuming moved slot is forbidden")]
+    fn ret_borrow_dropped_fail3() {
+        parse_and_compile("testFailRetBorrowDropped3").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="can not steal borrows")]
-    fn steal_later_fail() {
-        parse_and_compile("testFailStealLater").unwrap();
+    #[should_panic(expected="Can not borrow from a later element")]
+    fn ret_borrow_later_fail() {
+        parse_and_compile("testFailRetBorrowLater").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="can not steal borrows")]
-    fn steal_later_fail2() {
-        parse_and_compile("testFailStealLater2").unwrap();
+    #[should_panic(expected="Can not borrow from a later element")]
+    fn ret_borrow_later_fail2() {
+        parse_and_compile("testFailRetBorrowLater2").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="can not steal borrows")]
-    fn steal_later_fail3() {
-        parse_and_compile("testFailStealLater3").unwrap();
+    #[should_panic(expected="Can not borrow from a later element")]
+    fn ret_borrow_later_fail3() {
+        parse_and_compile("testFailRetBorrowLater3").unwrap();
     }
 
     #[test]
@@ -926,42 +914,6 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected="Can not handle element from outside of the active frame")]
-    fn fun_drop_fail() {
-        parse_and_compile("testFailFunDrop").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Can not handle element from outside of the active frame")]
-    fn let_drop_fail() {
-        parse_and_compile("testFailLetDrop").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Can not handle element from outside of the active frame")]
-    fn try_drop_fail() {
-        parse_and_compile("testFailTryDrop").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Can not handle element from outside of the active frame")]
-    fn try_drop_fail2() {
-        parse_and_compile("testFailTryDrop2").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Can not handle element from outside of the active frame")]
-    fn switch_drop_fail() {
-        parse_and_compile("testFailSwitchDrop").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Can not handle element from outside of the active frame")]
-    fn switch_drop_fail2() {
-        parse_and_compile("testFailSwitchDrop2").unwrap();
-    }
-
-    #[test]
     #[should_panic(expected="Consuming moved slot is forbidden")]
     fn fun_double_drop_fail() {
         parse_and_compile("testFailFunDoubleDrop").unwrap();
@@ -998,37 +950,37 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected="Consuming moved slot is forbidden")]
+    #[should_panic(expected="A consumed slots can not be returned")]
     fn fun_return_drop_fail() {
         parse_and_compile("testFailFunReturnDrop").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Consuming moved slot is forbidden")]
+    #[should_panic(expected="A consumed slots can not be returned")]
     fn let_return_drop_fail() {
         parse_and_compile("testFailLetReturnDrop").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Consuming moved slot is forbidden")]
+    #[should_panic(expected="A consumed slots can not be returned")]
     fn try_return_drop_fail() {
         parse_and_compile("testFailTryReturnDrop").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Consuming moved slot is forbidden")]
+    #[should_panic(expected="A consumed slots can not be returned")]
     fn try_return_drop_fail2() {
         parse_and_compile("testFailTryReturnDrop2").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Consuming moved slot is forbidden")]
+    #[should_panic(expected="A consumed slots can not be returned")]
     fn switch_return_drop_fail() {
         parse_and_compile("testFailSwitchReturnDrop").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Consuming moved slot is forbidden")]
+    #[should_panic(expected="A consumed slots can not be returned")]
     fn switch_return_drop_fail2() {
         parse_and_compile("testFailSwitchReturnDrop2").unwrap();
     }

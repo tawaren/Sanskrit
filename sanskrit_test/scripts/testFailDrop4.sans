@@ -4,7 +4,7 @@ module TestFailDrop4 {
     };
 
     private fun Test(consume x:.X):(){
-       drop x;
+       discard x;
        return;
     };
 }

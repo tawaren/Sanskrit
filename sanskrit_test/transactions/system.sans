@@ -43,7 +43,6 @@ module System {
          newCtr = try {
             inc = lit 1:$u64;
             newCtr = call $Add[$u64](ctr,inc);
-            drop inc;
             return newCtr;
          } catch {
             $NumericError => {
@@ -51,7 +50,6 @@ module System {
             };
          };
          newCtx = pack .Context#Ctr(codeHash, txtId, fullHash, blockNo, newCtr);
-         discard (ctr, ctrData);
          return (id,newCtx);
    };
 

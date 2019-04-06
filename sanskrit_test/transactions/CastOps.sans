@@ -23,7 +23,6 @@ module CastOps {
     public fun ErrorCut(a:$i16):(r:$bool) {
         r = try {
             c = call $Cut[$i16,$i8](a);
-            drop c;
             r = pack $bool#false();
             return r;
         } catch {
@@ -48,7 +47,6 @@ module CastOps {
     public fun ErrorSignCast(a:$u8):(r:$bool) {
         r = try {
             c = call $SignCast[$u8,$i8](a);
-            drop c;
             r = pack $bool#false();
             return r;
         } catch {
@@ -63,7 +61,6 @@ module CastOps {
     public fun ErrorSignCast2(a:$i8):(r:$bool) {
         r = try {
             c = call $SignCast[$i8,$u8](a);
-            drop c;
             r = pack $bool#false();
             return r;
         } catch {

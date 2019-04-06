@@ -7,8 +7,7 @@ module TestSucTypeCheck{
    };
 
    fun TestFun2[<Drop> A](consume a:A, consume b:TestSucValidate.Drop1):(){
-        drop a;
-        drop b;
+        discard (a,b);
         return;
    };
 
@@ -33,7 +32,6 @@ module TestSucTypeCheck{
 
    fun TestFun6[A](a:A):(){
          a2 = &a;
-         free a2;
          return;
    };
 
@@ -85,6 +83,7 @@ module TestSucTypeCheck{
    fun TestFun9[<Embed> A](a:TestSucAdt.Wrapper[TestSucAdt.Wrapper[A]]):(borrowed(a) b:A){
        b = &unpack a:TestSucAdt.Wrapper[TestSucAdt.Wrapper[A]];
        c = &unpack b:TestSucAdt.Wrapper[A];
+       discard b borrowedBy c;
        return c;
    };
 
@@ -95,7 +94,7 @@ module TestSucTypeCheck{
                 return d;
             };
             Some(d) => {
-                drop b;
+                discard b;
                 return d;
             };
        };
@@ -109,7 +108,7 @@ module TestSucTypeCheck{
                return d;
            };
            Some(d) => {
-               drop b;
+               discard b;
                return d;
            };
       };
@@ -123,7 +122,7 @@ module TestSucTypeCheck{
               return d;
           };
           Some(d) => {
-              drop b;
+              discard b;
               return d;
           };
      };
@@ -219,6 +218,7 @@ module TestSucTypeCheck{
    fun TestFun18[<Embed> A, <Embed> B](a:A, b:B):(borrowed(b,a) c:.Pair[A,B]){
         d = &a;
         c = &pack .Pair[A,B]#Ctr(d,b);
+        discard d borrowedBy c;
         return c;
    };
 

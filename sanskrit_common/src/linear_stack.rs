@@ -126,13 +126,11 @@ impl<T:Clone,V:MicroVec<usize>> Elem<T,V> {
     //   a forced free is allowed to be unconsumed
     pub fn ensure_freed(&self, is_forced:bool) -> Result<()> {
         //Locked elements can never be freed
-        if self.status.locked != 0 {
+        if self.status.locked != 0 || !self.status.borrowing.is_empty() {
             return free_error()
         }
 
-        //Borrowed elements can not be freed without firs unlocking the target
-        assert!(self.status.borrowing.is_empty());
-        //unconsumed elements can not be freed except if they are returned or rollbacked (indicated by is forced)
+        //unconsumed elements can not be freed except if they are returned or roll backed (indicated by is forced)
         if !self.status.consumed && !is_forced{
             return free_error()
         }
@@ -145,18 +143,11 @@ impl<T:Clone,V:MicroVec<usize>> Elem<T,V> {
         self.status.locked == 0 && self.status.consumed
     }
 
-
-    //Checks that an element can safely be returned
-    pub fn ensure_return(&self) -> Result<()> {
-        //Requires that the element is not consumed unless locked
-        // Locked requires that the borrower is returned as well
-        //  But This can not be checked here
-        if self.status.consumed && self.status.locked == 0 {
-            return consumed_cannot_be_returned_error()
-        }
-        Ok(())
+    //Checks if an element can savely be discarded
+    pub fn can_be_released(&self) -> bool{
+        //Locked elements can never be freed
+        self.can_be_freed() && self.status.borrowing.is_empty()
     }
-
 }
 
 //Can be shared Between TypeStack and ScriptStack
@@ -274,7 +265,6 @@ pub trait LinearStack<T:Clone, V:MicroVecBuilder<usize>>  {
             elem.status.borrowing = V::MicroVec::zero();
             //reconsume it to ensure it can be dropped and prevent it from being returned
             elem.status.consumed = true;
-
         }
 
         //check that it is free to go
@@ -283,10 +273,10 @@ pub trait LinearStack<T:Clone, V:MicroVecBuilder<usize>>  {
         Ok(())
     }
 
-    //prepares an element to be released/droped from the stack
+    //prepares an element to be released/dropped from the stack
     fn free_internal(&mut self, index:ValueRef, forced:bool) -> Result<()> {
         // Get the index (as we consume it is not safe to access non-locals as they are modified)
-        let res = self.absolute_index(index)?;
+        let res:usize = self.absolute_index(index)?;
 
         //swap out borrows with empty ones to process full ones
         let borrows = mem::replace(
@@ -319,6 +309,11 @@ pub trait LinearStack<T:Clone, V:MicroVecBuilder<usize>>  {
     fn is_borrowed(&self, index:ValueRef) -> Result<bool> {
         let elem = self.get_elem(index)?;
         Ok(!elem.status.borrowing.is_empty())
+    }
+
+    //returns the status of a stack elem without modifying anything
+    fn can_be_released(&self, index:ValueRef) -> Result<bool> {
+        Ok(self.get_elem(index)?.can_be_released())
     }
 
     //allows to put elems on the stack that appear out of nowhere (literals, empties, parameters)

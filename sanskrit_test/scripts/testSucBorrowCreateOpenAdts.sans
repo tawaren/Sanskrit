@@ -69,9 +69,6 @@ module TestSucBorrowCreateOpenAdts {
            b = call .CreateAltB[TestSucOpenAdt.Enum,TestSucOpenAdt.Wrapper[TestSucOpenAdt.Enum]](w2);
            return;
        };
-       drop e;
-       drop e2;
-       drop e3;
        return;
     };
 
@@ -84,27 +81,6 @@ module TestSucBorrowCreateOpenAdts {
        some = call .CreateSome[TestSucOpenAdt.Wrapper[TestSucOpenAdt.Enum]](w);
        a = call .CreateAltA[TestSucOpenAdt.Enum,TestSucOpenAdt.Wrapper[TestSucOpenAdt.Enum]](e3);
        b = call .CreateAltB[TestSucOpenAdt.Enum,TestSucOpenAdt.Wrapper[TestSucOpenAdt.Enum]](w2);
-       free b;
-       free a;
-       free some;
-       free w2;
-       free w;
-       drop e;
-       drop e2;
-       drop e3;
        return;
-    };
-
-    fun CreateStuffDiscard():() {
-           e = pack TestSucOpenAdt.Enum#A();
-           e2 = pack TestSucOpenAdt.Enum#B();
-           e3 = pack TestSucOpenAdt.Enum#C();
-           w = call .CreateWrapper[TestSucOpenAdt.Enum](e);
-           w2 = call .CreateWrapper[TestSucOpenAdt.Enum](e2);
-           some = call .CreateSome[TestSucOpenAdt.Wrapper[TestSucOpenAdt.Enum]](w);
-           a = call .CreateAltA[TestSucOpenAdt.Enum,TestSucOpenAdt.Wrapper[TestSucOpenAdt.Enum]](e3);
-           b = call .CreateAltB[TestSucOpenAdt.Enum,TestSucOpenAdt.Wrapper[TestSucOpenAdt.Enum]](w2);
-           discard (e,e2,e3);
-           return;
     };
 }

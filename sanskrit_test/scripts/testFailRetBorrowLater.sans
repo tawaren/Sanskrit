@@ -1,4 +1,4 @@
-module TestFailStealLater {
+module TestFailRetBorrowLater {
     private fun Test[<Drop> A](consume a:A):(c:A, b:A){
        b = a;
        c = &b;

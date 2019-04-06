@@ -5,8 +5,8 @@
 extern crate arrayref;
 extern crate byteorder;
 extern crate num_traits;
-extern crate ed25519_dalek;
-extern crate sha2;
+//extern crate ed25519_dalek;
+//extern crate sha2;
 extern crate sanskrit_interpreter;
 extern crate sanskrit_common;
 #[macro_use]
@@ -18,8 +18,8 @@ use sanskrit_common::errors::*;
 use sanskrit_common::encoding::Parser;
 use model::Transaction;
 use sanskrit_common::model::Hash;
-use ed25519_dalek::*;
-use sha2::{Sha512};
+//use ed25519_dalek::*;
+//use sha2::{Sha512};
 use model::RuntimeType;
 use elem_store::ElemStore;
 use script_stack::LinearScriptStack;
@@ -152,7 +152,7 @@ pub fn execute<S:Store>(store:&S, txt_data:&[u8], block_no:u64, heap:&Heap) -> R
     let mut accounts = alloc.slice_builder(txt.signers.len())?;
     for (sig,pk) in txt.signatures.iter().zip(txt.signers.iter()) {
         //parse the public key
-        let rpk = match PublicKey::from_bytes(pk) {
+        /*let rpk = match PublicKey::from_bytes(pk) {
             Ok(r) => r,
             Err(_) => return signature_error(),
         };
@@ -168,7 +168,7 @@ pub fn execute<S:Store>(store:&S, txt_data:&[u8], block_no:u64, heap:&Heap) -> R
             Ok(_) => {},
             Err(_) => return signature_error(),
         }
-
+        */
         //hash the pk to get the address
         let address = HashingDomain::Account.hash(pk);
         let acc_type = alloc.alloc(RuntimeType::AccountType { address })?;

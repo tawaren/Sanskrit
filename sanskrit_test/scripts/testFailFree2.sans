@@ -1,6 +1,0 @@
-module TestFailFree2 {
-    private fun Test[A](consume a:A):(){
-       free a;
-       return;
-    };
-}

@@ -5,13 +5,11 @@ module TestFailBranchReturnType4 {
         a3 = try {
             a2 = a;
             b2 = b;
-            discard (b2);
             return a2;
         } catch {
             .X => {
                 a2 = a;
                 b2 = b;
-                discard (a2);
                 return b2;
             };
         };

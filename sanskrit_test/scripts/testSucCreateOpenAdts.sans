@@ -49,10 +49,6 @@ module TestSucCreateOpenAdts {
        some = call .CreateSome[TestSucOpenAdt.Wrapper[TestSucOpenAdt.Enum]](w);
        a = call .CreateAltA[TestSucOpenAdt.Enum,TestSucOpenAdt.Wrapper[TestSucOpenAdt.Enum]](e2);
        b = call .CreateAltB[TestSucOpenAdt.Enum,TestSucOpenAdt.Wrapper[TestSucOpenAdt.Enum]](w2);
-       drop none;
-       drop some;
-       drop a;
-       drop b;
        return;
     };
 
@@ -65,7 +61,6 @@ module TestSucCreateOpenAdts {
        some = call .CreateSome[TestSucOpenAdt.Wrapper[TestSucOpenAdt.Enum]](w);
        a = call .CreateAltA[TestSucOpenAdt.Enum,TestSucOpenAdt.Wrapper[TestSucOpenAdt.Enum]](e2);
        b = call .CreateAltB[TestSucOpenAdt.Enum,TestSucOpenAdt.Wrapper[TestSucOpenAdt.Enum]](w2);
-       discard (none, some, a, b);
        return;
     };
 

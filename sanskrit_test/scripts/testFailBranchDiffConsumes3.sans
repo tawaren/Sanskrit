@@ -3,7 +3,7 @@ module TestFailBranchDiffConsumes3 {
 
     private fun Test[<Drop> A,<Drop> B](consume a:A, consume b:B):(){
         () = try {
-            drop a;
+            discard a;
             return;
         } catch {
             .X => {

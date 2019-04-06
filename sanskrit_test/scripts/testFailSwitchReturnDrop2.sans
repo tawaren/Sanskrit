@@ -7,7 +7,7 @@ module TestFailSwitchReturnDrop2 {
    fun TestFunApply[<Embed, Drop, Copy> A](consume a:.Option[A], a2:A):(b:A) {
        b = switch a:.Option[A] {
           Some(a) => {
-            discard (a);
+            discard a;
             return a;
           };
           None => {

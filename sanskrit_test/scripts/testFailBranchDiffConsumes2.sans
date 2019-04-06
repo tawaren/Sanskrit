@@ -6,7 +6,7 @@ module TestFailBranchDiffConsumes2 {
             return;
         } catch {
             .X => {
-                drop b;
+                discard b;
                 return;
             };
         };

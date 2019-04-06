@@ -153,7 +153,7 @@ pub struct ErrorLink{pub module:ModRef, pub offset:u8}
 //An Expression that either returns a value or aborts with an error
 #[derive(Debug, Parsable, Serializable)]
 pub enum Exp {
-    Ret(LargeVec<OpCode>, Vec<ValueRef>, Vec<ValueRef>),
+    Ret(LargeVec<OpCode>, Vec<ValueRef>),
     Throw(ErrorRef),
 }
 
@@ -163,22 +163,23 @@ pub enum OpCode {
     Lit(LargeVec<u8>, TypeRef),                         //A opcode that produces a literal
     Let(Exp),                                           //A Subsope that computes some values and returns them (intermidiary values are removed)
     CopyFetch(ValueRef),                                //Copies a value (Needs Copy Cap)
-    Fetch(ValueRef),                                    //Moves a value onto the top of the stack (allows to move it into a branch)
     BorrowFetch(ValueRef),                              //Borrows a value onto the top of the stack (allows to borrow it into a branch)
-    Free(ValueRef),                                     //Releases a Borrow and unlocks the borrowed elements
-    Drop(ValueRef),                                     //Drops a value (Needs Drop Capability or a Field Less Leave type with Consume cap)
+    Fetch(ValueRef),                                    //Moves a value onto the top of the stack (allows to move it into a branch)
+    Discard(ValueRef),                                  //Releases a Borrow and unlocks the borrowed elements or drops a value with Drop capability
+    DiscardMany(Vec<ValueRef>),                         //As discard but many elements
+    DiscardBorrowed(ValueRef, Vec<ValueRef>),           //Steals the borrows of a value and Frees it (only works if the stealing value borrows)
+    CopyUnpack(ValueRef, TypeRef),                      //Copies a value to produce its fields (single Ctr only) (Needs Consume or Inspect Cap)
     BorrowUnpack(ValueRef, TypeRef),                    //Inspects a value to produce its fields (single Ctr only) (Needs Consume or Inspect Cap)
     Unpack(ValueRef, TypeRef),                          //Consumes a value to produce its fields (single Ctr only) (Needs Consume or Inspect Cap)
-    CopyUnpack(ValueRef, TypeRef),                      //Copies a value to produce its fields (single Ctr only) (Needs Consume or Inspect Cap)
-    Field(ValueRef, TypeRef, u8),                       //<-- requires Consume & others to have Drop
     CopyField(ValueRef, TypeRef, u8),                   //<-- requires Inspect & Field to have Copy
     BorrowField(ValueRef, TypeRef, u8),                 //<-- requires Inspect
+    Field(ValueRef, TypeRef, u8),                       //<-- requires Consume & others to have Drop
+    CopySwitch(ValueRef, TypeRef, Vec<Exp>),            //Branches on a type that has multiple ctrs where each branch corresponds to 1 Ctr (Does an implicit CopyUnpack)
     BorrowSwitch(ValueRef, TypeRef, Vec<Exp>),          //Branches on a type that has multiple ctrs where each branch corresponds to 1 Ctr (Does an implicit BorrowUnpack)
     Switch(ValueRef, TypeRef, Vec<Exp>),                //Branches on a type that has multiple ctrs where each branch corresponds to 1 Ctr (Does an implicit Unpack)
-    CopySwitch(ValueRef, TypeRef, Vec<Exp>),            //Branches on a type that has multiple ctrs where each branch corresponds to 1 Ctr (Does an implicit CopyUnpack)
+    CopyPack(TypeRef, Tag, Vec<ValueRef>),              //Generates a value for a multi ctr mutli field type by coping the inputs (requieres copy cap for them)
     BorrowPack(TypeRef, Tag, Vec<ValueRef>),            //Generates a value for a multi ctr mutli field type (which is immideately borrowed)
     Pack(TypeRef, Tag, Vec<ValueRef>),                  //Generates a value for a multi ctr mutli field type
-    CopyPack(TypeRef, Tag, Vec<ValueRef>),              //Generates a value for a multi ctr mutli field type by coping the inputs (requieres copy cap for them)
     Invoke(FuncRef, Vec<ValueRef>),                     //Invokes a Function
     Try(Exp, Vec<(ErrorRef, Exp)>),                     //Executes a try block and on error reverts to execute the corresponding catch Block
     ModuleIndex,                                        //A private constant index associated with each module (it returns the one of the current Module)

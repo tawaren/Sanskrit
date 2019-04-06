@@ -8,12 +8,12 @@ module TestFailBranchDiffConsumes8 {
     private fun Test[<Drop> A,<Drop> B](consume a:A, consume b:B, consume e:.Enum):(){
         () = switch e:.Enum {
             Z() => {
-                drop a;
+                discard a;
                 return;
             };
 
             A() => {
-                drop a;
+                discard a;
                 return;
             };
 

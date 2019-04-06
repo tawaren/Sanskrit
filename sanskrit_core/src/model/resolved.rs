@@ -71,7 +71,7 @@ pub struct ResolvedReturn {
 impl Crc<ResolvedType> {
     //Extracts the capabilities
     // This has the recursive caps injected into the generics to ensure that we can build types that are polymorphic in respect to recursive capabilities
-    //   Thanks to this we can have: <Copy,Drop,Persist,...> Option[<Embed> T]{None;Some(T);} and use it savely with Copy, Drop & Persist types (the Option will loose Copy, Drop, Persist if T does not have it)
+    //   Thanks to this we can have: <Copy,Drop,Persist,...> Option[<Embed> T]{None;Some(T);} and use it safely with Copy, Drop & Persist types (the Option will loose Copy, Drop, Persist if T does not have it)
     //   Without this: we would need: a CopyOption, DropOption, PersistOption, CopyDropOption, ..... , CopyDropPersistOption
     //  This must be used when checking adt fields against the adt base caps
     // Note: this only influences generics and applied types with generic inputs

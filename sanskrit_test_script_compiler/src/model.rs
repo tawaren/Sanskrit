@@ -79,7 +79,7 @@ pub struct Lit(pub String);
 
 pub enum Block{
     Error(Ref),
-    Return(Vec<OpCode>, Vec<Id>, Vec<Id>),
+    Return(Vec<OpCode>, Vec<Id>),
 }
 
 #[derive(Eq, PartialEq, Hash, Clone)]
@@ -101,8 +101,9 @@ pub enum OpCode {
     Fetch(Id,Id,bool),
     Field(Id,Id,Lit,Type,bool),
     CopyField(Id,Id,Lit,Type),
-    Drop(Id),
-    Free(Id),
+    Discard(Id),
+    DiscardMany(Vec<Id>),
+    DiscardBorrowed(Id,Vec<Id>),
     Unpack(Vec<Id>, Id, Type, bool),
     Switch(Vec<Id>, Id, Type, Vec<Match>, bool),
     Pack(Id, Type, Id, Vec<Id>, bool),
@@ -241,7 +242,7 @@ impl Block {
     fn collect_module_dependencies(&self, aggr: &mut HashSet<Id>) {
         match *self {
             Block::Error(ref r) => r.collect_module_dependencies(aggr),
-            Block::Return(ref ops,_,_) => {
+            Block::Return(ref ops,_) => {
                 for op in ops {
                     op.collect_module_dependencies(aggr);
                 }

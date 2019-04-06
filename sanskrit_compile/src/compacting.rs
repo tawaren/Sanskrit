@@ -246,7 +246,7 @@ impl<'b,'h> Compactor<'b,'h> {
     fn process_exp<S:Store>(&mut self, exp:&Exp, ret_point:ReturnPoint, context:&Context<S>) -> Result<Ptr<'b,RExp<'b>>>{
         //differentiate between Return and Throw
         Ok(self.alloc.alloc(match *exp {
-            Exp::Ret(ref opcodes, ref returns, ref _drops) => {
+            Exp::Ret(ref opcodes, ref returns) => {
                 //account for the returnd
                 self.state.use_gas(gas::ret(returns.len()));
                 // add the frame
@@ -296,8 +296,9 @@ impl<'b,'h> Compactor<'b,'h> {
             OpCode::BorrowFetch(val) => self.copy(val),
             OpCode::Image(val) => self.copy(val),
             OpCode::ExtractImage(val) => self.copy(val),
-            OpCode::Free(_) => Ok(None),
-            OpCode::Drop(_) => Ok(None),
+            OpCode::Discard(_) => Ok(None),
+            OpCode::DiscardMany(_) => Ok(None),
+            OpCode::DiscardBorrowed(_, _) => Ok(None),
             OpCode::BorrowUnpack(val, typ) => self.unpack(val,typ,None, context),
             OpCode::Unpack(val, typ) => self.unpack(val,typ,None, context),
             OpCode::CopyUnpack(val, typ) => self.unpack(val,typ,None, context),

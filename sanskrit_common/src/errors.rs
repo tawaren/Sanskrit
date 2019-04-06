@@ -608,3 +608,15 @@ pub fn signature_error<T>() -> Result<T> {
     pre_error();
     Err("Could not verify signature".into())
 }
+
+#[cfg(not(feature = "string_errors"))]
+pub fn borrow_order_violation<T>() -> Result<T> {
+    pre_error();
+    Err(49)
+}
+
+#[cfg(feature = "string_errors")]
+pub fn borrow_order_violation<T>() -> Result<T> {
+    pre_error();
+    Err("Can not borrow from a later element".into())
+}

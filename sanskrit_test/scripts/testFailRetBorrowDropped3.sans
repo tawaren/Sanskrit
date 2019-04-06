@@ -1,4 +1,4 @@
-module TestFailStealDropped3 {
+module TestFailRetBorrowDropped3 {
 
     type <Drop, Embed> X[<Embed> A]{
         Ctr(A);

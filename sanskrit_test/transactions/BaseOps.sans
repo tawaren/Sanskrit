@@ -58,13 +58,16 @@ module BaseOps {
                     };
                     second(w) => {
                         r = &unpack w:.Wrapper[$u8];
+                        discard w borrowedBy r;
                         return r;
                     };
                 };
+                discard alt borrowedBy r;
                 return r;
              };
              Ctr2(tup) => {
                 r = &field[0] tup:$tuple2[$u8,.Wrapper[$u8]];
+                discard tup borrowedBy r;
                 return r;
              };
              Ctr3(r) => {
@@ -72,10 +75,12 @@ module BaseOps {
              };
              Ctr4(w) => {
                 r = &unpack w:.Wrapper[$u8];
+                discard w borrowedBy r;
                 return r;
              };
              Ctr5(w) => {
                 r = &field[0] w:.Wrapper[$u8];
+                discard w borrowedBy r;
                 return r;
              };
         };
@@ -103,7 +108,6 @@ module BaseOps {
         t4 = pack .Test[$u8,.Wrapper[$u8]]#Ctr4(a4);
         a5 = copy w;
         t5 = pack .Test[$u8,.Wrapper[$u8]]#Ctr5(a5);
-        drop w;
         br11 = call .BorrowOut(t11);
         br12 = call .BorrowOut(t12);
         br2 = call .BorrowOut(t2);
@@ -116,12 +120,7 @@ module BaseOps {
         () = call Helpers.AssertEqU8(a,br3);
         () = call Helpers.AssertEqU8(a,br4);
         () = call Helpers.AssertEqU8(a,br5);
-        free br11;
-        free br12;
-        free br2;
-        free br3;
-        free br4;
-        free br5;
+        discard (br11,br12,br2,br3,br4,br5);
         r11 = call .Extract(t11);
         r12 = call .Extract(t12);
         r2 = call .Extract(t2);
@@ -134,13 +133,6 @@ module BaseOps {
         () = call Helpers.AssertEqU8(a,r3);
         () = call Helpers.AssertEqU8(a,r4);
         () = call Helpers.AssertEqU8(a,r5);
-        drop a;
-        drop r11;
-        drop r12;
-        drop r2;
-        drop r3;
-        drop r4;
-        drop r5;
         return;
    };
 
@@ -176,7 +168,6 @@ module BaseOps {
        () = call Helpers.AssertEqU8(a,br3);
        () = call Helpers.AssertEqU8(a,br4);
        () = call Helpers.AssertEqU8(a,br5);
-       discard(a,aa,c11,c12,c21,c22,a3,a4,a5);
        return;
     };
 

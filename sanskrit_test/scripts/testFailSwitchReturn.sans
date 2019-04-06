@@ -8,7 +8,7 @@ module TestFailSwitchReturn {
        b2 = a2;
        b = switch a:.Option[A] {
           Some(a) => {
-            drop b2;
+            discard b2;
             return a;
           };
           None => {
