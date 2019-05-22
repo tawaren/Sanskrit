@@ -8,7 +8,7 @@
 //!   6: Eliminates wrapper types (new type pattern) as they are just a type change and can se the same runtime representation
 
 use sanskrit_core::resolver::Context;
-use alloc::prelude::*;
+use alloc::vec::Vec;
 use alloc::collections::BTreeMap;
 use alloc::rc::Rc;
 use sanskrit_core::model::*;

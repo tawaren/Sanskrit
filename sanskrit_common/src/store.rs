@@ -1,6 +1,7 @@
 use errors::*;
 use encoding::*;
-use alloc::prelude::*;
+use alloc::vec::Vec;
+
 use model::Hash;
 use hashing::*;
 

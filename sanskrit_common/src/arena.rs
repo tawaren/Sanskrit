@@ -2,7 +2,7 @@
 use core::cell::RefCell;
 use core::{mem, ptr};
 use errors::*;
-use alloc::prelude::Vec;
+use alloc::vec::Vec;
 use core::slice::from_raw_parts_mut;
 use encoding::ParserAllocator;
 use model::*;

@@ -15,9 +15,8 @@ use sanskrit_common::linear_stack::*;
 use alloc::collections::BTreeSet;
 use sanskrit_common::model::ValueRef;
 use sanskrit_core::utils::Crc;
-use alloc::prelude::*;
+use alloc::vec::Vec;
 use core::mem;
-use alloc::collections::btree_map::BTreeMap;
 
 
 #[derive(Default)]
@@ -483,7 +482,7 @@ impl LinearTypeStack {
     }
 
     // Correlates the stack to the Function signature, consuming the stack in the process and finishing the roundtrip
-    pub fn check_function_param_signature<T>(&mut self, params:T, ) -> Result<()>
+    pub fn check_function_param_signature<T>(&mut self, params:T, is_throw:bool) -> Result<()>
         where T:ExactSizeIterator<Item = bool> + DoubleEndedIterator<Item = bool> {
         //Chech that the number of elements on the stack matches the param of the Function in length
         if self.stack_depth() != params.len() {
@@ -495,7 +494,7 @@ impl LinearTypeStack {
             //We pop and free them while we process them
             let mut elem = self.stack.pop().unwrap();
             //The status of params must match the status specified and they are not allowed to be borrowed
-            if consumes != elem.status.consumed | !elem.status.borrowing.is_empty() {
+            if (!is_throw && consumes != elem.status.consumed) | !elem.status.borrowing.is_empty() {
                 return fun_sig_mismatch()
             }
             //Free the element
@@ -518,7 +517,7 @@ impl LinearTypeStack {
         where R:ExactSizeIterator<Item = &'b [ValueRef]> + DoubleEndedIterator<Item = &'b [ValueRef]>,
               P:ExactSizeIterator<Item = bool> + DoubleEndedIterator<Item = bool>, {
         self.check_function_return_signature(returns)?;
-        self.check_function_param_signature(params)?;
+        self.check_function_param_signature(params, false)?;
         //everything is fine
         Ok(())
     }

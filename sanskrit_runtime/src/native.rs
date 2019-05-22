@@ -25,8 +25,9 @@ pub fn to_runtime_type<'a,'b,'h>(typ:NativeType, applies:SlicePtr<'a,Ptr<'a,Runt
         | NativeType::SInt(_)
         | NativeType::UInt(_)
         | NativeType::PrivateId
-        | NativeType::PublicId => {
-            //these types hav eno generics
+        | NativeType::PublicId
+        | NativeType::Nothing => {
+            //these types hav no generics
             if !applies.is_empty() {
                 generic_args_mismatch()
             } else {

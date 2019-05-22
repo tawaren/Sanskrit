@@ -1,7 +1,7 @@
 use core::result::Result as OResult;
 
 #[cfg(feature = "string_errors")]
-use alloc::prelude::String;
+use alloc::string::String;
 
 
 //The error in case we need something to interpret (in tests)

@@ -1,14 +1,10 @@
 #![no_std]
-#![feature(alloc)]
 #![feature(nll)]
 
 #[macro_use]
 extern crate alloc;
 extern crate sanskrit_common;
 extern crate sanskrit_core;
-
-
-
 
 #[cfg(feature = "test")]
 pub mod linear_type_stack;
@@ -22,7 +18,7 @@ mod code_type_checker;
 
 use sanskrit_common::store::*;
 use sanskrit_common::errors::*;
-use alloc::prelude::*;
+use alloc::vec::Vec;
 use sanskrit_common::model::*;
 
 //Parses a Data Stream as Module, Validates it and if it checks out deployes it

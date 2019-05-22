@@ -19,7 +19,7 @@ use core::mem;
 use alloc::collections::BTreeSet;
 use alloc::rc::Rc;
 use sanskrit_common::store::Store;
-use alloc::prelude::*;
+use alloc::vec::Vec;
 use sanskrit_core::resolver::Context;
 use sanskrit_common::model::*;
 use native::check_valid_literal_construction;
@@ -123,7 +123,8 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
 
                 //Check that the function params matches the resulting stack layout
                 let consumes = func.params.iter().map(|p|p.consumes);
-                self.stack.check_function_param_signature(consumes)
+                //the is throw boolean flag instructs the checker to ignore the consume status
+                self.stack.check_function_param_signature(consumes, true)
             },
         }
     }
@@ -391,7 +392,7 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
             return requested_ctr_missing()
         };
 
-        //check that we do not use Unpack on a borrowed value
+        //check that we do not use Field on a borrowed value
         if self.stack.is_borrowed(value)? && mode == FetchMode::Consume {
             return cannot_be_borrowed()
         }

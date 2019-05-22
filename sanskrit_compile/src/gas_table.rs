@@ -43,6 +43,7 @@ pub mod gas {
                 NativeType::SInt(s)
                 | NativeType::UInt(s) => leaf_static + (s as u64)*leaf_per_byte*prim_fact,
                 NativeType::Bool => leaf_static + leaf_per_byte*prim_fact,
+                NativeType::Nothing => leaf_static,
                 NativeType::Tuple(_) => {
                     let mut sum = node_fix;
                     for appl in applies {
@@ -163,7 +164,7 @@ pub mod gas {
     }
 
 
-    pub fn to_data(typ:&[Crc<ResolvedType>]) -> usize {
+    pub fn to_data(_typ:&[Crc<ResolvedType>]) -> usize {
         18
     }
 

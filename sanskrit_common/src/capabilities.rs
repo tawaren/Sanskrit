@@ -140,10 +140,12 @@ impl NativeType {
             | NativeType::UInt(_)
             | NativeType::Data(_)
             | NativeType::PrivateId
-            | NativeType::PublicId => CapSet::opaque(),
+            | NativeType::PublicId
+            | NativeType::Nothing => CapSet::opaque(),
             NativeType::Bool
             | NativeType::Tuple(_)
             | NativeType::Alternative(_) => CapSet::open(),
+
         }
     }
 }

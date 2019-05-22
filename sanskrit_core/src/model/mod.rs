@@ -2,7 +2,7 @@ pub mod resolved;
 pub mod linking;
 
 use sanskrit_common::capabilities::*;
-use alloc::prelude::*;
+use alloc::vec::Vec;
 use alloc::collections::BTreeSet;
 use sanskrit_common::model::*;
 use sanskrit_common::encoding::*;

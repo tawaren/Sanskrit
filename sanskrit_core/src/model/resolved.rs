@@ -4,7 +4,7 @@ use sanskrit_common::capabilities::*;
 use alloc::collections::BTreeSet;
 use sanskrit_common::model::ValueRef;
 use native::base::is_native_literal;
-use alloc::prelude::*;
+use alloc::vec::Vec;
 use sanskrit_common::model::*;
 
 

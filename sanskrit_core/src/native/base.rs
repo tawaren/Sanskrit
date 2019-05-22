@@ -1,7 +1,7 @@
 use sanskrit_common::errors::*;
 use model::resolved::*;
 use utils::Crc;
-use alloc::prelude::*;
+use alloc::vec::Vec;
 use sanskrit_common::model::*;
 use resolver::apply_types;
 use core::iter::repeat;
@@ -25,7 +25,8 @@ pub fn get_native_type_constructors(typ: NativeType, base_applies:&[ResolvedAppl
         | NativeType::UInt(_)
         | NativeType::Data(_)
         | NativeType::PrivateId
-        | NativeType::PublicId =>  no_ctr_available(),
+        | NativeType::PublicId
+        | NativeType::Nothing =>  no_ctr_available(),
         //Bools have 2 Ctrs with 0 fields each
         NativeType::Bool => Ok(vec![vec![]; 2]),
         //Tuple has one ctr with a dynamic number of fields (each its own type)
@@ -46,7 +47,8 @@ pub fn resolved_native_type(typ: NativeType, base_applies:&[Crc<ResolvedType>]) 
         | NativeType::UInt(_)
         | NativeType::Bool
         | NativeType::PublicId
-        | NativeType::PrivateId => ResolvedType::Native {
+        | NativeType::PrivateId
+        | NativeType::Nothing => ResolvedType::Native {
             //In the absence of  (non-phantom) generics all the caps are the same
             base_caps,
             caps:base_caps,
@@ -108,16 +110,19 @@ pub fn check_native_type_constraints(typ: NativeType, types:&[Crc<ResolvedType>]
             num_applied_generics_error()
         },
 
-        //Data and bool are not allowed to have type params
+        //These have 0 params
         NativeType::Data(_)
-        | NativeType::Bool => {
-            //Bool do not have generic types
+        | NativeType::Bool
+        | NativeType::PrivateId
+        | NativeType::PublicId
+        | NativeType::Nothing => {
+            //These have zero generic type
             if types.is_empty() {
                 Ok(())
             } else {
                 num_applied_generics_error()
             }
-        }
+        },
         //The number of tuple type parameters must much the number of its fields
         NativeType::Tuple(arg)
         //Alternative must have one type param per constructor
@@ -126,16 +131,6 @@ pub fn check_native_type_constraints(typ: NativeType, types:&[Crc<ResolvedType>]
             if types.len() == (arg as usize)  {
                 have_embed(types)?;
                 are_real(types)
-            } else {
-                num_applied_generics_error()
-            }
-        },
-        //These have 0 params
-        NativeType::PrivateId
-        | NativeType::PublicId => {
-            //These have zero generic type
-            if types.is_empty() {
-                Ok(())
             } else {
                 num_applied_generics_error()
             }

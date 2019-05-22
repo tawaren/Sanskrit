@@ -7,7 +7,7 @@ extern crate sanskrit_common;
 
 use alloc::collections::BTreeMap;
 use sanskrit_common::model::Hash;
-use alloc::prelude::*;
+use alloc::vec::Vec;
 use core::cell::RefCell;
 use sanskrit_common::store::*;
 use sanskrit_common::errors::*;

@@ -12,8 +12,11 @@ extern crate ed25519_dalek;
 extern crate sha2;
 extern crate rand;
 extern crate test;
+extern crate wasmi;
+extern crate wasmer_runtime;
 
 pub mod script_test;
+pub mod standalone_wasm_test;
 pub mod linear_type_stack_test;
 pub mod transaction_test;
 #[cfg(test)]

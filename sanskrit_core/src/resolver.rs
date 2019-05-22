@@ -12,7 +12,7 @@ use native::base::check_native_type_constraints;
 use model::resolved::*;
 use model::*;
 use native::fun::check_native_function_constraints;
-use alloc::prelude::*;
+use alloc::vec::Vec;
 use sanskrit_common::model::*;
 use context::*;
 

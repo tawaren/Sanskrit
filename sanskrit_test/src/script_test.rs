@@ -70,6 +70,12 @@ mod tests {
         parse_and_compile("system").unwrap();
     }
 
+
+    #[bench]
+    fn build_system_bench(b: &mut Bencher) {
+        parse_and_compile_deploy_bench("system",b).unwrap();
+    }
+
     #[test]
     fn build_diff_adts() {
         parse_and_compile("testSucAdt").unwrap();

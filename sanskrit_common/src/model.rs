@@ -1,4 +1,4 @@
-use alloc::prelude::*;
+use alloc::vec::Vec;
 use encoding::*;
 use errors::*;
 
@@ -53,6 +53,7 @@ pub enum NativeType {
     Alternative(u8),    // A Or Type with up to u8::max_value() ctrs
     PrivateId,          // A Index that represents a storage slot on the blockchain
     PublicId,           // A references that points ot  a storage slot on the blockchain
+    Nothing,            // A type without value (only satisfiable by throwing)
 }
 
 //todo: can we move to core??

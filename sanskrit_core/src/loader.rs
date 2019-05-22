@@ -5,7 +5,7 @@ use alloc::collections::BTreeMap;
 use alloc::rc::Rc;
 use core::cell::Cell;
 use utils::Crc;
-use alloc::prelude::*;
+use alloc::vec::Vec;
 use sanskrit_common::store::*;
 use resolver::Cachings;
 use resolver::Context;
