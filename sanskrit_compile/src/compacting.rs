@@ -148,9 +148,7 @@ impl State {
 
     fn rewind(&mut self, (manifested_stack, stack_size):ReturnPoint){
         self.manifested_stack = manifested_stack;
-        while stack_size < self.stack.len() {
-            self.stack.pop();
-        }
+        self.stack.truncate(stack_size);
     }
 }
 

@@ -1,0 +1,100 @@
+//Not sure if this is right
+First:
+ Define Opreational Semantic
+  Track Minimal types at runtime (Extend on demand if more comes up)
+   Track in value:
+    //Todo: See update later
+    Alla Value(Caps,Module.Name,Tag,List(Value))
+         Value(Caps,Image(Module.Name),Tag,List(Value))
+         Value(Caps,Int(5),Literal)
+         Caps + RuntimeType is Meta
+         Tag + List(Value) is Content
+
+         Note: RuntimeType = Module.Name
+                             Image(RuntimeType)
+                             Int(5)
+         //TopValue can not be packed
+         TopValue = Value | Error
+
+      Do not carry around applies @ Runtime
+       Do first a full Dynamic Semantic -- Later we can introduce Check and bounds
+       Idea: Have for example a Function reducing to a RuntimeFunction
+             Dynamic Semantic Works on Runtime Function
+             If we need static checks this is done when reducing
+              Function -> RuntimeFunction
+              Operate similar for other constructs
+ Instead of having Helpers like push(X)
+  have Helper Opcodes like Push X;
+
+ Seperate Opcodes by ;
+
+ Question: Keep Bernouli???
+  Yes if we can
+
+
+How to handle Consumes:
+  Important: The value should be the value and the borrow stuff should be else where
+  Option 1:
+   Have a status Map
+    Location -> Status
+     Status = Owned | ExistsStatus
+     ActiveStatus = Owned | Borrow(Set(Location))
+     ExistsStatus = ActiveStatus | Locked(Borrows(Set(Location)), ActiveStatus)
+
+Question: Can we define linearity stuff in parallel to computational stuff??
+  How to ensure that computational stuff does not proceed if linearity wrong
+  Alt: it can proceed but must be detectable
+  Idea: Copy the Programm multiple times and run them through different Processors????
+        Then have Join Points where it awaits the termination of all processes
+
+  The problem with this idea is that we can not have shadowing
+   We can not have Bernouli Indexes either as it would require that the processes are at same step
+   What we can do is locational Semantics -- Each result needs a unique name
+   Optional we can have a replacement reduction: Bernouli -> Location, Symbolic -> Location
+
+  This means we do not need a stack in the classical sense
+   We have a Frame <-- List(Locations) || Values in current Frame
+              Is just used to process return
+
+
+ //Todo: Update here
+   Seperate aspects
+   Location -> RuntimeType <-- could be class: DataType, Int(...), Image
+   Location -> Caps + Owner(Module)
+   Location -> StaticType //Just Adds the Applies if we need them
+
+   Have different Processes Operate on the different Maps
+   Have a process that just tracks Caps & Checks CapConstraints & Allowances
+
+ This Model allows to quickly (By Changing the Dispatch Rule and the Join Rule)
+  To instantiat different levels:
+  Need an interpreter that runs after full typechecking
+   Just instantiate the Dynamic Part
+  Need a Typecker Just instantiate these parts
+ Note: We need to seperate path based checking & FullChecking
+  Have a PathBased Dispatcher & A GlobalDispatcher
+  These work differently on Branches
+   one checks all branches statically
+   the other checks one branch dynamically and optionally statically
+
+ If we encounter a Branching Point
+  We can do stuff but then we emit a Sync Code
+  The Dispatcher will await for all parts to have: Sync Code on top and if their is it will instantiate a subtask
+   The Subtasks will Result in a Success X or Failure X
+   If all are Success X he will Replace Sync Code with X
+   If One is a Failure everithing fails
+   If one just stops its the same as a failure
+
+ EVEN BETTER: Dispatcher Replaces All Sync Points by:
+  Sync OldOpcode
+
+ Processors do not now this and will just block
+  When all arrive @ Sync OldOpcode
+   the Dispatcher Schedules SubTasks
+   When All SubTasks End the Dispatcher will Rejoin
+
+  This allows to specify Semantics in Isolation as if the others do not exist
+   Maybe we can even allow the processors to start their own subtasks
+    Maybe we do not even need subtasks maybe we can run them inline
+
+

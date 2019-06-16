@@ -44,16 +44,19 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
         }
     }
 
+    //Note: I would love to do here steals as well but the algorithm is complicated
+    //      And I want to keep the on chain verifier simple
     fn clean_frame(&mut self, results:&ExprResult, start:usize) -> Result<()> {
-        //prepare a set of the values for predictable cheaper lookup costs
+        //a set to remember what will be kept
         let mut keep_set = BTreeSet::new();
         match results {
-            //if it is a return we have to check that the result types matches the function signature types
+            //if it is a return we keep all the returns
             ExprResult::Return(rets) => {
                 for k in rets.iter() {
                     keep_set.insert(*k);
                 }
             }
+            //if it is a throw we revert anyway
             ExprResult::Throw => {}
         }
 
@@ -65,10 +68,10 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
             return size_limit_exceeded_error()
         }
 
-        //check every item on the stack
+        //check every item on the stack (sart with the last one to clean bottom up)
         for v in 0..(frame_size as u16) {
             let target = ValueRef(v);
-            //if it is not returned try to discard it
+            //if it is not returned discard it if allowed
             if !keep_set.contains(&target) && !self.stack.can_be_released(target)? {
                 self.discard(target)?;
             }

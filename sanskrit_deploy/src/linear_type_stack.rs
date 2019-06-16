@@ -121,7 +121,7 @@ impl LinearTypeStack {
         //Find out how many elements the frame has accumulated
         let frame_size = self.stack_depth()-start_index;
         //Make a vector that records from where to where returned elements are moved
-        //  The index is from where and the entry to where, if a None is in their it is not returned/moved
+        //  The index is from where and the entry to where (in case of Move, in case of Free it is not returned)
         let mut migrate:Vec<Migrate> = vec![Migrate::Free;frame_size];
 
         //initialize the migration vector with moves
@@ -141,11 +141,11 @@ impl LinearTypeStack {
             migrate[frame_index] = Migrate::Move(targ+start_index);
         }
 
-        //check that the frame is not to big
+        //ensure that the frame is not to big
         assert!(frame_size <= u16::max_value() as usize);
 
         // Free everything that will not be returned & return the rest
-        //  It will steal_borrows if necessary and recalculate indexes
+        //  It will recalculate indexes
         for i in 0..frame_size {
             //start at the newest in the frame
             let index = self.absolute_index(ValueRef(i as u16))?;
@@ -153,7 +153,7 @@ impl LinearTypeStack {
             let frame_index = index-start_index;
             //check if returned or freed
             match migrate[frame_index] {
-                //Migrate::Free => self.free_internal(ValueRef(i as u16), false)?,
+                //Ensure that it is already freed
                 Migrate::Free => self.stack[index].ensure_freed(false)?,
                 //Adapt the moved elem
                 Migrate::Move(elem_pos) => {
@@ -163,18 +163,22 @@ impl LinearTypeStack {
                         let mut new_borrows = Vec::with_capacity(borrow_len);
                         //adapt each borrowed if necessary
                         for b in &self.stack[index].status.borrowing {
+                            //check if it borrows from inside or outside the current frame
                             if *b < start_index {
+                                //borrows from outside
                                 //as elem pos is > free_border we can keep it as it is
                                 new_borrows.push(*b);
                             } else {
+                                //borrows from inside
+                                //check where it will end up
                                 match migrate[*b - start_index] {
                                     //we can not borrow something that is not returned (as it will go out of scope)
                                     Migrate::Free => {return free_error()}
                                     //if we borrow from a return the position has to be changed
                                     Migrate::Move(pos) => {
-                                        //Prevents stealing from an element that will end up nearer to the top then the borrower
-                                        // and enforces borrowing order ( can not borrow from an element deeper on the stack )
+                                        // Enforce borrowing order ( can not borrow from an element deeper on the stack )
                                         if pos >= elem_pos { return borrow_order_violation(); }
+                                        //record the adapted borrow
                                         new_borrows.push(pos);
                                     }
                                 }
@@ -184,7 +188,7 @@ impl LinearTypeStack {
                         new_borrows.sort();
                         self.stack[index].status.borrowing = new_borrows;
                     }
-                    //Make sure we can return it  (meaning it is not consumed, except if locked)
+                    //Make sure we can return it  (meaning it is not consumed, except if locked - in that case the locker is returned as well)
                     //if it is locked, the locker is returned as well (this is guaranteed, as everything is returned or ensured to be freed (freed do not borrow))
                     if self.stack[index].status.consumed && self.stack[index].status.locked == 0 {
                         return consumed_cannot_be_returned_error()
@@ -194,7 +198,7 @@ impl LinearTypeStack {
         }
 
         let mut returns = Vec::with_capacity(rets.len());
-        //Save  the returned items
+        //Capture the returned items (need to be repushed after the frame is dropped)
         for val in rets {
             // find the absolute index of the returned element
             let index = self.absolute_index(*val)?;
@@ -202,10 +206,10 @@ impl LinearTypeStack {
             returns.push(self.stack[index].clone())
         }
 
-        //Clean up the stack by removing all slots (
-        for _ in 0..frame_size {
-            self.stack.pop().unwrap();
-        }
+        //Clean up the stack by removing all entries in the current frame (
+        let new_len = self.stack.len() - frame_size;
+        self.stack.truncate(new_len);
+
 
         //push the returns back onto the stack
         self.stack.extend(returns);
@@ -229,9 +233,8 @@ impl LinearTypeStack {
         }
 
         //Clean up the stack by removing all elements (they are no longer needed (rollback))
-        for _ in 0..frame_size {
-            self.stack.pop().unwrap();
-        }
+        let new_len = self.stack.len() - frame_size;
+        self.stack.truncate(new_len);
 
         Ok(())
     }
