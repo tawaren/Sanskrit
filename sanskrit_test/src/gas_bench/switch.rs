@@ -16,7 +16,7 @@ fn build<'a>(a:&'a VirtualHeapArena, depth:usize, num_branches:u16, input:ValueR
     let mut branches = a.slice_builder(num_branches as usize).unwrap();
     branches.push(a.alloc(Exp::Ret(inner,rets.finish())).unwrap());
     for _ in 1..num_branches {
-        branches.push(a.alloc(Exp::Throw(Error::Native(NativeError::IndexError))).unwrap());
+        branches.push(a.alloc(Exp::Throw(Error(0))).unwrap());
     }
     OpCode::Switch(input, branches.finish())
 }

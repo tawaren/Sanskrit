@@ -32,7 +32,7 @@ mod tests {
                 let mut asm = File::create(fa_path).expect("file not found");
                 asm.write_all(format!("{:?}",Parser::parse_fully::<Module,NoCustomAlloc>(&r,usize::max_value(), &NoCustomAlloc()).unwrap()).as_bytes()).unwrap();
             }
-            let res = deploy_module(&s, r)?;
+            let res = deploy_module(&s, r, true)?;
             compile_module(&s, res)?;
             if c_id == id {
                 let fh_path = out_folder.join(&id.0.to_lowercase()).with_extension("hash");
@@ -50,10 +50,11 @@ mod tests {
         comp.parse_module_tree(Id("system".into()));
         comp.parse_module_tree(id.clone());
         comp.compile_module_tree().unwrap();
+
         b.iter(|| {
             let s = BTreeMapStore::new();
-            for (_,r) in comp.get_results() {
-                let res = deploy_module(&s, r).unwrap();
+            for (c_id,r) in comp.get_results() {
+                let res = deploy_module(&s, r, true).unwrap();
                 compile_module(&s, res).unwrap();
             }
         });
@@ -625,7 +626,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected="Required capability is missing")]
+    #[should_panic(expected="Not an internal Adt")]
     fn pack_lit_fail() {
         parse_and_compile("testFailCreate3").unwrap();
     }

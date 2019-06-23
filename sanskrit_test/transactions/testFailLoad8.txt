@@ -1,8 +1,8 @@
 signed(A) transaction{
-   a = lit 1:$u8;
-   b = pack SomeTypes.NoDrop[$u8]#Ctr(a);
+   a = lit 1:IntU8.U8;
+   b = pack SomeTypes.NoDrop[IntU8.U8]#Ctr(a);
    d = call IndexOps.ModIndex();
-   (r, s) = call SomeTypes.GenIndexedAt[SomeTypes.NoDrop[$u8]](d,b);
+   (r, s) = call SomeTypes.GenIndexedAt[SomeTypes.NoDrop[IntU8.U8]](d,b);
    store s;
 };
 

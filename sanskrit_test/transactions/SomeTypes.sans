@@ -13,7 +13,7 @@ module SomeTypes {
     };
 
     type <Consume, Inspect, Create, Copy, Drop, Embed, Persist> FixU16{
-        Ctr($u16);
+        Ctr(IntU16.U16);
     };
 
     type <Consume, Inspect, Create, Copy, Drop, Embed, Persist> X[<Embed> A]{
@@ -66,24 +66,24 @@ module SomeTypes {
     };
 
     public fun GenIndexed[<Embed> A](consume a:A):(d:System.Entry[A]) {
-         c = moduleIndex;
+         c = call Ids.moduleId();
          d = pack System.Entry[A]#Ctr(c,a);
          return d;
     };
 
-    public fun GenIndexedAt[<Embed> A](b:$privateId, consume a:A):(r:$publicId, d:System.Entry[A]) {
+    public fun GenIndexedAt[<Embed> A](b:Ids.PrivateId, consume a:A):(r:Ids.PublicId, d:System.Entry[A]) {
          c = copy b;
-         r = call $GenPublicId[$privateId](b);
+         r = call Ids.privateToPublic(b);
          d = pack System.Entry[A]#Ctr(c,a);
          return (r,d);
     };
 
     type <Persist, Consume, Inspect, Create, Copy, Drop, Embed> NoIndexed[<Embed> A]{
-        Ctr($privateId,A);
+        Ctr(Ids.PrivateId,A);
     };
 
     public fun GenNoIndex[<Embed> A](consume a:A):(d:.NoIndexed[A]) {
-        c = moduleIndex;
+        c = call Ids.moduleId();
         d = pack .NoIndexed[A]#Ctr(c,a);
         return d;
     };
@@ -92,22 +92,22 @@ module SomeTypes {
         Ctr();
     };
 
-    public fun DeEntryNoDrop[<Embed> A](consume in:System.Entry[.NoDrop[A]]):(i:$privateId,d:.NoDrop[A]) {
+    public fun DeEntryNoDrop[<Embed> A](consume in:System.Entry[.NoDrop[A]]):(i:Ids.PrivateId,d:.NoDrop[A]) {
         (i,d) = call System.UnpackEntry[.NoDrop[A]](in);
         return(i,d);
     };
 
-    public fun BorrowEntryNoDrop[<Embed> A](in:System.Entry[.NoDrop[A]]):(borrowed(in) i:$privateId,borrowed(in) d:.NoDrop[A]) {
+    public fun BorrowEntryNoDrop[<Embed> A](in:System.Entry[.NoDrop[A]]):(borrowed(in) i:Ids.PrivateId,borrowed(in) d:.NoDrop[A]) {
         (i,d) = call System.BorrowEntry[.NoDrop[A]](in);
         return(i,d);
     };
 
-    public fun BorrowEntryNoCopy[<Embed> A](in:System.Entry[.NoCopy[A]]):(borrowed(in) i:$privateId,borrowed(in) d:.NoCopy[A]) {
+    public fun BorrowEntryNoCopy[<Embed> A](in:System.Entry[.NoCopy[A]]):(borrowed(in) i:Ids.PrivateId,borrowed(in) d:.NoCopy[A]) {
         (i,d) = call System.BorrowEntry[.NoCopy[A]](in);
         return(i,d);
     };
 
-    public fun BorrowEntryX[<Embed> A](in:System.Entry[.X[A]]):(borrowed(in) i:$privateId, borrowed(in) d:.X[A]) {
+    public fun BorrowEntryX[<Embed> A](in:System.Entry[.X[A]]):(borrowed(in) i:Ids.PrivateId, borrowed(in) d:.X[A]) {
         (i,d) = call System.BorrowEntry[.X[A]](in);
         return(i,d);
     };

@@ -1,8 +1,8 @@
 module TestSucTypeCheck{
 
-   fun TestFun[A](consume a:A):(b:A, c:$u8){
+   fun TestFun[A](consume a:A):(b:A, c:IntU8.U8){
      b = a;
-     c = lit 1 :$u8;
+     c = lit 1 :IntU8.U8;
      return (b,c);
    };
 

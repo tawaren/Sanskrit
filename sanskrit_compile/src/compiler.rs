@@ -10,6 +10,7 @@
 use sanskrit_interpreter::model::*;
 use sanskrit_common::store::*;
 use sanskrit_common::model::*;
+use sanskrit_core::model::Exp as SExp;
 use sanskrit_core::model::*;
 use sanskrit_core::loader::StorageCache;
 use sanskrit_core::resolver::Context;
@@ -21,6 +22,7 @@ use sanskrit_core::model::resolved::ResolvedType;
 use sanskrit_core::model::resolved::ResolvedApply;
 use sanskrit_common::encoding::NoCustomAlloc;
 use sanskrit_common::arena::*;
+use sanskrit_interpreter::externals::CompilationExternals;
 
 pub trait ComponentProcessor {
     fn process_adt(&mut self, offset:u8, a_desc:&AdtDescriptor) -> Result<()>;
@@ -28,69 +30,90 @@ pub trait ComponentProcessor {
 }
 
 //Entry point that compiles all types and public functions of a module
-pub fn compile<S:Store, P:ComponentProcessor>(module_hash:&Hash, store:&S, proc:&mut P) -> Result<()>{
+pub fn compile<S:Store, P:ComponentProcessor, E:CompilationExternals>(module_hash:&Hash, store:&S, proc:&mut P) -> Result<()>{
     //load the module
     let module:Module = store.parsed_get(StorageClass::Module,module_hash, usize::max_value(),&NoCustomAlloc())?;
     let resolver = StorageCache::new_complete(store);
 
-    let heap = Heap::new(10000,1.0);
+    let heap = Heap::new(10000,4.0);
     let mut alloc = heap.new_arena(10000);
     //generate descriptors for all adts
-    for (offset,adt) in  module.adts.iter().enumerate() {
-        //Prepare the context
-        let context = Context::from_store_adt(adt, *module_hash, &resolver)?;
-        //call the generator
-        let adt = generate_adt_descriptor(adt,*module_hash, offset as u8, &context, &alloc)?;
-        proc.process_adt(offset as u8,&adt)?;
-        alloc = alloc.reuse();
+    for (offset,adt) in  module.data.iter().enumerate() {
+        match adt.body {
+            DataImpl::Adt { .. } => {
+                //Prepare the context
+                let context = Context::from_store_adt(adt, *module_hash, &resolver)?;
+                //call the generator
+                let adt = generate_adt_descriptor(adt,*module_hash, offset as u8, &context, &alloc)?;
+                proc.process_adt(offset as u8,&adt)?;
+                alloc = alloc.reuse();
+            },
+            DataImpl::Lit(_)
+            | DataImpl::ExternalAdt(_)
+            | DataImpl::ExternalLit(_, _) => {},
+        }
     }
 
-    //generate descriptors for all functions
+    //generate descriptors for all internal functions
     for (offset,fun) in  module.functions.iter().enumerate() {
         if fun.visibility != Visibility::Private {
-            //Prepare the context
-            let context = Context::from_store_func(fun, *module_hash, &resolver)?;
-            //call the generator
-            proc.process_fun(offset as u8,&generate_function_descriptor(fun,module_hash, offset as u8, &context, &alloc)?)?;
-            alloc = alloc.reuse()
+            match fun.body {
+                FunctionImpl::External(_) => {},
+                FunctionImpl::Internal { ref code, .. } => {
+                    //Prepare the context
+                    let context = Context::from_store_func(fun, *module_hash, &resolver)?;
+                    //call the generator
+                    let fun = &generate_function_descriptor::<S,E>(fun,code, module_hash, offset as u8, &context, &alloc)?;
+                    proc.process_fun(offset as u8,fun)?;
+                    alloc = alloc.reuse()
+                },
+            }
         }
     }
     Ok(())
 }
 
 //generates a adt descriptor
-fn generate_adt_descriptor<'b, 'h, S:Store>(adt:&AdtComponent, module:Hash, offset:u8, ctx:&Context<S>, alloc:&'b HeapArena<'h>) -> Result<AdtDescriptor<'b>> {
+fn generate_adt_descriptor<'b, 'h, S:Store>(adt:&DataComponent, module:Hash, offset:u8, ctx:&Context<S>, alloc:&'b HeapArena<'h>) -> Result<AdtDescriptor<'b>> {
     //Collect infos about the generics
     let generics = alloc.iter_alloc_slice(adt.generics.iter().map(|g|match *g {
         Generic::Phantom => TypeTypeParam(true,CapSet::empty()),
         Generic::Physical(caps) => TypeTypeParam(false, caps),
     }))?;
 
-    //collect the constructors and build type builders for their fields
-    let mut constructors = alloc.slice_builder(adt.constructors.len())?;
-    for ctr in &adt.constructors {
-        //collect builders for each field
-        let mut fields =  alloc.slice_builder(ctr.fields.len())?;
-        for field in &ctr.fields {
-            //build the builder
-            fields.push( resolved_type_to_builder(&*field.fetch(ctx)?, alloc)?);
-        }
-        constructors.push(fields.finish());
+    //todo: the generate_adt_descriptor will vanish so implementening Lit & External would be a waste of time
+    match adt.body {
+        DataImpl::Adt { ref constructors,  .. } => {
+            //collect the constructors and build type builders for their fields
+            let mut ctrs = alloc.slice_builder(constructors.len())?;
+            for ctr in constructors {
+                //collect builders for each field
+                let mut fields =  alloc.slice_builder(ctr.fields.len())?;
+                for field in &ctr.fields {
+                    //build the builder
+                    fields.push( resolved_type_to_builder(&*field.fetch(ctx)?, alloc)?);
+                }
+                ctrs.push(fields.finish());
+            }
+
+            //pack it all together in an adt descriptor
+            Ok(AdtDescriptor {
+                generics,
+                constructors: ctrs.finish(),
+                base_caps: adt.provided_caps,
+                id: AdtId{module,offset}
+            })
+        },
+        DataImpl::Lit(_) | DataImpl::ExternalLit(_,_) | DataImpl::ExternalAdt(_) => unimplemented!(),
     }
 
-    //pack it all together in an adt descriptor
-    Ok(AdtDescriptor {
-        generics,
-        constructors: constructors.finish(),
-        base_caps: adt.provided_caps,
-        id: AdtId::Custom(module,offset)
-    })
+
 }
 
 //generates a function descriptor
-fn generate_function_descriptor<'b,'h, S:Store>(fun:&FunctionComponent, module:&Hash, offset:u8, ctx:&Context<S>, alloc:&'b HeapArena<'h>) -> Result<FunctionDescriptor<'b>> {
+fn generate_function_descriptor<'b,'h, S:Store,E:CompilationExternals>(fun:&FunctionComponent, code:&SExp, module:&Hash, offset:u8, ctx:&Context<S>, alloc:&'b HeapArena<'h>) -> Result<FunctionDescriptor<'b>> {
     //collect the generics including protection information
-    let generics = alloc.iter_alloc_slice(fun.generics.iter().enumerate().map(|(i,g)|{
+    let generics = alloc.iter_alloc_slice(fun.shared.generics.iter().enumerate().map(|(i,g)|{
         //get phantoms and caps
         let (is_phantom,caps) = match *g {
             Generic::Phantom => (true,CapSet::empty()),
@@ -107,17 +130,18 @@ fn generate_function_descriptor<'b,'h, S:Store>(fun:&FunctionComponent, module:&
     }))?;
 
     //collect the params type builder
-    let mut params = alloc.slice_builder(fun.params.len())?;
-    for p in &fun.params{
+    let mut params = alloc.slice_builder(fun.shared.params.len())?;
+    for p in &fun.shared.params{
         //build the builder
         let builder = alloc.alloc(resolved_type_to_builder(&*p.typ.fetch(ctx)?, alloc)?);
         params.push(Param(p.consumes, builder));
     }
     let params = params.finish();
 
+
     //collect the returns type builder
-    let mut returns =  alloc.slice_builder(fun.returns.len())?;
-    for r in &fun.returns{
+    let mut returns =  alloc.slice_builder(fun.shared.returns.len())?;
+    for r in &fun.shared.returns{
         //build the builder
         let ret = alloc.alloc(resolved_type_to_builder(&*r.typ.fetch(ctx)?, alloc)?);
         returns.push(Return(ret, alloc.copy_alloc_slice(&r.borrows)?));
@@ -127,7 +151,7 @@ fn generate_function_descriptor<'b,'h, S:Store>(fun:&FunctionComponent, module:&
     //Prepare the compactor to optimize the body
     let mut compactor = Compactor::new(alloc);
     //start the compaction process
-    let (pos,args,ressources) = compactor.emit_func(fun,module,offset,ctx)?;
+    let (pos,args,ressources) = compactor.emit_func::<S,E>(fun, code, module,offset,ctx)?;
     assert_eq!(args as usize, returns.len());
     assert_eq!(pos, 0);
 
@@ -137,21 +161,22 @@ fn generate_function_descriptor<'b,'h, S:Store>(fun:&FunctionComponent, module:&
         return size_limit_exceeded_error();
     }
 
-    //Todo: we can go lower based on block max limits
-    if ressources.max_gas > u32::max_value as usize {return size_limit_exceeded_error()}
-    if ressources.max_manifest_stack > u16::max_value as usize {return size_limit_exceeded_error()}
-    if ressources.max_frames > u16::max_value as usize {return size_limit_exceeded_error()}
+    if ressources.max_gas > u32::max_value() as u64 {return size_limit_exceeded_error()}
+    if ressources.max_manifest_stack > u16::max_value() as u32 {return size_limit_exceeded_error()}
+    if ressources.max_frames > u16::max_value() as u32 {return size_limit_exceeded_error()}
 
-    //pack it all together in an adt descriptor
-    Ok(FunctionDescriptor{
+    //pack it all together in a function descriptor
+    Ok(FunctionDescriptor {
         gas_cost: ressources.max_gas as u32,
         max_stack: ressources.max_manifest_stack as u16,
         max_frames: ressources.max_frames as u16,
         generics,
         params,
         returns,
-        functions,
+        functions
     })
+
+
 }
 
 
@@ -174,6 +199,7 @@ pub fn resolved_type_to_builder<'b,'h>(typ:&ResolvedType, alloc:&'b HeapArena<'h
         Ok(builder)
     }
 
+    //todo: can we shortcut externals to their Id??
     Ok(match *typ {
         //generics ned to fetch the type at runtime
         ResolvedType::Generic { offset, .. } => TypeBuilder::Ref(TypeInputRef(offset)),
@@ -181,9 +207,13 @@ pub fn resolved_type_to_builder<'b,'h>(typ:&ResolvedType, alloc:&'b HeapArena<'h
             let inner = resolved_type_to_builder(&**typ, alloc)?;
             TypeBuilder::Image(alloc.alloc(inner))
         },
-        //Import & Natives can use the build_type
-        ResolvedType::Import { base_caps, ref module, offset, ref applies, .. } => build_type(base_caps,TypeKind::Custom { module:module.to_hash(), offset },applies, alloc)?,
-        ResolvedType::Native { base_caps, typ, ref applies , ..} => build_type(base_caps, TypeKind::Native { typ }, applies, alloc)?,
+        //todo: implement or unallowed error
+        // what todo??
+        ResolvedType::Sig {..} => unimplemented!(),
+        //Import & Literal can use the build_type
+
+        ResolvedType::Lit { base_caps, ref module, offset, ref applies, .. }
+        | ResolvedType::Data { base_caps, ref module, offset, ref applies, .. } => build_type(base_caps, TypeKind::Custom { module:module.to_hash(), offset }, applies, alloc)?,
     })
 }
 

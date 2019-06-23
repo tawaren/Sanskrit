@@ -1,64 +1,64 @@
 module System {
    type <Copy,Drop,Create,Persist> Entry[<Embed> T]{
-        Ctr($privateId,T);
+        Ctr(Ids.PrivateId,T);
    };
 
    type <Drop,Embed,Consume,Persist> Singleton[phantom <Embed> T]{
-        Ctr($privateId);
+        Ctr(Ids.PrivateId);
    };
 
    type <Drop,Copy,Embed,Consume,Inspect> Account[phantom <Embed> T]{
-          Ctr($privateId);
+          Ctr(Ids.PrivateId);
    };
 
    type <Drop> Context{
-          Ctr($data20, $privateId, $data20, $u64, $u64);
+          Ctr(Data.Data20, Ids.PrivateId, Data.Data20, IntU64.U64, IntU64.U64);
    };
 
-   public fun TxTHash(ctx:.Context):(txtHash:$data20) {
+   public fun TxTHash(ctx:.Context):(txtHash:Data.Data20) {
         txtId = &field[1] ctx:.Context;
-        txtHash = call $ToData[$privateId,$data20](txtId);
+        txtHash = call Ids.privateToData(txtId);
         return txtHash;
    };
 
-   public fun CodeHash(ctx:.Context):(codeHash:$data20) {
+   public fun CodeHash(ctx:.Context):(codeHash:Data.Data20) {
         codeHash = copy field[0] ctx:.Context;
         return codeHash;
    };
 
-   public fun FullHash(ctx:.Context):(fullHash:$data20) {
+   public fun FullHash(ctx:.Context):(fullHash:Data.Data20) {
         fullHash = copy field[2] ctx:.Context;
         return fullHash;
    };
 
-   public fun BlockNo(ctx:.Context):(blockNo:$u64) {
+   public fun BlockNo(ctx:.Context):(blockNo:IntU64.U64) {
         blockNo = copy field[3] ctx:.Context;
         return blockNo;
    };
 
-   public risky<$Unexpected> fun UniqueID(consume ctx:.Context):(id:$privateId, ctx:.Context) {
+   public risky<Errors.Unexpected> fun UniqueID(consume ctx:.Context):(id:Ids.PrivateId, ctx:.Context) {
          (codeHash, txtId, fullHash, blockNo, ctr) = unpack ctx:.Context;
-         ctrData = call $ToData[$u64,$data8](ctr);
-         id = call $DeriveId[$privateId,$data8](txtId,ctrData);
+         ctrData = call IntU64.toData(ctr);
+         id = call Ids.derivePrivateId8(txtId,ctrData);
          newCtr = try {
-            inc = lit 1:$u64;
-            newCtr = call $Add[$u64](ctr,inc);
+            inc = lit 1:IntU64.U64;
+            newCtr = call IntU64.add(ctr,inc);
             return newCtr;
          } catch {
-            $NumericError => {
-              throw $Unexpected;
+            Errors.Numeric => {
+              throw Errors.Unexpected;
             };
          };
          newCtx = pack .Context#Ctr(codeHash, txtId, fullHash, blockNo, newCtr);
          return (id,newCtx);
    };
 
-   protected[T] fun UnpackEntry[<Embed> T](consume entry:.Entry[T]):(id:$privateId, t:T){
+   protected[T] fun UnpackEntry[<Embed> T](consume entry:.Entry[T]):(id:Ids.PrivateId, t:T){
         (id, t) = unpack entry:.Entry[T];
         return (id,t);
    };
 
-    protected[T] fun BorrowEntry[<Embed> T](entry:.Entry[T]):(borrowed(entry) id:$privateId, borrowed(entry) t:T){
+    protected[T] fun BorrowEntry[<Embed> T](entry:.Entry[T]):(borrowed(entry) id:Ids.PrivateId, borrowed(entry) t:T){
           (id, t) = &unpack entry:.Entry[T];
           return (id,t);
     };

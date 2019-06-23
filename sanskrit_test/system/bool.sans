@@ -1,0 +1,69 @@
+module Bool {
+    type <Copy,Drop,Persist,Create,Consume,Inspect,Embed> Bool{
+             False;
+             True;
+    };
+
+    public fun not(b1:.Bool):(b3:.Bool) {
+        r = &switch b1 : .Bool {
+            False => {
+                r = pack .Bool#True();
+                return r;
+            };
+            True => {
+                 r = pack .Bool#False();
+                 return r;
+            };
+        };
+        return r;
+    };
+
+    public fun and(b1:.Bool, b2:.Bool):(b3:.Bool) {
+        r = &switch b1 : .Bool {
+            False => {
+                r = pack .Bool#False();
+                return r;
+            };
+            True => {
+                r = copy b2;
+                return r;
+            };
+        };
+        return r;
+    };
+
+
+    public fun or(b1:.Bool, b2:.Bool):(b3:.Bool) {
+        r = &switch b1 : .Bool {
+            False => {
+                r = copy b2;
+                return r;
+            };
+            True => {
+                r = pack .Bool#True();
+                return r;
+            };
+        };
+        return r;
+    };
+
+    public fun xor(b1:.Bool, b2:.Bool):(b3:.Bool) {
+        r = &switch b1 : .Bool {
+            False => {
+                r = copy b2;
+                return r;
+            };
+            True => {
+                r = call .not(b2);
+                return r;
+            };
+        };
+        return r;
+    };
+
+    public fun eq(b1:.Bool, b2:.Bool):(b3:.Bool) {
+        r1 = call .xor(b1,b2);
+        r = call .not(r1);
+        return r;
+    };
+}

@@ -37,6 +37,7 @@ pub struct ExecutionContext<'script,'code, 'interpreter, 'execution, 'heap> {
 }
 
 //creates a new literal
+//todo: reimplement if needed
 pub fn create_lit_object<'script, 'heap>(data:&[u8], typ:LitDesc, alloc:&'script VirtualHeapArena<'heap>) -> Result<Ptr<'script,Object<'script>>> {
     //find out which literal to create
     alloc.alloc(match typ {
@@ -53,7 +54,7 @@ pub fn create_lit_object<'script, 'heap>(data:&[u8], typ:LitDesc, alloc:&'script
         LitDesc::U128 => Object::U128(EncodingByteOrder::read_u128(data)),
     })
 }
-
+/*
 //Helper to hash objects structurally
 //2 Bytes encode length of Data or Num of fields
 fn object_hash(obj:&Object, context: &mut Hasher) {
@@ -135,7 +136,7 @@ fn object_hash(obj:&Object, context: &mut Hasher) {
             }
         },
     };
-}
+}*/
 
 impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code,'interpreter, 'execution,'heap> {
     //Creates a new Empty context
@@ -259,7 +260,8 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
     fn execute_op_code(&mut self, code: &'code OpCode) -> Result<Continuation<'code>> {
         //Branch on the opcode type and check it
         match *code {
-            OpCode::Lit(data, typ) => self.lit(&data, typ),
+            OpCode::Lit(data) => self.lit(&data),
+            OpCode::SpecialLit(ref data, desc) => self.special_lit(data,desc),
             OpCode::Let(ref bind) => self.let_(bind),
             OpCode::Unpack(value) => self.unpack(value),
             OpCode::Get(value, field) => self.get_field(value, field),
@@ -279,22 +281,32 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
             OpCode::Mul(op1,op2) => self.mul(op1,op2),
             OpCode::Div(op1,op2) => self.div(op1,op2),
             OpCode::Eq(op1,op2) => self.eq(op1,op2),
-            OpCode::Hash(op) => self.struct_hash(op),
-            OpCode::PlainHash(op) => self.plain_hash(op),
+            //OpCode::Hash(op) => self.struct_hash(op),
+            OpCode::Hash(op) => self.plain_hash(op),
             OpCode::ToData(op) => self.convert_to_data(op),
-            OpCode::Concat(op1,op2) => self.concat(op1,op2),
+            //OpCode::Concat(op1,op2) => self.concat(op1,op2),
             OpCode::Lt(op1,op2) => self.lt(op1,op2),
             OpCode::Gt(op1,op2) => self.gt(op1,op2),
             OpCode::Lte(op1,op2) => self.lte(op1,op2),
             OpCode::Gte(op1,op2) => self.gte(op1,op2),
-            OpCode::SetBit(op1,op2, op3) => self.set_bit(op1,op2, op3),
-            OpCode::GetBit(op1,op2) => self.get_bit(op1,op2),
+            //OpCode::SetBit(op1,op2, op3) => self.set_bit(op1,op2, op3),
+            //OpCode::GetBit(op1,op2) => self.get_bit(op1,op2),
             OpCode::Derive(op1,op2) => self.join_hash(op1, op2, HashingDomain::Derive),
         }
     }
 
     //creates a literal
-    fn lit(&mut self, data: &[u8], typ: LitDesc) -> Result<Continuation<'code>> {
+    fn lit(&mut self, data: &[u8]) -> Result<Continuation<'code>> {
+        //Cost: relative to: data.0.len(), + 1 push
+        //create the literal
+        let obj = self.alloc.alloc(Object::Data(self.alloc.copy_alloc_slice(data)?))?;
+        //push it onto the stack
+        self.stack.push(obj)?;
+        Ok(Continuation::Next)
+    }
+
+    //creates a literal
+    fn special_lit(&mut self, data: &[u8], typ: LitDesc) -> Result<Continuation<'code>> {
         //Cost: relative to: data.0.len(), + 1 push
         //create the literal
         let obj = create_lit_object(data, typ, self.alloc)?;
@@ -597,7 +609,9 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
         };
 
         match res {
-            None => Ok(Continuation::Throw(Error::Native(NativeError::NumericError))),
+            //todo: reimplement when we have the module with the correct error
+            None => unimplemented!(),
+                //Ok(Continuation::Throw(Error::Native(NativeError::NumericError))),
             Some(r) => {
                 self.stack.push(self.alloc.alloc(r)?)?;
                 Ok(Continuation::Next)
@@ -636,7 +650,8 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
         };
 
         match res {
-            None => Ok(Continuation::Throw(Error::Native(NativeError::NumericError))),
+            //todo: reimplement when we have the module with the correct error
+            None => unimplemented!(),
             Some(r) => {
                 self.stack.push(self.alloc.alloc(r)?)?;
                 Ok(Continuation::Next)
@@ -662,7 +677,8 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
         };
 
         match res {
-            None => Ok(Continuation::Throw(Error::Native(NativeError::NumericError))),
+            //todo: reimplement when we have the module with the correct error
+            None => unimplemented!(),
             Some(r) => {
                 //Note: Alloc is approx 20ns
                 self.stack.push(self.alloc.alloc(r)?)?;
@@ -689,7 +705,8 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
         };
 
         match res {
-            None => Ok(Continuation::Throw(Error::Native(NativeError::NumericError))),
+            //todo: reimplement when we have the module with the correct error
+            None => unimplemented!(),
             Some(r) => {
                 self.stack.push(self.alloc.alloc(r)?)?;
                 Ok(Continuation::Next)
@@ -715,7 +732,8 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
         };
 
         match res {
-            None => Ok(Continuation::Throw(Error::Native(NativeError::NumericError))),
+            //todo: reimplement when we have the module with the correct error
+            None => unimplemented!(),
             Some(r) => {
                 self.stack.push(self.alloc.alloc(r)?)?;
                 Ok(Continuation::Next)
@@ -741,7 +759,8 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
         };
 
         match res {
-            None => Ok(Continuation::Throw(Error::Native(NativeError::NumericError))),
+            //todo: reimplement when we have the module with the correct error
+            None => unimplemented!(),
             Some(r) => {
                 self.stack.push(self.alloc.alloc(r)?)?;
                 Ok(Continuation::Next)
@@ -757,6 +776,7 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
         Ok(Continuation::Next)
     }
 
+    /*
     //hashes the input recursively
     fn struct_hash(&mut self, ValueRef(val):ValueRef) -> Result<Continuation<'code>>  {
         //cost: constant |relative Part in object_hash|
@@ -771,7 +791,7 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
         self.stack.push(self.alloc.alloc(Object::Data(hash_data))?)?;
         Ok(Continuation::Next)
     }
-
+*/
     //hashes 2 inputs together
     fn join_hash(&mut self, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef, domain:HashingDomain) -> Result<Continuation<'code>>  {
         //Get the first value
@@ -818,6 +838,7 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
         Ok(Continuation::Next)
     }
 
+    /*
     //concats the data inputs
     fn concat(&mut self, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef) -> Result<Continuation<'code>> {
         //get the args
@@ -830,7 +851,7 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
         })?)?;
         Ok(Continuation::Next)
     }
-
+    */
     //compares the inputs for less than
     fn lt(&mut self, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef) -> Result<Continuation<'code>> {
         //cost: relative to: Object size
@@ -959,7 +980,7 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
         })?)?;
         Ok(Continuation::Next)
     }
-
+    /*
     //gets a bit in a data value (as boolean)
     fn get_bit(&mut self, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef) -> Result<Continuation<'code>> {
         //helper that gets a bit in a vector
@@ -990,7 +1011,8 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
         };
 
         match res {
-            None => Ok(Continuation::Throw(Error::Native(NativeError::IndexError))),
+            //todo: reimplement when we have the module with the correct error
+            None => unimplemented!(),
             Some(r) => {
                 self.stack.push(self.alloc.alloc(r)?)?;
                 Ok(Continuation::Next)
@@ -1031,13 +1053,14 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
         }?;
 
         match res {
-            None => Ok(Continuation::Throw(Error::Native(NativeError::IndexError))),
+            //todo: reimplement when we have the module with the correct error
+            None => unimplemented!(),
             Some(r) => {
                 self.stack.push(self.alloc.alloc(r)?)?;
                 Ok(Continuation::Next)
             }
         }
-    }
+    }*/
 
 
 }

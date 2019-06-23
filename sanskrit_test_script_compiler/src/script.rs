@@ -4,11 +4,11 @@ use std::path::Path;
 use model::*;
 use std::path::PathBuf;
 use std::collections::HashMap;
-use sanskrit_core::model::Module as RModule;
+use sanskrit_core::model::{Module as RModule, FunSigShared, FunctionImpl, DataImpl, PublicImport, Generic as RGeneric};
 use sanskrit_common::model::Hash;
 use sanskrit_common::model::LargeVec;
 use environment::CodeImportBuilder;
-use sanskrit_core::model::AdtComponent;
+use sanskrit_core::model::DataComponent;
 use environment::Environment;
 use sanskrit_core::model::FunctionComponent;
 use sanskrit_common::store::store_hash;
@@ -123,12 +123,54 @@ impl<'a> Compiler<'a> {
         for id in ordered {
             let mut r_module = RModule {
                 meta: LargeVec(id.0.to_lowercase().clone().into_bytes()),
-                adts: Vec::new(),
+                data: Vec::new(),
+                sigs: Vec::new(),
                 functions: Vec::new(),
                 errors: 0
             };
             for comp in &self.parsed[&id].module.components {
                 match *comp {
+                    Component::ExtLit { id:ident, caps, ref generics, size, .. } => {
+                        let mut imp = CodeImportBuilder::new(&self.parsed[&id], generics, &self.parsed);
+
+                        let generics = generics.iter().map(|g|g.compile()).collect();
+                        let import = imp.generate_import();
+
+                        r_module.data.push(DataComponent {
+                            provided_caps: caps,
+                            generics,
+                            import,
+                            body: DataImpl::ExternalLit(ident,size)
+                        })
+                    },
+
+                    Component::Lit { caps, ref generics, size, .. } => {
+                        let mut imp = CodeImportBuilder::new(&self.parsed[&id], generics, &self.parsed);
+
+                        let generics = generics.iter().map(|g|g.compile()).collect();
+                        let import = imp.generate_import();
+
+                        r_module.data.push(DataComponent {
+                            provided_caps: caps,
+                            generics,
+                            import,
+                            body: DataImpl::Lit(size)
+                        })
+                    },
+
+                    Component::ExtAdt { id:ident, caps, ref generics, .. } => {
+                        let mut imp = CodeImportBuilder::new(&self.parsed[&id], generics, &self.parsed);
+
+                        let generics = generics.iter().map(|g|g.compile()).collect();
+                        let import = imp.generate_import();
+
+                        r_module.data.push(DataComponent {
+                            provided_caps: caps,
+                            generics,
+                            import,
+                            body: DataImpl::ExternalAdt(ident)
+                        })
+                    },
                     Component::Adt { caps, ref generics, ref ctrs,  .. } => {
                         let mut imp = CodeImportBuilder::new(&self.parsed[&id], generics, &self.parsed);
 
@@ -136,14 +178,42 @@ impl<'a> Compiler<'a> {
                         let constructors =  ctrs.iter().map(|p|p.compile(&mut imp)).collect::<Result<_,_>>()?;
                         let import = imp.generate_import();
 
-                        r_module.adts.push(AdtComponent {
+                        r_module.data.push(DataComponent {
                             provided_caps: caps,
                             generics,
                             import,
-                            constructors,
+                            body: DataImpl::Adt {
+                                constructors
+                            }
                         })
                     },
                     Component::Err { .. } => r_module.errors+=1,
+                    Component::ExtFun { id:ident, ref vis, ref risks, ref generics, ref params, ref returns , .. } => {
+                        let mut imp = CodeImportBuilder::new(&self.parsed[&id], generics, &self.parsed);
+
+                        let visibility = vis.compile(&generics);
+                        let generics = generics.iter().map(|g|g.compile()).collect();
+                        let risk = risks.iter().map(|r|imp.import_err_ref(r)).collect::<Result<_,_>>()?;
+
+                        let alloc = NoCustomAlloc();
+                        let mut env = Environment::new(&alloc);
+                        let params =  params.iter().map(|p|p.compile(&mut env, &mut imp)).collect::<Result<_,_>>()?;
+                        let returns =  returns.iter().map(|r|r.compile(&mut env, &mut imp)).collect::<Result<_,_>>()?;
+
+                        let import = imp.generate_import();
+                        r_module.functions.push(FunctionComponent {
+                            shared: FunSigShared {
+                                generics,
+                                import,
+                                risk,
+                                params,
+                                returns
+                            },
+                            visibility,
+                            implements: Vec::new(),
+                            body: FunctionImpl::External(ident)
+                        });
+                    },
                     Component::Fun { ref vis, ref risks, ref generics, ref params, ref returns ,ref code, .. } => {
                         let mut imp = CodeImportBuilder::new(&self.parsed[&id], generics, &self.parsed);
 
@@ -158,15 +228,22 @@ impl<'a> Compiler<'a> {
                         let returns =  returns.iter().map(|r|r.compile(&mut env, &mut imp)).collect::<Result<_,_>>()?;
 
 
-                        let import = imp.generate_body_import();
+                        let (functions, import) = imp.generate_body_import();
                         r_module.functions.push(FunctionComponent {
-                            generics,
+                            shared: FunSigShared {
+                                generics,
+                                import,
+                                risk,
+                                params,
+                                returns
+                            },
                             visibility,
-                            import,
-                            risk,
-                            params,
-                            returns,
-                            code
+                            implements: Vec::new(),
+                            body: FunctionImpl::Internal {
+                                functions,
+                                code
+                            }
+
                         });
                     },
                 }

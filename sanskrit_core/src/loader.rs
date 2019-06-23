@@ -13,6 +13,7 @@ use sanskrit_common::model::*;
 use sanskrit_common::encoding::NoCustomAlloc;
 use model::*;
 use context::*;
+use model::linking::Link;
 
 pub struct StorageCache<'a, S:Store + 'a> {
     //Caches the modules
@@ -20,17 +21,26 @@ pub struct StorageCache<'a, S:Store + 'a> {
     // a reference to the store in case a module is not cached
     store:&'a S,
     //Helper to simulate partially loaded modules (necessary to detect cycles in component dependencies)
-    //could be removed if turing copleteness is required (but then tail call needed to prevent stack depth problems)
-    pub this_deployed_adts:Cell<usize>,
+    //could be removed if turing completeness is required (but then tail call needed to prevent stack depth problems)
+    pub this_deployed_data:Cell<usize>,
+    pub this_deployed_sigs:Cell<usize>,
     pub this_deployed_functions:Cell<usize>,
 }
 
 //This is a helper that allows to Return a cache entry so that others can borrow from it
 //necessary as else the cache becomes unusable because it is borrowed mutably
-pub struct AdtCache {
+pub struct DataCache {
     module:Rc<Module>,      //The Corresponding cached Module
     link:ModuleLink,        //The Module in link form
     offset:u8,              //The offset of the Adt
+}
+
+//This is a helper that allows to Return a cache entry so that others can borrow from it
+//necessary as else the cache becomes unusable because it is borrowed mutably
+pub struct SigCache {
+    module:Rc<Module>,      //The Corresponding cached Module
+    link:ModuleLink,        //The Module in link form
+    offset:u8,              //The offset of the Sig
 }
 
 //This is a helper that allows to Return a cache entry so that others can borrow from it
@@ -55,7 +65,8 @@ impl<'a, S:Store + 'a> StorageCache<'a,S> {
         StorageCache{
             modules:RefCell::new(modules),
             store,
-            this_deployed_adts: Cell::new(0),
+            this_deployed_data: Cell::new(0),
+            this_deployed_sigs: Cell::new(0),
             this_deployed_functions: Cell::new(0),
         }
 
@@ -67,8 +78,9 @@ impl<'a, S:Store + 'a> StorageCache<'a,S> {
         StorageCache{
             modules:RefCell::new(BTreeMap::new()),
             store,
-            this_deployed_adts: Cell::new(<usize>::max_value()),            //as modules have max 255 arts this is ok
-            this_deployed_functions:  Cell::new(<usize>::max_value()),   //as modules have max 255 arts this is ok
+            this_deployed_data: Cell::new(<usize>::max_value()),         //as modules have max 255 adts this is ok
+            this_deployed_sigs:Cell::new(<usize>::max_value()),          //as modules have max 255 sigs this is ok
+            this_deployed_functions:  Cell::new(<usize>::max_value()),   //as modules have max 255 funs this is ok
         }
     }
 
@@ -97,18 +109,35 @@ impl<'a, S:Store + 'a> StorageCache<'a,S> {
     }
 
     //Get an Adt
-    pub fn get_adt(&self, link:&ModuleLink, offset:u8) -> Result<AdtCache>{
+    pub fn get_data_type(&self, link:&ModuleLink, offset:u8) -> Result<DataCache>{
         //Get the Module
         let module = self.get_chached_module(&link.to_hash())?;
         //Check if really their
-        if offset as usize >= module.adts.len() {return item_not_found()}
+        if offset as usize >= module.data.len() {return item_not_found()}
+        if link.is_local_link() && offset as usize >= self.this_deployed_data.get() {return item_not_found()}
         //Extract the Adt Cache
-        Ok(AdtCache {
+        Ok(DataCache {
             module,
             link: *link,
             offset,
         })
     }
+
+    //Get a Sig
+    pub fn get_sig(&self, link:&ModuleLink, offset:u8) -> Result<SigCache>{
+        //Get the Module
+        let module = self.get_chached_module(&link.to_hash())?;
+        //Check if really their
+        if offset as usize >= module.sigs.len() {return item_not_found()}
+        if link.is_local_link() && offset as usize >= self.this_deployed_sigs.get() {return item_not_found()}
+        //Extract the Adt Cache
+        Ok(SigCache {
+            module,
+            link: *link,
+            offset,
+        })
+    }
+
 
     //Get a Function
     pub fn get_func(&self, link:&ModuleLink, offset:u8) -> Result<FuncCache>{
@@ -116,6 +145,8 @@ impl<'a, S:Store + 'a> StorageCache<'a,S> {
         let module = self.get_chached_module(&link.to_hash())?;
         //Check if really their
         if offset as usize >= module.functions.len() {return item_not_found()}
+        if link.is_local_link() && offset as usize >= self.this_deployed_functions.get() {return item_not_found()}
+
         //Extract the Fun Cache
         Ok(FuncCache {
             module,
@@ -125,10 +156,10 @@ impl<'a, S:Store + 'a> StorageCache<'a,S> {
     }
 }
 
-impl AdtCache {
+impl DataCache {
     //Borrows the Entry
-    pub fn retrieve(&self) -> &AdtComponent {
-        &self.module.adts[self.offset as usize]
+    pub fn retrieve(&self) -> &DataComponent {
+        &self.module.data[self.offset as usize]
     }
     //gets the modules link
     pub fn module(&self) -> ModuleLink {
@@ -137,7 +168,33 @@ impl AdtCache {
     //Create a local context for it (but from the importers view -- meaning they are from a remote Module and the imported functions are ignored and the applies are substituted)
     pub fn substituted_context<'a,'b:'a,S:Store+'b>(&'a self, subs:Vec<Crc<ResolvedType>>, store:&'b StorageCache<'b,S>) -> Result<Context<'a,'b,S>> {
         //Create the input Context
-        let ctx = InputContext::from_adt_import(self.retrieve(), self.link);
+        let ctx = InputContext::from_data_import(self.retrieve(), self.link);
+        //Fetch/create the local cache
+        let cache = Rc::new(Cachings::new(&ctx));
+        //Create the context
+        Ok(Context {
+            ctx,
+            subs,
+            cache,
+            store,
+            checking:false, //if it is in the store, then it is already checked
+        })
+    }
+}
+
+impl SigCache {
+    //Borrows the Entry
+    pub fn retrieve(&self) -> &SigComponent {
+        &self.module.sigs[self.offset as usize]
+    }
+    //gets the modules link
+    pub fn module(&self) -> ModuleLink {
+        self.link
+    }
+    //Create a local context for it (but from the importers view -- meaning they are from a remote Module and the imported functions are ignored and the applies are substituted)
+    pub fn substituted_context<'a,'b:'a,S:Store+'b>(&'a self, subs:Vec<Crc<ResolvedType>>, store:&'b StorageCache<'b,S>) -> Result<Context<'a,'b,S>> {
+        //Create the input Context
+        let ctx = InputContext::from_sig_import(self.retrieve(), self.link);
         //Fetch/create the local cache
         let cache = Rc::new(Cachings::new(&ctx));
         //Create the context
@@ -152,6 +209,7 @@ impl AdtCache {
 }
 
 
+
 impl FuncCache {
     //Borrows the Entry
     pub fn retrieve(&self) -> &FunctionComponent {
@@ -164,7 +222,7 @@ impl FuncCache {
     //Create a local context for it (but from the importers view -- meaning they are from a remote Module and the imported functions are ignored and the applies are substituted)
     pub fn substituted_context<'a,'b:'a,S:Store+'b>(&'a self, subs:Vec<Crc<ResolvedType>>, store:&'b StorageCache<'b,S>) -> Result<Context<'a,'b,S>> {
         //Create the input Context
-        let ctx = InputContext::from_fun_import(self.retrieve(), self.link);
+        let ctx = InputContext::from_fun_import(&self.retrieve().shared, self.link);
         //Fetch/create the local cache
         let cache = Rc::new(Cachings::new(&ctx));
         //Create the context

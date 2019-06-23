@@ -18,6 +18,7 @@ use sanskrit_common::encoding::*;
 use compiler::ComponentProcessor;
 use sanskrit_interpreter::model::AdtDescriptor;
 use sanskrit_interpreter::model::FunctionDescriptor;
+use sanskrit_interpreter::externals::Externals;
 
 struct StoreDescriptorProcessor<'a, S:Store> {
     module_hash:Hash,
@@ -33,6 +34,7 @@ impl<'a, S:Store> ComponentProcessor for StoreDescriptorProcessor<'a, S> {
         a_desc.serialize(&mut s)?;
         let data = s.extract();
         //stores it
+        //println!("{}",key);
         self.store.set(StorageClass::AdtDesc, key, data)
     }
 
@@ -56,7 +58,7 @@ pub fn compile_module<S:Store>(store:&S, module_hash:Hash) -> Result<()>{
 
     //Todo: Start Txt
     //compiles the content
-    compiler::compile(&module_hash,store, &mut proc)?;
+    compiler::compile::<S,StoreDescriptorProcessor<S>,Externals>(&module_hash,store, &mut proc)?;
 
     //Todo: End Txt
 

@@ -14,32 +14,67 @@ pub struct Module {
     //A Module has compiler specific meta information (Not of concern to Sanskrit)
     pub meta: LargeVec<u8>,
     //A Module has Adts
-    pub adts: Vec<AdtComponent>,
+    pub data: Vec<DataComponent>,
+    //A Module has Sigs
+    pub sigs: Vec<SigComponent>,
     //A Module has Functions
     pub functions: Vec<FunctionComponent>,
     //A Module has Errors (they are interchangeable so just the number matters)
     pub errors: u8,
 }
 
+#[derive(Debug, Parsable, Serializable)]
+pub enum DataImpl {
+    Adt{constructors:Vec<Case>},               //An Adt has multiple Constructors
+    Lit(u16),
+    ExternalAdt(u16),
+    ExternalLit(u16,u16),                     // second u16 is size
+}
+
 //Represents an Adt
 #[derive(Debug, Parsable, Serializable)]
-pub struct AdtComponent {
+pub struct DataComponent {
     pub provided_caps:CapSet,                   //All caps that this is allowed to have (not considering generics)
     pub generics:Vec<Generic>,                  //An Adt has Generic Type parameters that can be constraint
     pub import:PublicImport,                    //An Adt has imports usable in its constructors
-    pub constructors:Vec<Case>                  //An Adt has multiple Constructors
+    pub body:DataImpl
+}
+
+//Represents a fun signature
+#[derive(Debug, Parsable, Serializable)]
+pub struct FunSigShared {
+    pub generics:Vec<Generic>,                  //A Fun/Sig has Generic Type parameters that can be constraint
+    pub import:PublicImport,                    //A Fun/Sig has imports usable in its dig & body
+    pub risk: BTreeSet<ErrorRef>,               //A Fun/Sig can produce errors which are declared as risks
+    pub params:Vec<Param>,                      //A Fun/Sig has input params
+    pub returns:Vec<Ret>,                       //A Fun/Sig has returns
+}
+
+//Represents a fun signature
+#[derive(Debug, Parsable, Serializable)]
+pub struct SigComponent {
+    pub shared:FunSigShared,
+    pub provided_caps:CapSet,             //All caps that this is allowed to have (not considering captured generics)
+    pub local_generics:Vec<u8>            //A Sig have local generics
+
+}
+
+#[derive(Debug, Parsable, Serializable)]
+pub enum FunctionImpl{
+    External(u16),
+    Internal{
+        functions:Vec<FunctionImport>,         //Function Imports
+        code: Exp                              //A Function has a body Expression
+    }
 }
 
 //Represents a Function (Like a function but has the ability to consume its arguments and return borrows)
 #[derive(Debug, Parsable, Serializable)]
 pub struct FunctionComponent {
-    pub generics:Vec<Generic>,                  //A Function has Generic Type parameters that can be constraint
-    pub visibility:Visibility,                  //A Function has a visibility defining who can call it
-    pub import:BodyImport,                      //A Function has imports usable in its body/code
-    pub risk: BTreeSet<ErrorRef>,               //A Function can produce errors which are declared as risks
-    pub params:Vec<Param>,                      //A Function has input params
-    pub returns:Vec<Ret>,                       //A Function has returns
-    pub code: Exp                               //A Function has a body Expression
+    pub shared:FunSigShared,
+    pub visibility:Visibility,                 //A Fun has a visibility defining who can call it
+    pub implements:Vec<SigImpl>,
+    pub body:FunctionImpl
 }
 
 //Represents a Generic
@@ -57,12 +92,13 @@ pub struct PublicImport {
     pub types:Vec<Type>,                       //Type Imports
 }
 
-//As Base import but allows to import functions
-#[derive(Debug, Parsable, Serializable)]
-pub struct BodyImport {
-    pub base:PublicImport,
-    pub functions:Vec<FunctionImport>,         //Function Imports
+//Represents a Sig implementation
+#[derive(Ord, PartialOrd, Eq, PartialEq, Clone, Hash, Debug, Parsable, Serializable)]
+pub struct SigImpl{
+    pub typ:TypeRef,         //Defines the Type of this Impl (Must point to a SigImport)
+    pub captures:Vec<u8>     //Defines which of the signatures params are captured
 }
+
 
 //Represents a Function Param
 #[derive(Ord, PartialOrd, Eq, PartialEq, Clone, Copy, Hash, Debug, Parsable, Serializable)]
@@ -94,24 +130,26 @@ pub enum Visibility{
 
 //Represents an imported Funcfomer
 #[derive(Ord, PartialOrd, Eq, PartialEq, Clone, Hash, Debug, Parsable, Serializable)]
-pub enum FunctionImport {
-    Module(FuncLink, Vec<TypeRef>),            //A Function Imported From A module
-    Native(NativeFunc, Vec<TypeRef>),          //A Native Function
+pub struct FunctionImport {
+    pub link:FuncLink,
+    pub applies:Vec<TypeRef>,
 }
 
 //Represents an imported Error
 #[derive(Ord, PartialOrd, Eq, PartialEq, Clone, Copy, Hash, Debug, Parsable, Serializable)]
-pub enum ErrorImport {
-    Module(ErrorLink),                          //An Error imported From A Module
-    Native(NativeError)                         //A Native Error
+pub struct ErrorImport{
+    pub link:ErrorLink
 }
+
+
 
 //Represents an imported Adt/Native including the application of generic type parameters
 #[derive(Ord, PartialOrd, Eq, PartialEq, Copy, Clone, Hash, Debug, Parsable, Serializable)]
 pub enum BaseType {
-    Module(AdtLink),               //An Adt imported From A Module
-    Native(NativeType)             //An Native base type
+    Sig(SigLink),               //A Sig imported From A Module
+    Data(DataLink),             //An Adt or Lit imported From A Module
 }
+
 
 //Represents a type construction
 #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Parsable, Serializable)]
@@ -138,7 +176,10 @@ pub struct FuncRef(pub u8);
 pub struct ErrorRef(pub u8);
 
 #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone, Debug, Parsable, Serializable)]
-pub struct AdtLink{pub module:ModRef, pub offset:u8}
+pub struct SigLink{pub module:ModRef, pub offset:u8}
+
+#[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone, Debug, Parsable, Serializable)]
+pub struct DataLink {pub module:ModRef, pub offset:u8}
 
 #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone, Parsable, Serializable)]
 pub struct CapLink{pub module:ModRef, pub offset:u8}
@@ -182,9 +223,11 @@ pub enum OpCode {
     Pack(TypeRef, Tag, Vec<ValueRef>),                  //Generates a value for a multi ctr mutli field type
     Invoke(FuncRef, Vec<ValueRef>),                     //Invokes a Function
     Try(Exp, Vec<(ErrorRef, Exp)>),                     //Executes a try block and on error reverts to execute the corresponding catch Block
-    ModuleIndex,                                        //A private constant index associated with each module (it returns the one of the current Module)
+    //ModuleIndex,                                        //A private constant index associated with each module (it returns the one of the current Module)
     Image(ValueRef),                                    //Produces the Image of the input withoutconsuming it
     ExtractImage(ValueRef),                             //Removes a layer from a nested Image: Image[Image[T]] => Image[T]
+    CreateSig(FuncRef, u8, Vec<ValueRef>),
+    InvokeSig(ValueRef, TypeRef, Vec<ValueRef>)
 }
 
 

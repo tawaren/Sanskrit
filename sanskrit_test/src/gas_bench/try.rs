@@ -19,23 +19,23 @@ fn build<'a>(a:&'a VirtualHeapArena, depth:usize, ret:u16) -> OpCode<'a> {
 fn build_throw<'a>(a:&'a VirtualHeapArena, depth:usize, num_catches:usize) -> OpCode<'a> {
     fn build_throw_inner<'a>(a:&'a VirtualHeapArena, depth:usize, num_catches:usize) -> OpCode<'a> {
         if depth == 1 {
-            OpCode::Let(a.alloc(Exp::Throw(Error::Native(NativeError::IndexError))).unwrap())
+            OpCode::Let(a.alloc(Exp::Throw(Error(0))).unwrap())
         } else {
             let nested = build_throw(a,depth-1, num_catches);
             let inner = a.copy_alloc_slice(&[nested]).unwrap();
             let mut catches = a.slice_builder(num_catches).unwrap();
             for c in 0..num_catches {
-                catches.push((Error::Custom(c as u16), a.alloc(Exp::Ret(SlicePtr::empty(),SlicePtr::empty())).unwrap()))
+                catches.push((Error(c as u16), a.alloc(Exp::Ret(SlicePtr::empty(),SlicePtr::empty())).unwrap()))
             }
 
             OpCode::Try(a.alloc(Exp::Ret(inner,SlicePtr::empty())).unwrap(), catches.finish())
         }
     }
 
-    let err = a.copy_alloc_slice(&[(Error::Native(NativeError::IndexError),a.alloc(Exp::Ret(SlicePtr::empty(),SlicePtr::empty())).unwrap())]).unwrap();
+    let err = a.copy_alloc_slice(&[(Error(0),a.alloc(Exp::Ret(SlicePtr::empty(),SlicePtr::empty())).unwrap())]).unwrap();
     
     if depth == 1 {
-        OpCode::Try(a.alloc(Exp::Throw(Error::Native(NativeError::IndexError))).unwrap(),err)
+        OpCode::Try(a.alloc(Exp::Throw(Error(0))).unwrap(),err)
     } else {
         let nested = build_throw_inner(a,depth-1, num_catches);
         let inner = a.copy_alloc_slice(&[nested]).unwrap();

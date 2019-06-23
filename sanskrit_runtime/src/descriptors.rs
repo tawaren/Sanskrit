@@ -28,7 +28,7 @@ pub fn build_type_from_desc<'a,'b,'h>(desc:&AdtDescriptor<'b>, applies:SlicePtr<
             caps = caps.intersect(cap_set);
             // check that no phantom type is Applied to non-phantom
             match **appl {
-                RuntimeType::Image { .. } | RuntimeType::Custom { .. } | RuntimeType::NativeType { .. } => {},
+                RuntimeType::Image { .. } | RuntimeType::Custom { .. } => {},
                 RuntimeType::NewType { .. } | RuntimeType::AccountType { .. } => return can_not_apply_phantom_to_physical_error(),
             }
         }
@@ -37,18 +37,11 @@ pub fn build_type_from_desc<'a,'b,'h>(desc:&AdtDescriptor<'b>, applies:SlicePtr<
     caps = caps.union(desc.base_caps.intersect(CapSet::non_recursive()));
 
     //build the runtime type
-    alloc.alloc(match desc.id {
-        AdtId::Custom(module, offset) => RuntimeType::Custom {
-            caps,
-            module,
-            offset,
-            applies
-        },
-        AdtId::Native(typ) => RuntimeType::NativeType {
-            caps,
-            typ,
-            applies
-        }
+    alloc.alloc(RuntimeType::Custom {
+        caps,
+        module: desc.id.module,
+        offset: desc.id.offset,
+        applies
     })
 }
 
@@ -57,7 +50,7 @@ pub fn build_type_from_desc<'a,'b,'h>(desc:&AdtDescriptor<'b>, applies:SlicePtr<
 pub fn pack_adt_from_desc<'a,'b,'h>(desc:&AdtDescriptor<'b>, applies:SlicePtr<'a,Ptr<'a,RuntimeType<'a>>>, Tag(t):Tag, params:&[ValueRef], is_borrow:bool, stack:&mut LinearScriptStack<'a,'h>, alloc:&'a VirtualHeapArena<'h> ) -> Result<()> {
 
     //endure that the type supports the create capability
-    if !desc.base_caps.contains(NativeCap::Create) {
+    if !desc.base_caps.contains(Capability::Create) {
         return capability_missing_error()
 
     }
@@ -138,23 +131,9 @@ pub fn unpack_adt_from_desc<'a,'b,'h>(desc:&AdtDescriptor<'b>, packed:ValueRef, 
     //extract the type param from the input type & check the input
     let applies = match **typ {
         RuntimeType::Custom { ref applies, module, offset,.. } => {
-            match desc.id {
-                //Ensure that the input and the descriptor match
-                AdtId::Custom(self_module, self_offset) => if self_module != module || self_offset != offset {
-                    return type_mismatch()
-                },
-                AdtId::Native(_) => return type_mismatch(),
-            }
-            applies
-        },
-
-        RuntimeType::NativeType { ref applies, typ,.. }  => {
-            match desc.id {
-                AdtId::Custom(_, _) => return type_mismatch(),
-                //Ensure that the input and the descriptor match
-                AdtId::Native(self_typ) =>  if self_typ != typ {
-                    return type_mismatch()
-                },
+            //Ensure that the input and the descriptor match
+            if desc.id.module != module || desc.id.offset != offset {
+                return type_mismatch()
             }
             applies
         },
@@ -163,12 +142,12 @@ pub fn unpack_adt_from_desc<'a,'b,'h>(desc:&AdtDescriptor<'b>, packed:ValueRef, 
 
     if is_borrow {
         //if borrowed it must be inspectable
-        if !desc.base_caps.contains(NativeCap::Inspect) {
+        if !desc.base_caps.contains(Capability::Inspect) {
             return capability_missing_error()
         }
     } else {
         //if not it must e consumable
-        if !desc.base_caps.contains(NativeCap::Consume) {
+        if !desc.base_caps.contains(Capability::Consume) {
             return  capability_missing_error()
         }
 
@@ -243,7 +222,7 @@ pub fn apply_fun_from_desc<'a, 'b, 'h>(desc:&FunctionDescriptor<'b>, applies:&[(
         if !is_phantom {
             // check that no phantom type is a Applied to non-phantom
             match **typ {
-                RuntimeType::Image { .. } | RuntimeType::Custom { .. } | RuntimeType::NativeType { .. } => {},
+                RuntimeType::Image { .. } | RuntimeType::Custom { .. } => {},
                 RuntimeType::NewType { .. } | RuntimeType::AccountType { .. } => return can_not_apply_phantom_to_physical_error(),
             }
         }

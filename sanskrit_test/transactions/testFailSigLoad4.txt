@@ -1,8 +1,8 @@
 signed(A,B) transaction{
-   a = lit 1:$u8;
-   b = pack SomeTypes.Z[$u8,A]#Ctr(a);
+   a = lit 1:IntU8.U8;
+   b = pack SomeTypes.Z[IntU8.U8,A]#Ctr(a);
    d = call IndexOps.ModIndex();
-   (r, s) = call SomeTypes.GenIndexedAt[SomeTypes.Z[$u8,A]](d,b);
+   (r, s) = call SomeTypes.GenIndexedAt[SomeTypes.Z[IntU8.U8,A]](d,b);
    store s;
 };
 
@@ -10,7 +10,7 @@ signed(A,B) transaction{
    a = call IndexOps.ModIndex();
    r = call SomeFunctions.GenRef(a);
    b = load r;
-   () = call Helpers.EnforceType[System.Entry[SomeTypes.Z[$u8,B]]](b);
+   () = call Helpers.EnforceType[System.Entry[SomeTypes.Z[IntU8.U8,B]]](b);
    (d0, i0) = unpack b:System.Entry#Ctr;
    d1 = unpack i0:SomeTypes.Z#Ctr;
 };

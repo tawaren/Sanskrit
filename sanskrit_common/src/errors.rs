@@ -620,3 +620,81 @@ pub fn borrow_order_violation<T>() -> Result<T> {
     pre_error();
     Err("Can not borrow from a later element".into())
 }
+
+#[cfg(not(feature = "string_errors"))]
+pub fn sigs_dont_have_ctrs_error<T>() -> Result<T>{
+    pre_error();
+    Err(50)
+}
+
+#[cfg(feature = "string_errors")]
+pub fn sigs_dont_have_ctrs_error<T>() -> Result<T>{
+    pre_error();
+    Err("Sigs do not have constructors".into())
+}
+
+#[cfg(not(feature = "string_errors"))]
+pub fn can_not_apply_non_local_error<T>() -> Result<T>{
+    pre_error();
+    Err(51)
+}
+
+#[cfg(feature = "string_errors")]
+pub fn can_not_apply_non_local_error<T>() -> Result<T>{
+    pre_error();
+    Err("Local Sig type parameters must be instantiated by local types".into())
+}
+
+#[cfg(not(feature = "string_errors"))]
+pub fn only_sig_types_have_fun_sigs_error<T>() -> Result<T>{
+    pre_error();
+    Err(52)
+}
+
+#[cfg(feature = "string_errors")]
+pub fn only_sig_types_have_fun_sigs_error<T>() -> Result<T>{
+    pre_error();
+    Err("Only sigs type do have function signatures".into())
+}
+
+#[cfg(not(feature = "string_errors"))]
+pub fn capture_order_violation<T>() -> Result<T> {
+    pre_error();
+    Err(53)
+}
+
+#[cfg(feature = "string_errors")]
+pub fn capture_order_violation<T>() -> Result<T> {
+    pre_error();
+    Err("Captures for implementations must be in the same order as in the parameter list".into())
+}
+
+#[cfg(not(feature = "string_errors"))]
+pub fn impl_does_not_exist_error<T>() -> Result<T>{
+    pre_error();
+    Err(54)
+}
+
+#[cfg(feature = "string_errors")]
+pub fn impl_does_not_exist_error<T>() -> Result<T>{
+    pre_error();
+    Err("Impl does not exist".into())
+}
+
+
+#[cfg(not(feature = "string_errors"))]
+pub fn system_mode_required<T>() -> Result<T>{
+    pre_error();
+    Err(55)
+}
+
+#[cfg(feature = "string_errors")]
+pub fn system_mode_required<T>() -> Result<T>{
+    pre_error();
+    Err("System mode required".into())
+}
+
+
+
+
+

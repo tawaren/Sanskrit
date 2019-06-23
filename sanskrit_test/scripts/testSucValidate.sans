@@ -4,14 +4,14 @@ module TestSucValidate {
     type <Embed> TestType2[A,B,C];
     type <Embed> TestType3[A];
     type Holder[A,B] {
-        A(.TestType2[B,A,$u8]);
+        A(.TestType2[B,A,IntU8.U8]);
         B(.TestType3[A]);
     };
 
     type <Embed> TestType4[A,phantom B];
     type Holder2[A,phantom B] {
         A(.TestType4[A,B]);
-        B(.TestType4[$u8,$u16]);
+        B(.TestType4[IntU8.U8,IntU16.U16]);
         C(.TestType4[A,A]);
     };
 
@@ -21,7 +21,7 @@ module TestSucValidate {
         B(.TestType5[C,C,C,D]);
         C(.TestType5[B,B,C,D]);
         D(.TestType5[A,B,C,D]);
-        P(.TestType5[$u8,$u16,C,D]);
+        P(.TestType5[IntU8.U8,IntU16.U16,C,D]);
     };
 
     type Holder4[<Embed> A,phantom B] {
@@ -70,7 +70,7 @@ module TestSucValidate {
 
     fun Caller[A,B]():() {
         () = call .TestFun[A]();
-        () = call .TestFun2[B,A,$u8]();
+        () = call .TestFun2[B,A,IntU8.U8]();
         return;
     };
 
@@ -89,7 +89,7 @@ module TestSucValidate {
     };
 
     fun Caller4():() {
-        () = call .TestFun3[$u8,$u8]();
+        () = call .TestFun3[IntU8.U8,IntU8.U8]();
         return;
     };
 
@@ -102,7 +102,7 @@ module TestSucValidate {
         () = call .TestFun4[C,C,C,D]();
         () = call .TestFun4[B,B,C,D]();
         () = call .TestFun4[A,B,C,D]();
-        () = call .TestFun4[$u8,$u16,C,D]();
+        () = call .TestFun4[IntU8.U8,IntU16.U16,C,D]();
         return;
     };
 

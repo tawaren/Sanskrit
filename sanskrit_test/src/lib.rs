@@ -18,7 +18,6 @@ extern crate wasmi;
 extern crate wasmer_runtime;
 
 pub mod script_test;
-pub mod standalone_wasm_test;
 pub mod linear_type_stack_test;
 pub mod transaction_test;
 #[cfg(test)]

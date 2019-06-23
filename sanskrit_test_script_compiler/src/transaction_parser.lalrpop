@@ -42,8 +42,6 @@ Type:Type = {
 Ref:Ref = {
     <name:Id> => Ref::This(name),
     <module:Id> "." <name:Id> => Ref::Module(Id(module.0.to_lowercase()),name),
-    "native" "." <name:Id> => Ref::Native(name),
-    "$" <name:Id> => Ref::Native(name),
     "!" <addr:Lit> => Ref::Account(addr),
     "#" <txt:Lit> "." <num:Lit> => Ref::Txt(txt,num),
 };

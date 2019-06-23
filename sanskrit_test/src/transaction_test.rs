@@ -23,7 +23,7 @@ mod tests {
         let comp_res = comp.extract_results();
         let s = BTreeMapStore::new();
         for (_,r) in comp_res.modules {
-            let res = deploy_module(&s, r)?;
+            let res = deploy_module(&s, r, true)?;
             compile_module(&s, res)?;
         }
         let mut heap = Heap::new(CONFIG.calc_heap_size(2),2.0);
@@ -63,7 +63,7 @@ mod tests {
         let comp_res = comp.extract_results();
         let s = BTreeMapStore::new();
         for (_, r) in &comp_res.modules {
-            let res = deploy_module(&s, r.clone()).unwrap();
+            let res = deploy_module(&s, r.clone(), true).unwrap();
             compile_module(&s, res).unwrap();
         }
         let mut heap = HeapContainer::new(CONFIG.calc_heap_size(2), 2.0);

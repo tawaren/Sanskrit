@@ -3,7 +3,6 @@ use utils::Crc;
 use sanskrit_common::capabilities::*;
 use alloc::collections::BTreeSet;
 use sanskrit_common::model::ValueRef;
-use native::base::is_native_literal;
 use alloc::vec::Vec;
 use sanskrit_common::model::*;
 
@@ -13,9 +12,9 @@ use sanskrit_common::model::*;
 
 //An error
 #[derive(Ord, PartialOrd, Eq, PartialEq)]
-pub enum ResolvedErr {
-    Import { offset:u8,  module:Rc<ModuleLink>},        //Module and offset of the imported erreor
-    Native { err: NativeError, }                        //Specific Native Error
+pub struct ResolvedErr {
+    pub offset:u8,
+    pub module:Rc<ModuleLink>
 }
 
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
@@ -33,18 +32,32 @@ pub enum ResolvedType {
     Generic { extended_caps: CapSet, caps:CapSet, offset:u8, is_phantom:bool },
     //An Image type capturing the information of another type
     Image { typ: Crc<ResolvedType> },
+    //An signature type (can be from same module if Module == This)
+    Sig { extended_caps: CapSet, caps: CapSet, base_caps:CapSet, module:Rc<ModuleLink> , offset:u8, applies: Vec<ResolvedApply>},
     //An imported type (can be from same module if Module == This)
-    Import { extended_caps: CapSet, caps: CapSet, base_caps:CapSet, module:Rc<ModuleLink> , offset:u8, applies: Vec<ResolvedApply>},
-    //A Native type
-    Native { extended_caps: CapSet, caps: CapSet, base_caps:CapSet, typ: NativeType, applies:Vec<ResolvedApply>}
+    Data { extended_caps: CapSet, caps: CapSet, base_caps:CapSet, module:Rc<ModuleLink> , offset:u8, applies: Vec<ResolvedApply>},
+    //An imported type (can be from same module if Module == This)
+    Lit { extended_caps: CapSet, caps: CapSet, base_caps:CapSet, module:Rc<ModuleLink> , offset:u8, size:u16, applies: Vec<ResolvedApply>},
+
 }
 
 //A function
-pub enum ResolvedFunction {
-    //An imported function (can be from same module if Module == This)
-    Import { module:Rc<ModuleLink> , offset:u8, applies: Vec<Crc<ResolvedType>> },
-    //A Native function
-    Native { typ: NativeFunc, applies:Vec<Crc<ResolvedType>> }
+pub struct ResolvedFunction {
+    pub module:Rc<ModuleLink>,
+    pub offset:u8,
+    pub applies: Vec<Crc<ResolvedType>>
+}
+
+//Parameters of a Signature
+pub struct ResolvedCapture {
+    pub typ: Crc<ResolvedType>,
+    pub pos: u8,
+}
+
+//A function impl
+pub struct ResolvedImpl {
+    pub sig_type:Crc<ResolvedType>,              //The sig type
+    pub capture_types:Vec<Rc<ResolvedCapture>>       //The capture types
 }
 
 //A function signature (retrieved from applying generics to a function)
@@ -78,8 +91,9 @@ impl Crc<ResolvedType> {
     pub fn get_extended_caps(&self) -> CapSet {
         match **self {
             ResolvedType::Generic { extended_caps, .. }
-            | ResolvedType::Native { extended_caps, .. }
-            | ResolvedType::Import { extended_caps, .. } => extended_caps,
+            | ResolvedType::Sig { extended_caps, .. }
+            | ResolvedType::Lit { extended_caps, .. }
+            | ResolvedType::Data { extended_caps, .. } => extended_caps,
             ResolvedType::Image { .. } => CapSet::open(),
         }
     }
@@ -93,8 +107,9 @@ impl Crc<ResolvedType> {
     pub fn get_caps(&self) -> CapSet {
         match **self {
             ResolvedType::Generic { caps, .. }
-            | ResolvedType::Native { caps, .. }
-            | ResolvedType::Import { caps, .. } => caps,
+            | ResolvedType::Sig { caps, .. }
+            | ResolvedType::Lit { caps, .. }
+            | ResolvedType::Data { caps, .. } => caps,
             ResolvedType::Image { .. } => CapSet::open()
         }
     }
@@ -102,19 +117,21 @@ impl Crc<ResolvedType> {
     //checks if this type is a literal
     pub fn is_literal(&self) -> bool {
         match **self {
-            ResolvedType::Image { .. } | ResolvedType::Generic { .. } | ResolvedType::Import { .. } => false,
-            ResolvedType::Native { typ, .. } => is_native_literal(typ),
+            ResolvedType::Image { .. } | ResolvedType::Generic { .. } | ResolvedType::Sig { .. } | ResolvedType::Data { .. }=> false,
+            ResolvedType::Lit {  .. }  => true,
         }
     }
 
     //checks if this type is local (from current module)
     pub fn is_local(&self) -> bool {
         match **self {
-            ResolvedType::Import { ref module, .. } => match **module {
+            ResolvedType::Sig { ref module, .. }
+            | ResolvedType::Lit { ref module, .. }
+            | ResolvedType::Data { ref module, .. } => match **module {
                 ModuleLink::This(_) => true,
                 _ => false
             },
-            ResolvedType::Image { .. } |  ResolvedType::Native { .. } | ResolvedType::Generic { .. }  => false,
+            ResolvedType::Image { .. } | ResolvedType::Generic { .. }  => false,
         }
     }
 }

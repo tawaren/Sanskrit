@@ -12,8 +12,12 @@ pub struct Module {
 
 pub enum Component {
     Adt{caps:CapSet, name:Id, generics:Vec<Generic>, ctrs:Vec<Case>},
+    Lit{caps:CapSet, name:Id, generics:Vec<Generic>, size:u16},
     Err{name:Id},
     Fun{name:Id, vis:Visibility, risks:Vec<Ref>, generics:Vec<Generic>, params:Vec<Var>, returns:Vec<Ret> ,code:Block},
+    ExtAdt{id:u16, caps:CapSet, name:Id, generics:Vec<Generic>},
+    ExtLit{id:u16, caps:CapSet, name:Id, generics:Vec<Generic>, size:u16},
+    ExtFun{id:u16, name:Id, vis:Visibility, risks:Vec<Ref>, generics:Vec<Generic>, params:Vec<Var>, returns:Vec<Ret>},
 }
 
 
@@ -85,7 +89,6 @@ pub enum Block{
 #[derive(Eq, PartialEq, Hash, Clone)]
 pub enum Ref{
     Generic(Id),
-    Native(Id),
     This(Id),
     Module(Id,Id),
     Txt(Lit,Lit),
@@ -109,7 +112,8 @@ pub enum OpCode {
     Pack(Id, Type, Id, Vec<Id>, bool),
     Call(Vec<Id>, Ref, Vec<Type>, Vec<Id>),
     Try(Vec<Id>, Box<Block>, Vec<Catch>),
-    ModuleIndex(Id),
+    //ModuleIndex(Id),
+    //todo: the sig stuff
 }
 
 
@@ -128,18 +132,18 @@ impl Module {
         let mut index = HashMap::new();
         let mut funs = 0;
         let mut errs = 0;
-        let mut adts = 0;
+        let mut types = 0;
         for (idx,c) in self.components.iter().enumerate() {
              match *c {
-                 Component::Adt { .. } => {
-                     index.insert(c.get_id(), Index{ comp_index: idx, elem_index: adts });
-                     adts+=1;
+                 Component::Adt { .. } | Component::ExtAdt {..} | Component::ExtLit {..} | Component::Lit {..}=> {
+                     index.insert(c.get_id(), Index{ comp_index: idx, elem_index: types });
+                     types+=1;
                  },
                  Component::Err { .. } => {
                      index.insert(c.get_id(), Index{ comp_index: idx, elem_index: errs });
                      errs+=1;
                  },
-                 Component::Fun { .. } => {
+                 Component::Fun { .. } | Component::ExtFun { .. }=> {
                      index.insert(c.get_id(), Index{ comp_index: idx, elem_index: funs });
                      funs+=1;
                  },
@@ -153,8 +157,12 @@ impl Component {
     fn get_id(&self) -> Id {
         match *self {
             Component::Adt { ref name, .. } |
+            Component::ExtAdt { ref name, .. } |
+            Component::Lit { ref name, .. } |
+            Component::ExtLit { ref name, .. } |
             Component::Err { ref name, .. } |
-            Component::Fun { ref name, .. } => name.clone()
+            Component::Fun { ref name, .. } |
+            Component::ExtFun { ref name, .. } => name.clone()
         }
     }
 
@@ -178,6 +186,17 @@ impl Component {
                    p.typ.collect_module_dependencies(aggr);
                }
                code.collect_module_dependencies(aggr);
+           },
+           Component::ExtFun { ref risks, ref params, ref returns, .. } => {
+               for r in risks {
+                   r.collect_module_dependencies(aggr);
+               }
+               for p in params {
+                   p.typ.collect_module_dependencies(aggr);
+               }
+               for p in returns {
+                   p.typ.collect_module_dependencies(aggr);
+               }
            },
            _ => {}
        }

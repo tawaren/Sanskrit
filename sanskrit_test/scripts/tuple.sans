@@ -1,0 +1,5 @@
+module Tuple {
+    type <Copy,Drop,Persist,Create,Consume,Inspect,Embed> Tuple2[<Embed> T,<Embed> Y]{
+             Ctr(T,Y);
+    };
+}

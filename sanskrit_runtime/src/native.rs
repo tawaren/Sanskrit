@@ -1,12 +1,11 @@
 use sanskrit_common::errors::*;
 use sanskrit_common::model::*;
 use sanskrit_common::capabilities::CapSet;
-use model::NativeAdtType;
 use model::*;
 use sanskrit_common::arena::*;
 use sanskrit_interpreter::model::*;
 use descriptors::build_type_from_desc;
-
+/*
 //lit types do not have generics
 fn resolve_runtime_leaf_type<'a,'h>(typ: NativeType, applies:SlicePtr<'a,Ptr<'a,RuntimeType<'a>>>, alloc:&'a VirtualHeapArena<'h>) ->  Result<Ptr<'a,RuntimeType<'a>>>{
     //build the type (consider generics where required)
@@ -71,7 +70,7 @@ impl NativeAdtType {
         Ok(match self {
             NativeAdtType::Tuple(apply_size) => AdtDescriptor {
                 //A Tuple has non-phatnom generics (one per field)
-                generics: alloc.repeated_slice(TypeTypeParam(false, CapSet::from_cap(NativeCap::Embed)),apply_size as usize)?,
+                generics: alloc.repeated_slice(TypeTypeParam(false, CapSet::from_cap(Capability::Embed)), apply_size as usize)?,
                 //A tuple has 1 ctr with 1 field per generic
                 constructors: alloc.copy_alloc_slice(&[alloc.iter_alloc_slice((0..apply_size).map(|i|TypeBuilder::Ref(TypeInputRef(i as u8))))?])?,
                 base_caps: NativeType::Tuple(apply_size).base_caps(),
@@ -80,7 +79,7 @@ impl NativeAdtType {
 
             NativeAdtType::Alternative(apply_size)  => AdtDescriptor {
                 //Alternatives have 1 generic pre ctr
-                generics: alloc.repeated_slice(TypeTypeParam(false, CapSet::from_cap(NativeCap::Embed)), apply_size as usize)?,
+                generics: alloc.repeated_slice(TypeTypeParam(false, CapSet::from_cap(Capability::Embed)), apply_size as usize)?,
                 //Alternatives have 1 ctr per generic
                 constructors: alloc.iter_result_alloc_slice((0..apply_size).map(|i|alloc.copy_alloc_slice(&[TypeBuilder::Ref(TypeInputRef(i as u8))])))?,
                 base_caps: NativeType::Alternative(apply_size).base_caps(),
@@ -101,7 +100,9 @@ impl NativeAdtType {
 
 
 pub fn lit_typ<'a,'h>(desc:LitDesc, size:u16, alloc:&'a VirtualHeapArena<'h>) -> Result<Ptr<'a,RuntimeType<'a>>>{
-    match desc {
+    unimplemented!();
+    //Todo: adapt to the correct targets
+    /*match desc {
         LitDesc::Id => {
             if size != 20 {return literal_data_error()}
             resolve_runtime_leaf_type(NativeType::PublicId, SlicePtr::empty(), alloc)
@@ -147,5 +148,5 @@ pub fn lit_typ<'a,'h>(desc:LitDesc, size:u16, alloc:&'a VirtualHeapArena<'h>) ->
             if size != 16 {return literal_data_error()}
             resolve_runtime_leaf_type(NativeType::UInt(16), SlicePtr::empty(), alloc)
         },
-    }
-}
+    }*/
+}*/

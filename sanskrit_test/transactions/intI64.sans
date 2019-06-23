@@ -1,0 +1,20 @@
+module IntI64 {
+   external(1) lit(8) <Copy,Drop,Persist,Create,Embed> I64;
+   
+   external(2) public fun hash(num:.I64):(res:Data.Data20);
+
+   external(1) public fun eq(num1:.I64, num2:.I64):(res:Bool.Bool);
+   external(4) public fun lt(num1:.I64, num2:.I64):(res:Bool.Bool);
+   external(5) public fun lte(num1:.I64, num2:.I64):(res:Bool.Bool);
+   external(6) public fun gt(num1:.I64, num2:.I64):(res:Bool.Bool);
+   external(7) public fun gte(num1:.I64, num2:.I64):(res:Bool.Bool);
+
+   external(8) public risky<Errors.Numeric> fun add(num1:.I64, num2:.I64):(res:.I64);
+   external(9) public risky<Errors.Numeric> fun sub(num1:.I64, num2:.I64):(res:.I64);
+   external(10) public risky<Errors.Numeric> fun div(num1:.I64, num2:.I64):(res:.I64);
+   external(11) public risky<Errors.Numeric> fun mul(num1:.I64, num2:.I64):(res:.I64);
+
+   external(12) public fun toData(num:.I64):(res:Data.Data8);
+
+
+}

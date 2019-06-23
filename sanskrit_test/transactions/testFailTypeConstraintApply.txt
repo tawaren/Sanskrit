@@ -1,3 +1,3 @@
 signed(A) transaction{
-     a = pack SomeTypes.NeedsCopy[SomeTypes.NoCopy[$u8]]#Ctr();
+     a = pack SomeTypes.NeedsCopy[SomeTypes.NoCopy[IntU8.U8]]#Ctr();
 };

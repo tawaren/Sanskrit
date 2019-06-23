@@ -1,109 +1,109 @@
 module Math {
 
-    public risky<$NumericError> fun Add(a:$u8,b:$u8):(c:$u8) {
-        c = call $Add[$u8](a,b);
+    public risky<Errors.Numeric> fun Add(a:IntU8.U8,b:IntU8.U8):(c:IntU8.U8) {
+        c = call IntU8.add(a,b);
         return c;
     };
 
-    public risky<$NumericError> fun Add2(a:$i128,b:$i128):(c:$i128) {
-        c = call $Add[$i128](a,b);
+    public risky<Errors.Numeric> fun Add2(a:IntI128.I128,b:IntI128.I128):(c:IntI128.I128) {
+        c = call IntI128.add(a,b);
         return c;
     };
 
-    public fun ErrorAdd(a:$u8,b:$u8):(r:$bool) {
+    public fun ErrorAdd(a:IntU8.U8,b:IntU8.U8):(r:Bool.Bool) {
         r = try {
-            c = call $Add[$u8](a,b);
-            r = pack $bool#false();
+            c = call IntU8.add(a,b);
+            r = pack Bool.Bool#False();
             return r;
         } catch {
-            $NumericError => {
-                r = pack $bool#true();
+            Errors.Numeric => {
+                r = pack Bool.Bool#True();
                 return r;
             };
         };
         return r;
     };
 
-    public risky<$NumericError> fun Sub(a:$u8,b:$u8):(c:$u8) {
-        c = call $Sub[$u8](a,b);
+    public risky<Errors.Numeric> fun Sub(a:IntU8.U8,b:IntU8.U8):(c:IntU8.U8) {
+        c = call IntU8.sub(a,b);
         return c;
     };
 
-    public risky<$NumericError> fun Sub2(a:$i128,b:$i128):(c:$i128) {
-        c = call $Sub[$i128](a,b);
+    public risky<Errors.Numeric> fun Sub2(a:IntI128.I128,b:IntI128.I128):(c:IntI128.I128) {
+        c = call IntI128.sub(a,b);
         return c;
     };
 
-    public fun ErrorSub(a:$u8,b:$u8):(r:$bool) {
+    public fun ErrorSub(a:IntU8.U8,b:IntU8.U8):(r:Bool.Bool) {
         r = try {
-            c = call $Sub[$u8](a,b);
-            r = pack $bool#false();
+            c = call IntU8.sub(a,b);
+            r = pack Bool.Bool#False();
             return r;
         } catch {
-            $NumericError => {
-                r = pack $bool#true();
+            Errors.Numeric => {
+                r = pack Bool.Bool#True();
                 return r;
             };
         };
         return r;
     };
 
-    public risky<$NumericError> fun Mul(a:$u8,b:$u8):(c:$u8) {
-        c = call $Mul[$u8](a,b);
+    public risky<Errors.Numeric> fun Mul(a:IntU8.U8,b:IntU8.U8):(c:IntU8.U8) {
+        c = call IntU8.mul(a,b);
         return c;
     };
 
-    public risky<$NumericError> fun Mul2(a:$i128,b:$i128):(c:$i128) {
-        c = call $Mul[$i128](a,b);
+    public risky<Errors.Numeric> fun Mul2(a:IntI128.I128,b:IntI128.I128):(c:IntI128.I128) {
+        c = call IntI128.mul(a,b);
         return c;
     };
 
-    public fun ErrorMul(a:$u8,b:$u8):(r:$bool) {
+    public fun ErrorMul(a:IntU8.U8,b:IntU8.U8):(r:Bool.Bool) {
         r = try {
-            c = call $Mul[$u8](a,b);
-            r = pack $bool#false();
+            c = call IntU8.mul(a,b);
+            r = pack Bool.Bool#False();
             return r;
         } catch {
-            $NumericError => {
-                r = pack $bool#true();
+            Errors.Numeric => {
+                r = pack Bool.Bool#True();
                 return r;
             };
         };
         return r;
     };
 
-    public risky<$NumericError> fun Div(a:$u8,b:$u8):(c:$u8) {
-        c = call $Div[$u8](a,b);
+    public risky<Errors.Numeric> fun Div(a:IntU8.U8,b:IntU8.U8):(c:IntU8.U8) {
+        c = call IntU8.div(a,b);
         return c;
     };
 
-    public risky<$NumericError> fun Div2(a:$i128,b:$i128):(c:$i128) {
-        c = call $Div[$i128](a,b);
+    public risky<Errors.Numeric> fun Div2(a:IntI128.I128,b:IntI128.I128):(c:IntI128.I128) {
+        c = call IntI128.div(a,b);
         return c;
     };
 
-    public fun ErrorDiv(a:$u8,b:$u8):(r:$bool) {
+    public fun ErrorDiv(a:IntU8.U8,b:IntU8.U8):(r:Bool.Bool) {
         r = try {
-            c = call $Div[$u8](a,b);
-            r = pack $bool#false();
+            c = call IntU8.div(a,b);
+            r = pack Bool.Bool#False();
             return r;
         } catch {
-            $NumericError => {
-                r = pack $bool#true();
+            Errors.Numeric => {
+                r = pack Bool.Bool#True();
                 return r;
             };
         };
         return r;
     };
 
-    public fun ErrorDiv2(a:$i8,b:$i8):(r:$bool) {
+    public fun ErrorDiv2(a:IntI8.I8,b:IntI8.I8):(r:Bool.Bool) {
         r = try {
-            c = call $Div[$i8](a,b);
-            r = pack $bool#false();
+            c = call IntI8.div(a,b);
+            r = pack Bool.Bool#False();
             return r;
         } catch {
-            $NumericError => {
-                r = pack $bool#true();
+            Errors.Numeric => {
+                r = pack Bool.Bool#True();
                 return r;
             };
         };

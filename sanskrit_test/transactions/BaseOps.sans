@@ -9,55 +9,55 @@ module BaseOps {
    };
 
    type <Copy,Drop,Embed> Test[<Embed> A, <Embed> B] {
-       Ctr1($alt2[A,B]);
-       Ctr2($tuple2[A,B]);
+       Ctr1(Alt.Alt2[A,B]);
+       Ctr2(Tuple.Tuple2[A,B]);
        Ctr3(A);
        Ctr4(B);
        Ctr5(.Wrapper[A]);
    };
 
-   fun Extract(consume t:.Test[$u8,.Wrapper[$u8]]):(a:$u8) {
-        r = switch t:.Test[$u8,.Wrapper[$u8]] {
+   fun Extract(consume t:.Test[IntU8.U8,.Wrapper[IntU8.U8]]):(a:IntU8.U8) {
+        r = switch t:.Test[IntU8.U8,.Wrapper[IntU8.U8]] {
              Ctr1(alt) => {
-                r = switch alt:$alt2[$u8,.Wrapper[$u8]]  {
+                r = switch alt:Alt.Alt2[IntU8.U8,.Wrapper[IntU8.U8]]  {
                     first(r) => {
                         return r;
                     };
                     second(w) => {
-                        r = unpack w:.Wrapper[$u8];
+                        r = unpack w:.Wrapper[IntU8.U8];
                         return r;
                     };
                 };
                 return r;
              };
              Ctr2(tup) => {
-                r = field[0] tup:$tuple2[$u8,.Wrapper[$u8]];
+                r = field[0] tup:Tuple.Tuple2[IntU8.U8,.Wrapper[IntU8.U8]];
                 return r;
              };
              Ctr3(r) => {
                 return r;
              };
              Ctr4(w) => {
-                r = unpack w:.Wrapper[$u8];
+                r = unpack w:.Wrapper[IntU8.U8];
                 return r;
              };
              Ctr5(w) => {
-                r = field[0] w:.Wrapper[$u8];
+                r = field[0] w:.Wrapper[IntU8.U8];
                 return r;
              };
         };
         return r;
    };
 
-   fun BorrowOut(t:.Test[$u8,.Wrapper[$u8]]):(borrowed(t) a:$u8) {
-        r = &switch t:.Test[$u8,.Wrapper[$u8]] {
+   fun BorrowOut(t:.Test[IntU8.U8,.Wrapper[IntU8.U8]]):(borrowed(t) a:IntU8.U8) {
+        r = &switch t:.Test[IntU8.U8,.Wrapper[IntU8.U8]] {
              Ctr1(alt) => {
-                r = &switch alt:$alt2[$u8,.Wrapper[$u8]]  {
+                r = &switch alt:Alt.Alt2[IntU8.U8,.Wrapper[IntU8.U8]]  {
                     first(r) => {
                         return r;
                     };
                     second(w) => {
-                        r = &unpack w:.Wrapper[$u8];
+                        r = &unpack w:.Wrapper[IntU8.U8];
                         discard w borrowedBy r;
                         return r;
                     };
@@ -66,7 +66,7 @@ module BaseOps {
                 return r;
              };
              Ctr2(tup) => {
-                r = &field[0] tup:$tuple2[$u8,.Wrapper[$u8]];
+                r = &field[0] tup:Tuple.Tuple2[IntU8.U8,.Wrapper[IntU8.U8]];
                 discard tup borrowedBy r;
                 return r;
              };
@@ -74,12 +74,12 @@ module BaseOps {
                 return r;
              };
              Ctr4(w) => {
-                r = &unpack w:.Wrapper[$u8];
+                r = &unpack w:.Wrapper[IntU8.U8];
                 discard w borrowedBy r;
                 return r;
              };
              Ctr5(w) => {
-                r = &field[0] w:.Wrapper[$u8];
+                r = &field[0] w:.Wrapper[IntU8.U8];
                 discard w borrowedBy r;
                 return r;
              };
@@ -89,25 +89,25 @@ module BaseOps {
 
 
    public risky<Helpers.ValidationError> fun CreateStuff():() {
-        a = lit 1:$u8;
+        a = lit 1:IntU8.U8;
         aa = copy a;
-        w = pack .Wrapper[$u8]#Ctr(aa);
+        w = pack .Wrapper[IntU8.U8]#Ctr(aa);
         c11 = copy a;
-        a11 = pack $alt2[$u8,.Wrapper[$u8]]#first(c11);
-        t11 = pack .Test[$u8,.Wrapper[$u8]]#Ctr1(a11);
+        a11 = pack Alt.Alt2[IntU8.U8,.Wrapper[IntU8.U8]]#first(c11);
+        t11 = pack .Test[IntU8.U8,.Wrapper[IntU8.U8]]#Ctr1(a11);
         c12 = copy w;
-        a12 = pack $alt2[$u8,.Wrapper[$u8]]#second(c12);
-        t12 = pack .Test[$u8,.Wrapper[$u8]]#Ctr1(a12);
+        a12 = pack Alt.Alt2[IntU8.U8,.Wrapper[IntU8.U8]]#second(c12);
+        t12 = pack .Test[IntU8.U8,.Wrapper[IntU8.U8]]#Ctr1(a12);
         c21 = copy a;
         c22 = copy w;
-        a2 = pack $tuple2[$u8,.Wrapper[$u8]]#tuple(c21,c22);
-        t2 = pack .Test[$u8,.Wrapper[$u8]]#Ctr2(a2);
+        a2 = pack Tuple.Tuple2[IntU8.U8,.Wrapper[IntU8.U8]]#tuple(c21,c22);
+        t2 = pack .Test[IntU8.U8,.Wrapper[IntU8.U8]]#Ctr2(a2);
         a3 = copy a;
-        t3 = pack .Test[$u8,.Wrapper[$u8]]#Ctr3(a3);
+        t3 = pack .Test[IntU8.U8,.Wrapper[IntU8.U8]]#Ctr3(a3);
         a4 = copy w;
-        t4 = pack .Test[$u8,.Wrapper[$u8]]#Ctr4(a4);
+        t4 = pack .Test[IntU8.U8,.Wrapper[IntU8.U8]]#Ctr4(a4);
         a5 = copy w;
-        t5 = pack .Test[$u8,.Wrapper[$u8]]#Ctr5(a5);
+        t5 = pack .Test[IntU8.U8,.Wrapper[IntU8.U8]]#Ctr5(a5);
         br11 = call .BorrowOut(t11);
         br12 = call .BorrowOut(t12);
         br2 = call .BorrowOut(t2);
@@ -137,25 +137,25 @@ module BaseOps {
    };
 
     public risky<Helpers.ValidationError> fun CreateBorrowedStuff():() {
-       a = lit 1:$u8;
+       a = lit 1:IntU8.U8;
        aa = copy a;
-       w = &pack .Wrapper[$u8]#Ctr(aa);
+       w = &pack .Wrapper[IntU8.U8]#Ctr(aa);
        c11 = copy a;
-       a11 = &pack $alt2[$u8,.Wrapper[$u8]]#first(c11);
-       t11 = &pack .Test[$u8,.Wrapper[$u8]]#Ctr1(a11);
+       a11 = &pack Alt.Alt2[IntU8.U8,.Wrapper[IntU8.U8]]#first(c11);
+       t11 = &pack .Test[IntU8.U8,.Wrapper[IntU8.U8]]#Ctr1(a11);
        c12 = copy w;
-       a12 = &pack $alt2[$u8,.Wrapper[$u8]]#second(c12);
-       t12 = &pack .Test[$u8,.Wrapper[$u8]]#Ctr1(a12);
+       a12 = &pack Alt.Alt2[IntU8.U8,.Wrapper[IntU8.U8]]#second(c12);
+       t12 = &pack .Test[IntU8.U8,.Wrapper[IntU8.U8]]#Ctr1(a12);
        c21 = copy a;
        c22 = copy w;
-       a2 = &pack $tuple2[$u8,.Wrapper[$u8]]#tuple(c21,c22);
-       t2 = &pack .Test[$u8,.Wrapper[$u8]]#Ctr2(a2);
+       a2 = &pack Tuple.Tuple2[IntU8.U8,.Wrapper[IntU8.U8]]#tuple(c21,c22);
+       t2 = &pack .Test[IntU8.U8,.Wrapper[IntU8.U8]]#Ctr2(a2);
        a3 = copy a;
-       t3 = &pack .Test[$u8,.Wrapper[$u8]]#Ctr3(a3);
+       t3 = &pack .Test[IntU8.U8,.Wrapper[IntU8.U8]]#Ctr3(a3);
        a4 = copy w;
-       t4 = &pack .Test[$u8,.Wrapper[$u8]]#Ctr4(a4);
+       t4 = &pack .Test[IntU8.U8,.Wrapper[IntU8.U8]]#Ctr4(a4);
        a5 = copy w;
-       t5 = &pack .Test[$u8,.Wrapper[$u8]]#Ctr5(a5);
+       t5 = &pack .Test[IntU8.U8,.Wrapper[IntU8.U8]]#Ctr5(a5);
        br11 = call .BorrowOut(t11);
        br12 = call .BorrowOut(t12);
        br2 = call .BorrowOut(t2);

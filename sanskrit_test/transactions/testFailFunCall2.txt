@@ -1,5 +1,5 @@
 signed(A) transaction{
-     a = lit 1:$u8;
-     b = lit 1:$u8;
-     c = call SomeFunctions.Identity[$u8](a,b);
+     a = lit 1:IntU8.U8;
+     b = lit 1:IntU8.U8;
+     c = call SomeFunctions.Identity[IntU8.U8](a,b);
 };

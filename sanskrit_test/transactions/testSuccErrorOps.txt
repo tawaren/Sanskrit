@@ -7,41 +7,41 @@ signed(A) transaction{
 signed(A) transaction{
    a = pack ErrorOps.ErrSwitch#One();
    c = call ErrorOps.CatchMany(a);
-   c2 = lit 1:$u8;
+   c2 = lit 1:IntU8.U8;
    () = call Helpers.AssertEqU8(c,c2);
 };
 
 signed(A) transaction{
    a = pack ErrorOps.ErrSwitch#Two();
    c = call ErrorOps.CatchMany(a);
-   c2 = lit 2:$u8;
+   c2 = lit 2:IntU8.U8;
    () = call Helpers.AssertEqU8(c,c2);
 };
 
 signed(A) transaction{
    a = pack ErrorOps.ErrSwitch#Three();
    c = call ErrorOps.CatchMany(a);
-   c2 = lit 3:$u8;
+   c2 = lit 3:IntU8.U8;
    () = call Helpers.AssertEqU8(c,c2);
 };
 
 signed(A) transaction{
    a = pack ErrorOps.ErrSwitch#One();
    c = call ErrorOps.CatchMany2(a);
-   c2 = lit 1:$u8;
+   c2 = lit 1:IntU8.U8;
    () = call Helpers.AssertEqU8(c,c2);
 };
 
 signed(A) transaction{
    a = pack ErrorOps.ErrSwitch#Two();
    c = call ErrorOps.CatchMany2(a);
-   c2 = lit 2:$u8;
+   c2 = lit 2:IntU8.U8;
    () = call Helpers.AssertEqU8(c,c2);
 };
 
 signed(A) transaction{
    a = pack ErrorOps.ErrSwitch#Three();
    c = call ErrorOps.CatchMany2(a);
-   c2 = lit 3:$u8;
+   c2 = lit 3:IntU8.U8;
    () = call Helpers.AssertEqU8(c,c2);
 };

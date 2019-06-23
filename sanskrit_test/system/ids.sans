@@ -1,0 +1,41 @@
+module Ids {
+    lit(20) <Copy,Drop,Persist,Embed> PrivateId;
+    lit(20) <Copy,Drop,Persist,Create,Embed> PublicId;
+
+    external(0) public fun privateToPublic(priv:.PrivateId):(pub:.PublicId);
+    external(0) public fun dataToPublic(data:Data.Data20):(pub:.PublicId);
+    external(0) public fun privateToData(priv:.PrivateId):(data:Data.Data20);
+    external(0) public fun publicToData(priv:.PublicId):(data:Data.Data20);
+
+    external(1) public fun eqPub(data1:.PublicId, data2:.PublicId):(res:Bool.Bool);
+    external(1) public fun eqPriv(data1:.PrivateId, data2:.PrivateId):(res:Bool.Bool);
+
+    external(3) public fun derivePrivateIdPrivate(priv:.PrivateId, priv2:.PrivateId):(priv:.PrivateId);
+    external(3) public fun derivePrivateIdPublic(priv:.PrivateId, pub:.PublicId):(priv:.PrivateId);
+    external(3) public fun derivePrivateId1(priv:.PrivateId, data:Data.Data1):(priv:.PrivateId);
+    external(3) public fun derivePrivateId2(priv:.PrivateId, data:Data.Data2):(priv:.PrivateId);
+    external(3) public fun derivePrivateId4(priv:.PrivateId, data:Data.Data4):(priv:.PrivateId);
+    external(3) public fun derivePrivateId8(priv:.PrivateId, data:Data.Data8):(priv:.PrivateId);
+    external(3) public fun derivePrivateId12(priv:.PrivateId, data:Data.Data12):(priv:.PrivateId);
+    external(3) public fun derivePrivateId16(priv:.PrivateId, data:Data.Data16):(priv:.PrivateId);
+    external(3) public fun derivePrivateId20(priv:.PrivateId, data:Data.Data20):(priv:.PrivateId);
+    external(3) public fun derivePrivateId24(priv:.PrivateId, data:Data.Data24):(priv:.PrivateId);
+    external(3) public fun derivePrivateId28(priv:.PrivateId, data:Data.Data28):(priv:.PrivateId);
+    external(3) public fun derivePrivateId32(priv:.PrivateId, data:Data.Data32):(priv:.PrivateId);
+
+    external(3) public fun derivePublicIdPrivate(pup:.PublicId, priv:.PrivateId):(pub:.PublicId);
+    external(3) public fun derivePublicIdPublic(pub:.PublicId, pub2:.PublicId):(pub:.PublicId);
+    external(3) public fun derivePublicId1(pub:.PublicId, data:Data.Data1):(pub:.PublicId);
+    external(3) public fun derivePublicId2(pub:.PublicId, data:Data.Data2):(pub:.PublicId);
+    external(3) public fun derivePublicId4(pub:.PublicId, data:Data.Data4):(pub:.PublicId);
+    external(3) public fun derivePublicId8(pub:.PublicId, data:Data.Data8):(pub:.PublicId);
+    external(3) public fun derivePublicId12(pub:.PublicId, data:Data.Data12):(pub:.PublicId);
+    external(3) public fun derivePublicId16(pub:.PublicId, data:Data.Data16):(pub:.PublicId);
+    external(3) public fun derivePublicId20(pub:.PublicId, data:Data.Data20):(pub:.PublicId);
+    external(3) public fun derivePublicId24(pub:.PublicId, data:Data.Data24):(pub:.PublicId);
+    external(3) public fun derivePublicId28(pub:.PublicId, data:Data.Data28):(pub:.PublicId);
+    external(3) public fun derivePublicId32(pub:.PublicId, data:Data.Data32):(pub:.PublicId);
+
+    external(13) public fun moduleId():(pub:.PrivateId);
+
+}

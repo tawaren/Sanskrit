@@ -6,10 +6,7 @@ use sanskrit_common::capabilities::CapSet;
 
 //A type to represent an error in the interpreter
 #[derive(Eq, PartialEq, Copy, Clone, Debug, Parsable, Serializable, VirtualSize)]
-pub enum Error{
-    Native(NativeError),
-    Custom(u16)             //is shortened and mapped to prevent having Module Hashes everywhere
-}
+pub struct Error(pub u16);
 
 //A Block
 #[derive(Copy, Clone, Debug, Parsable, Serializable, VirtualSize)]
@@ -38,7 +35,8 @@ pub enum LitDesc {
 
 #[derive(Copy, Clone, Debug, Parsable, Serializable, VirtualSize)]
 pub enum OpCode<#[AllocLifetime] 'b> {
-    Lit(SlicePtr<'b,u8>, LitDesc),                                  //A opcode that produces a literal
+    Lit(SlicePtr<'b,u8>),                                           //A opcode that produces a literal
+    SpecialLit(SlicePtr<'b,u8>, LitDesc),                           //An opcode that produces an external literal
     Let(Ptr<'b, Exp<'b>>),                                          //A Subsope that computes some values and returns them (intermidiary values are removed)
     Unpack(ValueRef),                                               //Consumes a value to produce its fields (single Ctr only) (Needs Consume or Inspect Cap)
     Switch(ValueRef, SlicePtr<'b,Ptr<'b, Exp<'b>>>),                //Branches on a type that has multiple ctrs where each branch corresponds to 1 Ctr (Does an implicit Unpack)
@@ -57,16 +55,12 @@ pub enum OpCode<#[AllocLifetime] 'b> {
     Mul(ValueRef,ValueRef),                                         //Does an arithmetic multiplication of two ints (throws on under or overflow)
     Div(ValueRef,ValueRef),                                         //Does an arithmetic dividation of two ints (throws on a division by zero)
     Eq(ValueRef,ValueRef),                                          //Compares two values for equality
-    Hash(ValueRef),                                                 //Calculates the hash of a value
-    PlainHash(ValueRef),                                            //Calculates a plain hash for a data input (not structurally encoded)
+    Hash(ValueRef),                                                 //Calculates a plain hash for a data input (not structurally encoded)
     Lt(ValueRef,ValueRef),                                          //Compares two values to decide if one is less than the other
     Gt(ValueRef,ValueRef),                                          //Compares two values to decide if one is greater than the other
     Lte(ValueRef,ValueRef),                                         //Compares two values to decide if one is less than or equal the other
     Gte(ValueRef,ValueRef),                                         //Compares two values to decide if one is greater or equal than the other
     ToData(ValueRef),                                               //Transforms Integers & Uniques to data
-    Concat(ValueRef,ValueRef),                                      //Concats two data values
-    SetBit(ValueRef,ValueRef,ValueRef),                             //sets a bit in a data value
-    GetBit(ValueRef,ValueRef),                                      //queries a bit from a data value
     Derive(ValueRef,ValueRef),                                      //derives a new index or referenz from two others
     //Gas Testing Operands
     Id(ValueRef),                                                   //Makes a Copy of the input (this is for testing) -- Establishes a Baseline
@@ -111,20 +105,17 @@ pub struct FunctionDescriptor<#[AllocLifetime] 'b> {
 
 //an identifier of an adt
 #[derive(Copy, Clone, Debug, Parsable, Serializable)]
-pub enum AdtId {
-    Custom(Hash,u8),        //Hash is module Hash
-    Native(NativeType)
+pub struct AdtId {
+    pub module:Hash,        //Hash is module Hash
+    pub offset:u8
 }
 
 
-//bool == is is_phantom
 //todo: Make structural
+//bool == is is_phantom
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Parsable, Serializable, VirtualSize)]
 pub struct TypeTypeParam(pub bool, pub CapSet);
 
-//todo: make named struct
-//1: bool == is_protected
-//2: bool == is_phantom
 #[derive(Copy, Clone, Debug, Parsable, Serializable, VirtualSize)]
 pub struct FunTypeParam{
     pub is_protected:bool,
@@ -153,12 +144,9 @@ pub struct TypeInputRef(pub u8);
 //A type identifier in a type builder
 #[derive(Ord, PartialOrd, Eq, PartialEq, Copy, Clone, Debug, Parsable, Serializable, VirtualSize)]
 pub enum TypeKind {
+    //todo: split in Adt & Sig
     Custom {
         module: Hash,
         offset: u8,
-    },
-
-    Native {
-        typ:NativeType,
     }
 }

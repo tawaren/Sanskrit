@@ -1,0 +1,1 @@
+Module { meta: LargeVec([116, 101, 115, 116, 70, 97, 105, 108, 80, 114, 105, 109, 65, 112, 112, 108, 121]), adts: [AdtComponent { provided_caps: CapSet(0), generics: [Physical(CapSet(0))], import: PublicImport { modules: [], errors: [], types: [Generic(GenRef(0)), Real(Native(UInt(1)), [TypeRef(0)])] }, constructors: [Case { fields: [TypeRef(1)] }] }], functions: [], errors: 0 }

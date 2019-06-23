@@ -1,71 +1,71 @@
 module CastOps {
 
-    public fun Extend(a:$u8):(c:$u128) {
-        c = call $Extend[$u8,$u128](a);
+    public fun Extend(a:IntU8.U8):(c:IntU128.U128) {
+        c = call $Extend[IntU8.U8,IntU128.U128](a);
         return c;
     };
 
-    public fun Extend2(a:$i8):(c:$i128) {
-        c = call $Extend[$i8,$i128](a);
+    public fun Extend2(a:IntI8.I8):(c:IntI128.I128) {
+        c = call $Extend[IntI8.I8,IntI128.I128](a);
         return c;
     };
 
-    public risky<$NumericError> fun Cut(a:$u16):(c:$u8) {
-        c = call $Cut[$u16,$u8](a);
+    public risky<Errors.Numeric> fun Cut(a:IntU16.U16):(c:IntU8.U8) {
+        c = call $Cut[IntU16.U16,IntU8.U8](a);
         return c;
     };
 
-    public risky<$NumericError> fun Cut2(a:$i16):(c:$i8) {
-        c = call $Cut[$i16,$i8](a);
+    public risky<Errors.Numeric> fun Cut2(a:IntI16.I16):(c:IntI8.I8) {
+        c = call $Cut[IntI16.I16,IntI8.I8](a);
         return c;
     };
 
-    public fun ErrorCut(a:$i16):(r:$bool) {
+    public fun ErrorCut(a:IntI16.I16):(r:Bool.Bool) {
         r = try {
-            c = call $Cut[$i16,$i8](a);
-            r = pack $bool#false();
+            c = call $Cut[IntI16.I16,IntI8.I8](a);
+            r = pack Bool.Bool#False();
             return r;
         } catch {
-            $NumericError => {
-                r = pack $bool#true();
+            Errors.Numeric => {
+                r = pack Bool.Bool#True();
                 return r;
             };
         };
         return r;
     };
 
-    public risky<$NumericError> fun SignCast(a:$u8):(c:$i8) {
-        c = call $SignCast[$u8,$i8](a);
+    public risky<Errors.Numeric> fun SignCast(a:IntU8.U8):(c:IntI8.I8) {
+        c = call $SignCast[IntU8.U8,IntI8.I8](a);
         return c;
     };
 
-    public risky<$NumericError> fun SignCast2(a:$i8):(c:$u8) {
-        c = call $SignCast[$i8,$u8](a);
+    public risky<Errors.Numeric> fun SignCast2(a:IntI8.I8):(c:IntU8.U8) {
+        c = call $SignCast[IntI8.I8,IntU8.U8](a);
         return c;
     };
 
-    public fun ErrorSignCast(a:$u8):(r:$bool) {
+    public fun ErrorSignCast(a:IntU8.U8):(r:Bool.Bool) {
         r = try {
-            c = call $SignCast[$u8,$i8](a);
-            r = pack $bool#false();
+            c = call $SignCast[IntU8.U8,IntI8.I8](a);
+            r = pack Bool.Bool#False();
             return r;
         } catch {
-            $NumericError => {
-                r = pack $bool#true();
+            Errors.Numeric => {
+                r = pack Bool.Bool#True();
                 return r;
             };
         };
         return r;
     };
 
-    public fun ErrorSignCast2(a:$i8):(r:$bool) {
+    public fun ErrorSignCast2(a:IntI8.I8):(r:Bool.Bool) {
         r = try {
-            c = call $SignCast[$i8,$u8](a);
-            r = pack $bool#false();
+            c = call $SignCast[IntI8.I8,IntU8.U8](a);
+            r = pack Bool.Bool#False();
             return r;
         } catch {
-            $NumericError => {
-                r = pack $bool#true();
+            Errors.Numeric => {
+                r = pack Bool.Bool#True();
                 return r;
             };
         };

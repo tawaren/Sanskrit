@@ -1,5 +1,5 @@
 signed(A) transaction{
-   d = lit 0x00112233445566778899AABBCCDDEEFF00112233:$data;
+   d = lit 0x00112233445566778899AABBCCDDEEFF00112233:Data.Data20;
    a = call IndexOps.ToRef2(d);
    b = load a;
 };

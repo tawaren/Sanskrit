@@ -1,5 +1,5 @@
 signed(A) transaction{
-     a = wit 1:$u8;
+     a = wit 1:IntU8.U8;
      b = &a;
-     c = pack SomeTypes.NoCreate[$u8]#Ctr(b);
+     c = pack SomeTypes.NoCreate[IntU8.U8]#Ctr(b);
 };

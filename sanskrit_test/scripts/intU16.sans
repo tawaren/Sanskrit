@@ -1,0 +1,18 @@
+module IntU16 {
+    external(0) lit(2) <Copy,Drop,Persist,Create,Embed> U16;
+
+    external(2) public fun hash(num:.U16):(res:Data.Data20);
+
+    external(1) public fun eq(num1:.U16, num2:.U16):(res:Bool.Bool);
+    external(4) public fun lt(num1:.U16, num2:.U16):(res:Bool.Bool);
+    external(5) public fun lte(num1:.U16, num2:.U16):(res:Bool.Bool);
+    external(6) public fun gt(num1:.U16, num2:.U16):(res:Bool.Bool);
+    external(7) public fun gte(num1:.U16, num2:.U16):(res:Bool.Bool);
+
+    external(8) public risky<Errors.Numeric> fun add(num1:.U16, num2:.U16):(res:.U16);
+    external(9) public risky<Errors.Numeric> fun sub(num1:.U16, num2:.U16):(res:.U16);
+    external(10) public risky<Errors.Numeric> fun div(num1:.U16, num2:.U16):(res:.U16);
+    external(11) public risky<Errors.Numeric> fun mul(num1:.U16, num2:.U16):(res:.U16);
+
+    external(12) public fun toData(num:.U16):(res:Data.Data2);
+}

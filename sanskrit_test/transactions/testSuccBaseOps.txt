@@ -1,33 +1,33 @@
 signed(A) transaction{
-   a = lit 1:$u8;
-   b = pack SomeTypes.X[$u8]#Ctr(a);
+   a = lit 1:IntU8.U8;
+   b = pack SomeTypes.X[IntU8.U8]#Ctr(a);
    c = unpack b:SomeTypes.X#Ctr;
 };
 
 signed(A) transaction{
-   a = wit 1:$u8;
-   b = &pack SomeTypes.X[$u8]#Ctr(a);
+   a = wit 1:IntU8.U8;
+   b = &pack SomeTypes.X[IntU8.U8]#Ctr(a);
    c = &unpack b:SomeTypes.X#Ctr;
 };
 
 signed(A) transaction{
-   a = lit 1:$u8;
-   b = pack SomeTypes.X[$u8]#Ctr(a);
+   a = lit 1:IntU8.U8;
+   b = pack SomeTypes.X[IntU8.U8]#Ctr(a);
    c = &unpack b:SomeTypes.X#Ctr;
 };
 
 signed(A) transaction{
-   a = wit 1:$u8;
+   a = wit 1:IntU8.U8;
    b = copy a;
 };
 
 signed(A) transaction{
-   a = lit 1:$u8;
+   a = lit 1:IntU8.U8;
    drop a;
 };
 
 signed(A) transaction{
-   a = wit 1:$u8;
+   a = wit 1:IntU8.U8;
    b = &a;
    free b;
 };
@@ -41,124 +41,124 @@ signed(A) transaction{
 };
 
 signed(A) transaction{
-   a = lit 1:$u8;
-   b = call SomeFunctions.Identity[$u8](a);
+   a = lit 1:IntU8.U8;
+   b = call SomeFunctions.Identity[IntU8.U8](a);
 };
 
 signed(A) transaction{
-   a = wit 1:$u8;
+   a = wit 1:IntU8.U8;
    aa = copy a;
-   b = call BaseOps.Pack[$u8](aa);
+   b = call BaseOps.Pack[IntU8.U8](aa);
    a2 = unpack b:BaseOps.Wrapper#Ctr;
    () = call Helpers.AssertEqU8(a,a2);
 };
 
 signed(A) transaction{
-   a = lit 1:$u8;
+   a = lit 1:IntU8.U8;
    aa = copy a;
-   b = call BaseOps.Pack[$u8](aa);
-   a2 = call BaseOps.Unpack[$u8](b);
+   b = call BaseOps.Pack[IntU8.U8](aa);
+   a2 = call BaseOps.Unpack[IntU8.U8](b);
    () = call Helpers.AssertEqU8(a,a2);
 };
 
 signed(A) transaction{
-   a = wit 1:$u8;
+   a = wit 1:IntU8.U8;
    aa = copy a;
-   b = pack BaseOps.Wrapper[$u8]#Ctr(aa);
-   a2 = call BaseOps.Unpack[$u8](b);
+   b = pack BaseOps.Wrapper[IntU8.U8]#Ctr(aa);
+   a2 = call BaseOps.Unpack[IntU8.U8](b);
    () = call Helpers.AssertEqU8(a,a2);
 };
 
 signed(A) transaction{
-   a = lit 1:$u8;
+   a = lit 1:IntU8.U8;
    aa = copy a;
-   b = pack BaseOps.Wrapper[$u8]#Ctr(aa);
+   b = pack BaseOps.Wrapper[IntU8.U8]#Ctr(aa);
    a2 = unpack b:BaseOps.Wrapper#Ctr;
    () = call Helpers.AssertEqU8(a,a2);
 };
 
 signed(A) transaction{
-   a = wit 1:$u8;
+   a = wit 1:IntU8.U8;
    aa = copy a;
-   b = call BaseOps.BorrowPack[$u8](aa);
+   b = call BaseOps.BorrowPack[IntU8.U8](aa);
    a2 = &unpack b:BaseOps.Wrapper#Ctr;
    () = call Helpers.AssertEqU8(a,a2);
 };
 
 signed(A) transaction{
-   a = lit 1:$u8;
+   a = lit 1:IntU8.U8;
    aa = copy a;
-   b = call BaseOps.BorrowPack[$u8](aa);
-   a2 = call BaseOps.BorrowUnpack[$u8](b);
+   b = call BaseOps.BorrowPack[IntU8.U8](aa);
+   a2 = call BaseOps.BorrowUnpack[IntU8.U8](b);
    () = call Helpers.AssertEqU8(a,a2);
 };
 
 signed(A) transaction{
-   a = wit 1:$u8;
+   a = wit 1:IntU8.U8;
    aa = copy a;
-   b = &pack BaseOps.Wrapper[$u8]#Ctr(aa);
-   a2 = call BaseOps.BorrowUnpack[$u8](b);
+   b = &pack BaseOps.Wrapper[IntU8.U8]#Ctr(aa);
+   a2 = call BaseOps.BorrowUnpack[IntU8.U8](b);
    () = call Helpers.AssertEqU8(a,a2);
 };
 
 signed(A) transaction{
-   a = lit 1:$u8;
+   a = lit 1:IntU8.U8;
    aa = copy a;
-   b = &pack BaseOps.Wrapper[$u8]#Ctr(aa);
+   b = &pack BaseOps.Wrapper[IntU8.U8]#Ctr(aa);
    a2 = &unpack b:BaseOps.Wrapper#Ctr;
    () = call Helpers.AssertEqU8(a,a2);
 };
 
 signed(A) transaction{
-   a = wit 1:$u8;
+   a = wit 1:IntU8.U8;
    b = wit -100:$i128;
    aa = copy a;
    bb = copy b;
-   w = call BaseOps.Pack2[$u8,$i128](aa,bb);
+   w = call BaseOps.Pack2[IntU8.U8,$i128](aa,bb);
    (a2,b2) = unpack w:BaseOps.TwoOfTwo#Ctr1;
    () = call Helpers.AssertEqU8(a,a2);
    () = call Helpers.AssertEqI128(b,b2);
 };
 
 signed(A) transaction{
-   a = lit 1:$u8;
+   a = lit 1:IntU8.U8;
    b = lit -100:$i128;
    aa = copy a;
    bb = copy b;
-   w = call BaseOps.Pack2[$u8,$i128](aa,bb);
-   (a2,b2) = call BaseOps.Unpack2[$u8,$i128](w);
+   w = call BaseOps.Pack2[IntU8.U8,$i128](aa,bb);
+   (a2,b2) = call BaseOps.Unpack2[IntU8.U8,$i128](w);
    () = call Helpers.AssertEqU8(a,a2);
    () = call Helpers.AssertEqI128(b,b2);
 };
 
 signed(A) transaction{
-   a = wit 1:$u8;
+   a = wit 1:IntU8.U8;
    b = wit -100:$i128;
    aa = copy a;
    bb = copy b;
-   w = pack BaseOps.TwoOfTwo[$u8,$i128]#Ctr1(aa,bb);
-   (a2,b2) = call BaseOps.Unpack2[$u8,$i128](w);
+   w = pack BaseOps.TwoOfTwo[IntU8.U8,$i128]#Ctr1(aa,bb);
+   (a2,b2) = call BaseOps.Unpack2[IntU8.U8,$i128](w);
    () = call Helpers.AssertEqU8(a,a2);
    () = call Helpers.AssertEqI128(b,b2);
 };
 
 signed(A) transaction{
-   a = lit 1:$u8;
+   a = lit 1:IntU8.U8;
    b = lit -100:$i128;
    aa = copy a;
    bb = copy b;
-   w = pack BaseOps.TwoOfTwo[$u8,$i128]#Ctr2(bb,aa);
-   (a2,b2) = call BaseOps.Unpack2[$u8,$i128](w);
+   w = pack BaseOps.TwoOfTwo[IntU8.U8,$i128]#Ctr2(bb,aa);
+   (a2,b2) = call BaseOps.Unpack2[IntU8.U8,$i128](w);
    () = call Helpers.AssertEqU8(a,a2);
    () = call Helpers.AssertEqI128(b,b2);
 };
 
 signed(A) transaction{
-   a = wit 1:$u8;
+   a = wit 1:IntU8.U8;
    b = wit -100:$i128;
    aa = copy a;
    bb = copy b;
-   w = call BaseOps.BorrowPack2[$u8,$i128](aa,bb);
+   w = call BaseOps.BorrowPack2[IntU8.U8,$i128](aa,bb);
    (b2,a2) = &unpack w:BaseOps.TwoOfTwo#Ctr2;
    () = call Helpers.AssertEqU8(a,a2);
    () = call Helpers.AssertEqI128(b,b2);
@@ -166,34 +166,34 @@ signed(A) transaction{
 
 
 signed(A) transaction{
-   a = lit 1:$u8;
+   a = lit 1:IntU8.U8;
    b = lit -100:$i128;
    aa = copy a;
    bb = copy b;
-   w = call BaseOps.BorrowPack2[$u8,$i128](aa,bb);
-   (a2,b2) = call BaseOps.BorrowUnpack2[$u8,$i128](w);
+   w = call BaseOps.BorrowPack2[IntU8.U8,$i128](aa,bb);
+   (a2,b2) = call BaseOps.BorrowUnpack2[IntU8.U8,$i128](w);
    () = call Helpers.AssertEqU8(a,a2);
    () = call Helpers.AssertEqI128(b,b2);
 };
 
 signed(A) transaction{
-   a = wit 1:$u8;
+   a = wit 1:IntU8.U8;
    b = wit -100:$i128;
    aa = copy a;
    bb = copy b;
-   w = &pack BaseOps.TwoOfTwo[$u8,$i128]#Ctr1(aa,bb);
-   (a2,b2) = call BaseOps.BorrowUnpack2[$u8,$i128](w);
+   w = &pack BaseOps.TwoOfTwo[IntU8.U8,$i128]#Ctr1(aa,bb);
+   (a2,b2) = call BaseOps.BorrowUnpack2[IntU8.U8,$i128](w);
    () = call Helpers.AssertEqU8(a,a2);
    () = call Helpers.AssertEqI128(b,b2);
 };
 
 signed(A) transaction{
-   a = lit 1:$u8;
+   a = lit 1:IntU8.U8;
    b = lit -100:$i128;
    aa = copy a;
    bb = copy b;
-   w = &pack BaseOps.TwoOfTwo[$u8,$i128]#Ctr2(bb,aa);
-   (a2,b2) = call BaseOps.BorrowUnpack2[$u8,$i128](w);
+   w = &pack BaseOps.TwoOfTwo[IntU8.U8,$i128]#Ctr2(bb,aa);
+   (a2,b2) = call BaseOps.BorrowUnpack2[IntU8.U8,$i128](w);
    () = call Helpers.AssertEqU8(a,a2);
    () = call Helpers.AssertEqI128(b,b2);
 };

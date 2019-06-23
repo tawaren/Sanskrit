@@ -40,7 +40,7 @@ impl ModuleLink {
         }
     }
 }
-
+/*
 //todo: can we move to core??
 //All the Available Native types
 #[derive(Ord, PartialOrd, Eq, PartialEq, Copy, Clone, Hash, Debug, Parsable, Serializable, VirtualSize)]
@@ -55,6 +55,7 @@ pub enum NativeType {
     PublicId,           // A references that points ot  a storage slot on the blockchain
     Nothing,            // A type without value (only satisfiable by throwing)
 }
+
 
 //todo: can we move to core??
 //All the Available Native Funcitions
@@ -83,7 +84,7 @@ pub enum NativeFunc {
     Concat,             //Concatenates two data values
     SetBit,             //Sets a bit in a data value to 1/0
     GetBit,             //Checks if a bit in a data value is 1/0
-    GenPublicId,         //Generates a ref from either an index or plain data
+    GenPublicId,        //Generates a ref from either an index or plain data
     DeriveId,           //Combines 2 indexes or 2 refs to a new one allowing derive indexes & refs deterministically
 }
 
@@ -95,7 +96,7 @@ pub enum NativeError {
     IndexError,
     Unexpected
 }
-
+*/
 //Most vectors used in sanskrit have a max len of 255, in some places more is needed
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
 pub struct LargeVec<T>(pub Vec<T>);
@@ -107,7 +108,7 @@ pub struct Tag(pub u8);
 //All the Available Native Capabilities
 #[derive(Ord, PartialOrd, Eq, PartialEq, Copy, Clone, Hash, Parsable, Serializable)]
 #[repr(u8)]
-pub enum NativeCap {
+pub enum Capability {
     Drop,       //Indicates if the value can be dropped (requires that nested values can be droped as well)
     Copy,       //Indicates if the value can be copied (requires that nested values can be copied as well)
     Persist,    //Indicates if the value can be persisted (requires that nested values can be persisted as well)

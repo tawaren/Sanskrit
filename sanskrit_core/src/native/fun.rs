@@ -1,3 +1,4 @@
+/*
 use model::resolved::*;
 use sanskrit_common::errors::*;
 use utils::Crc;
@@ -261,7 +262,8 @@ pub fn check_native_function_constraints(fun: NativeFunc, types:&[Crc<ResolvedTy
             true
         }
         match **typ {
-            ResolvedType::Generic { .. } => false,
+            ResolvedType::Generic { .. }
+            | ResolvedType::Sig { .. } => false,  //Sigs are not sized as they can have an unknown amount of captures
             ResolvedType::Image { ref typ } => is_sized(typ),
             ResolvedType::Import { ref applies, .. }
             | ResolvedType::Native { ref applies, .. } => are_args_sized(applies),
@@ -332,3 +334,4 @@ pub fn check_native_function_constraints(fun: NativeFunc, types:&[Crc<ResolvedTy
         NativeFunc::GenPublicId => true_or_err(types.len() == 1 && is_public_input(&types[0])?),
     }
 }
+*/

@@ -16,6 +16,7 @@ use sanskrit_common::hashing::*;
 use sanskrit_interpreter::model::*;
 use elem_store::extract_key;
 use descriptors::*;
+use sanskrit_common::capabilities::CapSet;
 
 //The state of the script execution
 pub struct Executor<'a, 'h, S:Store>{
@@ -53,8 +54,9 @@ pub fn unique_hash<'a, 'h>(base: &Hash, domain: HashingDomain, ctr: u64, alloc:&
 //helper th extract a key from a stack entry
 // used as input to load & store
 fn extract_entry_key(entry:&StackEntry) -> Result<Hash> {
+    unimplemented!(); //todo: this gets harder now
     //ensure it is a ref
-    match &*entry.typ {
+    /*match &*entry.typ {
         RuntimeType::NativeType { typ:NativeType::PublicId, .. } => {},
         _ => return type_mismatch()
     }
@@ -63,7 +65,7 @@ fn extract_entry_key(entry:&StackEntry) -> Result<Hash> {
     Ok(match &*entry.val {
         Object::Data(key) => array_ref!(key,0,20).clone(),
         _ => unreachable!()
-    })
+    })*/
 }
 
 impl<'a, 'h, S:Store> Executor<'a,'h,S> {
@@ -88,8 +90,8 @@ impl<'a, 'h, S:Store> Executor<'a,'h,S> {
                 ScriptCode::Unpack(adt_ref, tag, val) => self.unpack(adt_ref, val, tag, false, temporary_values)?,
                 ScriptCode::BorrowUnpack(adt_ref, tag, val) => self.unpack(adt_ref, val, tag ,true, temporary_values)?,
                 ScriptCode::Invoke(func_ref, ref applies, ref vals) => self.invoke(func_ref, applies, vals, temporary_values)?,
-                ScriptCode::Lit(ref data, desc) => self.lit(data,desc)?,
-                ScriptCode::Wit(wit_ref, desc) => self.wit(wit_ref,desc)?,
+                ScriptCode::Lit(ref data, desc, adt) => self.lit(data,desc,adt)?,
+                ScriptCode::Wit(wit_ref, desc, adt) => self.wit(wit_ref,desc,adt)?,
                 ScriptCode::Copy(val) => self.copy(val)?,
                 ScriptCode::Fetch(val) => self.fetch(val, false)?,
                 ScriptCode::BorrowFetch(val) => self.fetch(val, true)?,
@@ -139,8 +141,7 @@ impl<'a, 'h, S:Store> Executor<'a,'h,S> {
                 let mut base_typ = self.stack.value_of(*idx)?.typ;
                 for s in &**select {
                     match *base_typ {
-                        RuntimeType::NativeType { ref applies, ..}
-                        | RuntimeType::Custom { ref applies, ..} => {
+                        RuntimeType::Custom { ref applies, ..} => {
                             if applies.len() >= *s as usize {return item_not_found()}
                             base_typ = applies[*s as usize]
                         },
@@ -148,15 +149,6 @@ impl<'a, 'h, S:Store> Executor<'a,'h,S> {
                     };
                 }
                 Ok((false, base_typ))
-            },
-
-
-            //if it is a native resolve the applies and construct the type
-            TypeApplyRef::Native(ref typ, ref applies) => {
-                let b_applies = self.alloc.iter_result_alloc_slice(applies.iter().map(|appl|self.resolve_type(appl).map(|r|r.1)))?;
-                let code_alloc = self.code_alloc.temp_arena()?;
-                let res = (false,to_runtime_type(*typ,b_applies, self.alloc, &code_alloc)?);
-                Ok(res)
             },
             //if it is an adt resolve the applies and construct the type over a descriptor
             TypeApplyRef::Module(imp, offset, ref applies) => {
@@ -177,19 +169,15 @@ impl<'a, 'h, S:Store> Executor<'a,'h,S> {
     fn pack<'c>(&mut self, adt_ref:AdtRef, applies:&'c [Ptr<'c,TypeApplyRef>], tag:Tag, vals:&'c [ValueRef], is_borrowed:bool) -> Result<()> {
         let types = self.alloc.iter_result_alloc_slice(applies.iter().map(|t_ref| self.resolve_type(t_ref).map(|t|t.1)))?;
         let code_alloc = self.code_alloc.temp_arena()?;
-        let desc = match adt_ref {
-            AdtRef::Ref(imp, offset) => self.store.backend.parsed_get::<AdtDescriptor, VirtualHeapArena>(StorageClass::AdtDesc, &self.elem_key(imp,offset)?, CONFIG.max_structural_dept, &code_alloc)?,
-            AdtRef::Native(typ) => typ.get_native_adt_descriptor(&code_alloc)?,
-        };
+        //todo: do we need to eliminate lits??
+        let desc = self.store.backend.parsed_get::<AdtDescriptor, VirtualHeapArena>(StorageClass::AdtDesc, &self.elem_key(adt_ref.module,adt_ref.offset)?, CONFIG.max_structural_dept, &code_alloc)?;
         pack_adt_from_desc(&desc, types, tag, &vals, is_borrowed, &mut self.stack, self.alloc)
     }
 
     fn unpack(&mut self, adt_ref:AdtRef, val:ValueRef, expected_tag:Tag, is_borrowed:bool, temporary_values:&HeapArena<'h>) -> Result<()> {
         let code_alloc = self.code_alloc.temp_arena()?;
-        let desc = match adt_ref {
-            AdtRef::Ref(imp, offset) => self.store.backend.parsed_get::<AdtDescriptor, VirtualHeapArena>(StorageClass::AdtDesc, &self.elem_key(imp,offset)?, CONFIG.max_structural_dept, &code_alloc)?,
-            AdtRef::Native(typ) => typ.get_native_adt_descriptor(&code_alloc)?,
-        };
+        //todo: do we need to eliminate lits??
+        let desc = self.store.backend.parsed_get::<AdtDescriptor, VirtualHeapArena>(StorageClass::AdtDesc, &self.elem_key(adt_ref.module,adt_ref.offset)?, CONFIG.max_structural_dept, &code_alloc)?;
         unpack_adt_from_desc(&desc,val, expected_tag, is_borrowed, &mut self.stack, self.alloc, temporary_values)
     }
 
@@ -201,21 +189,30 @@ impl<'a, 'h, S:Store> Executor<'a,'h,S> {
         apply_fun_from_desc(&desc,&types, &vals, &mut self.stack, self.alloc, &self.stack_alloc, &tmp)
     }
 
-    fn lit(&mut self, data:&[u8], desc:LitDesc) -> Result<()>{
+
+    fn lit(&mut self, data:&[u8], desc:LitDesc, adt:AdtRef) -> Result<()>{
         let val = create_lit_object(&data,desc, self.alloc)?;
-        let typ = lit_typ(desc,data.len() as u16, self.alloc)?;
+        self.import(adt.module);
+        let typ = self.alloc.alloc(RuntimeType::Custom {
+            //todo: I Hate this but without changing the Scripting we need this hack
+            caps: CapSet::lit(),
+            module: self.import(adt.module)?,
+            offset: adt.offset,
+            //todo: I Hate this but without changing the Scripting we need this hack
+            applies: SlicePtr::empty()
+        })?;
         self.stack.provide(StackEntry::new( val, typ ))
     }
 
-    fn wit(&mut self, data_ref:u8, desc:LitDesc) -> Result<()>{
+    fn wit(&mut self, data_ref:u8, desc:LitDesc, adt:AdtRef) -> Result<()>{
         if data_ref as usize >= self.witness.len() {return item_not_found()}
         let data = self.witness[data_ref as usize];
-        self.lit(&data,desc)
+        self.lit(&data,desc,adt)
     }
 
     fn copy(&mut self, vl:ValueRef) -> Result<()> {
         let typ = &self.stack.value_of(vl)?.typ;
-        if !typ.get_caps().contains(NativeCap::Copy) {
+        if !typ.get_caps().contains(Capability::Copy) {
             return capability_missing_error()
         }
         self.stack.fetch(vl, FetchMode::Copy)
@@ -244,7 +241,7 @@ impl<'a, 'h, S:Store> Executor<'a,'h,S> {
 
     fn drop(&mut self, vl:ValueRef) -> Result<()> {
         let typ = &self.stack.value_of(vl)?.typ;
-        if !typ.get_caps().contains(NativeCap::Drop) {
+        if !typ.get_caps().contains(Capability::Drop) {
             return capability_missing_error()
         }
         self.stack.drop(vl)
@@ -266,7 +263,7 @@ impl<'a, 'h, S:Store> Executor<'a,'h,S> {
         let entry = self.stack.value_of(vl)?;
 
         let caps = entry.typ.get_caps();
-        if !caps.contains(NativeCap::Persist){
+        if !caps.contains(Capability::Persist) {
             return capability_missing_error()
         }
 

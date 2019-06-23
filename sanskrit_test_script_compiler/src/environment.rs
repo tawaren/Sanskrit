@@ -13,13 +13,11 @@ use sanskrit_core::model::ErrorLink;
 use sanskrit_core::model::FuncLink;
 use sanskrit_core::model::GenRef;
 use sanskrit_core::model::BaseType;
-use sanskrit_core::model::AdtLink;
+use sanskrit_core::model::DataLink;
 use sanskrit_core::model::PublicImport;
-use sanskrit_core::model::BodyImport;
 use sanskrit_runtime::model::TypeApplyRef;
 use sanskrit_runtime::model::FuncRef as RFuncRef;
 use sanskrit_runtime::model::AdtRef as RAdtRef;
-use sanskrit_runtime::model::NativeAdtType;
 use hex::decode;
 use sanskrit_common::arena::HeapArena;
 use sanskrit_common::encoding::ParserAllocator;
@@ -130,23 +128,14 @@ impl<'a> CodeImportBuilder<'a> {
         }
         let error_imp = match *r {
             Ref::Generic(_) | Ref::Account(_) | Ref::Txt(_,_) => return Err("Ref is not an error".into()),
-            Ref::Native(ref id) => {
-                match id.0.as_ref() {
-                    "NumericError" => ErrorImport::Native(NativeError::NumericError),
-                    "IndexError" => ErrorImport::Native(NativeError::IndexError),
-                    "Unexpected" => ErrorImport::Native(NativeError::Unexpected),
-                    _ => return Err("Unsupported native error".into())
-
-                }
-            },
             Ref::This(ref id) => {
                 let offset = self.this_module.index[id].elem_index as u8;
-                ErrorImport::Module(ErrorLink{module:ModRef(0), offset,})
+                ErrorImport{link:ErrorLink{module:ModRef(0), offset,}}
             },
             Ref::Module(ref m_id, ref e_id) => {
                 let module = self.mod_import_ref(m_id)?;
                 let offset = self.mapping[m_id].index[e_id].elem_index as u8;
-                ErrorImport::Module(ErrorLink{module, offset,})
+                ErrorImport{link:ErrorLink{module, offset,}}
             },
         };
 
@@ -163,45 +152,15 @@ impl<'a> CodeImportBuilder<'a> {
         }
         let r_appl = appls.into_iter().map(|t|self.import_typ_ref(&t)).collect::<Result<_,_>>()?;
         let fun_import = match *r {
-            Ref::Generic(_) | Ref::Account(_) | Ref::Txt(_,_) => return Err("Ref is not an funcion".into()),
-            Ref::Native(ref id) => {
-                match id.0.as_ref() {
-                    "And" => FunctionImport::Native(NativeFunc::And,r_appl),
-                    "Or" => FunctionImport::Native(NativeFunc::Or,r_appl),
-                    "Xor" => FunctionImport::Native(NativeFunc::Xor,r_appl),
-                    "Not" => FunctionImport::Native(NativeFunc::Not,r_appl),
-                    "Extend" => FunctionImport::Native(NativeFunc::Extend,r_appl),
-                    "Cut" => FunctionImport::Native(NativeFunc::Cut,r_appl),
-                    "SignCast" => FunctionImport::Native(NativeFunc::SignCast,r_appl),
-                    "Add" => FunctionImport::Native(NativeFunc::Add,r_appl),
-                    "Sub" => FunctionImport::Native(NativeFunc::Sub,r_appl),
-                    "Mul" => FunctionImport::Native(NativeFunc::Mul,r_appl),
-                    "Div" => FunctionImport::Native(NativeFunc::Div,r_appl),
-                    "Eq" => FunctionImport::Native(NativeFunc::Eq,r_appl),
-                    "Hash" => FunctionImport::Native(NativeFunc::Hash, r_appl),
-                    "PlainHash" => FunctionImport::Native(NativeFunc::PlainHash, r_appl),
-                    "Lt" => FunctionImport::Native(NativeFunc::Lt,r_appl),
-                    "Gt" => FunctionImport::Native(NativeFunc::Gt,r_appl),
-                    "Lte" => FunctionImport::Native(NativeFunc::Lte,r_appl),
-                    "Gte" => FunctionImport::Native(NativeFunc::Gte,r_appl),
-                    "ToData" => FunctionImport::Native(NativeFunc::ToData,r_appl),
-                    "Concat" => FunctionImport::Native(NativeFunc::Concat,r_appl),
-                    "SetBit" => FunctionImport::Native(NativeFunc::SetBit,r_appl),
-                    "GetBit" => FunctionImport::Native(NativeFunc::GetBit,r_appl),
-                    "GenPublicId" => FunctionImport::Native(NativeFunc::GenPublicId, r_appl),
-                    "DeriveId" => FunctionImport::Native(NativeFunc::DeriveId, r_appl),
-                    _ => return Err("Unsupported native function".into())
-
-                }
-            },
+            Ref::Generic(_) | Ref::Account(_) | Ref::Txt(_,_) => return Err("Ref is not a funcion".into()),
             Ref::This(ref id) => {
                 let offset = self.this_module.index[id].elem_index as u8;
-                FunctionImport::Module(FuncLink{module:ModRef(0), offset}, r_appl)
+                FunctionImport{link:FuncLink{module:ModRef(0), offset}, applies:r_appl}
             },
             Ref::Module(ref m_id, ref e_id) => {
                 let module = self.mod_import_ref(&m_id)?;
                 let offset = self.mapping[m_id].index[e_id].elem_index as u8;
-                FunctionImport::Module(FuncLink{module, offset}, r_appl)
+                FunctionImport{link:FuncLink{module, offset}, applies:r_appl}
             },
         };
 
@@ -210,6 +169,30 @@ impl<'a> CodeImportBuilder<'a> {
         self.fun_assoc.insert(key.clone(),FuncRef(pos as u8));
         Ok(FuncRef(pos as u8))
     }
+
+    pub fn imported_lit_size(&mut self,  typ:&Type) -> Result<u16,String> {
+        match typ.main{
+            Ref::Account(_) | Ref::Txt(_,_) => return Err("Ref is not a sanskrit type (is a script type)".into()),
+            Ref::Generic(ref id) =>  return Err("Ref is not a literal type".into()),
+            Ref::This(ref id) => {
+                let comp = self.this_module.get_component(id);
+                match comp {
+                   Component::Lit {size, ..}
+                   | Component::ExtLit {size, ..} => Ok(*size),
+                    _ => Err("Ref is not a literal type".into())
+                }
+            },
+            Ref::Module(ref m_id, ref e_id) => {
+                let comp = self.mapping[&m_id].get_component(e_id);
+                match comp {
+                    Component::Lit {size, ..}
+                    | Component::ExtLit {size, ..} => Ok(*size),
+                    _ => Err("Ref is not a literal type".into())
+                }
+            },
+        }
+    }
+
 
     pub fn import_typ_ref(&mut self, typ:&Type) -> Result<TypeRef,String>{
         if self.type_assoc.contains_key(typ ) {
@@ -233,73 +216,14 @@ impl<'a> CodeImportBuilder<'a> {
                     };
                     RType::Generic(GenRef(pos as u8))
                 },
-                Ref::Native(ref id) => {
-                    let bt = match id.0.as_ref() {
-                        "bool" => NativeType::Bool,
-                        "publicId" => NativeType::PublicId,
-                        "privateId" => NativeType::PrivateId,
-                        "u8" => NativeType::UInt(1),
-                        "u16" => NativeType::UInt(2),
-                        "u32" => NativeType::UInt(4),
-                        "u64" => NativeType::UInt(8),
-                        "u128" => NativeType::UInt(16),
-                        "i8" => NativeType::SInt(1),
-                        "i16" => NativeType::SInt(2),
-                        "i32" => NativeType::SInt(4),
-                        "i64" => NativeType::SInt(8),
-                        "i128" => NativeType::SInt(16),
-                        "tuple0"  => NativeType::Tuple(0),
-                        "tuple1"  => NativeType::Tuple(1),
-                        "tuple2"  => NativeType::Tuple(2),
-                        "tuple3"  => NativeType::Tuple(3),
-                        "tuple4"  => NativeType::Tuple(4),
-                        "tuple5"  => NativeType::Tuple(5),
-                        "tuple6"  => NativeType::Tuple(6),
-                        "tuple7"  => NativeType::Tuple(7),
-                        "tuple8"  => NativeType::Tuple(8), //for tests enough
-                        "alt0"  => NativeType::Alternative(0),
-                        "alt1"  => NativeType::Alternative(1),
-                        "alt2"  => NativeType::Alternative(2),
-                        "alt3"  => NativeType::Alternative(3),
-                        "alt4"  => NativeType::Alternative(4),
-                        "alt5"  => NativeType::Alternative(5),
-                        "alt6"  => NativeType::Alternative(6),
-                        "alt7"  => NativeType::Alternative(7),
-                        "alt8"  => NativeType::Alternative(8), //for tests enough
-                        "data1"  => NativeType::Data(1),
-                        "data2"  => NativeType::Data(2),
-                        "data4"  => NativeType::Data(4),
-                        "data8"  => NativeType::Data(8),
-                        "data12"  => NativeType::Data(12),
-                        "data16"  => NativeType::Data(16),
-                        "data20"  => NativeType::Data(20),
-                        "data24"  => NativeType::Data(24),
-                        "data28"  => NativeType::Data(28),
-                        "data32"  => NativeType::Data(32),
-                        "data40"  => NativeType::Data(40),
-                        "data48"  => NativeType::Data(48),
-                        "data56"  => NativeType::Data(56),
-                        "data64"  => NativeType::Data(64),
-                        "data80"  => NativeType::Data(80),
-                        "data96"  => NativeType::Data(96),
-                        "data112"  => NativeType::Data(112),
-                        "data128"  => NativeType::Data(128),
-                        "data160"  => NativeType::Data(160),
-                        "data192"  => NativeType::Data(192),
-                        "data224"  => NativeType::Data(224),
-                        _ => return Err("Unsupported native type".into())
-
-                    };
-                    RType::Real(BaseType::Native(bt),r_appl)
-                },
                 Ref::This(ref id) => {
                     let offset = self.this_module.index[id].elem_index as u8;
-                    RType::Real(BaseType::Module(AdtLink{ module: ModRef(0), offset }), r_appl)
+                    RType::Real(BaseType::Data(DataLink { module: ModRef(0), offset }), r_appl)
                 },
                 Ref::Module(ref m_id, ref e_id) => {
                     let module = self.mod_import_ref(&m_id)?;
                     let offset = self.mapping[&m_id].index[e_id].elem_index as u8;
-                    RType::Real(BaseType::Module(AdtLink{ module, offset }), r_appl)
+                    RType::Real(BaseType::Data(DataLink { module, offset }), r_appl)
                 },
             }
         };
@@ -313,40 +237,16 @@ impl<'a> CodeImportBuilder<'a> {
     pub fn get_ctr_order(&mut self, typ:&Type) -> Result<Vec<Id>,String>{
         match typ.main {
             Ref::Generic(_) | Ref::Account(_) | Ref::Txt(_,_) => return Err("Type has no Ctrs".into()),
-            Ref::Native(ref id) => return Ok(match id.0.as_ref() {
-                "u8" => vec![], //to test failures (not really a constructable type)
-                "bool" => vec![Id("false".to_owned()),Id("true".to_owned())],
-                "tuple0" => vec![Id("tuple".to_owned())],
-                "tuple1" => vec![Id("tuple".to_owned())],
-                "tuple2" => vec![Id("tuple".to_owned())],
-                "tuple3" => vec![Id("tuple".to_owned())],
-                "tuple4" => vec![Id("tuple".to_owned())],
-                "tuple5" => vec![Id("tuple".to_owned())],
-                "tuple6" => vec![Id("tuple".to_owned())],
-                "tuple7" => vec![Id("tuple".to_owned())],
-                "tuple8" => vec![Id("tuple".to_owned())],
-                "alt1" => vec![Id("first".to_owned())],
-                "alt2" => vec![Id("first".to_owned()), Id("second".to_owned())],
-                "alt3" => vec![Id("first".to_owned()), Id("second".to_owned()), Id("third".to_owned())],
-                "alt4" => vec![Id("first".to_owned()), Id("second".to_owned()), Id("third".to_owned()), Id("fourth".to_owned())],
-                "alt5" => vec![Id("first".to_owned()), Id("second".to_owned()), Id("third".to_owned()), Id("fourth".to_owned()), Id("fifth".to_owned())],
-                "alt6" => vec![Id("first".to_owned()), Id("second".to_owned()), Id("third".to_owned()), Id("fourth".to_owned()), Id("fifth".to_owned()), Id("sixth".to_owned())],
-                "alt7" => vec![Id("first".to_owned()), Id("second".to_owned()), Id("third".to_owned()), Id("fourth".to_owned()), Id("fifth".to_owned()), Id("sixth".to_owned()), Id("seventh".to_owned())],
-                "alt8" => vec![Id("first".to_owned()), Id("second".to_owned()), Id("third".to_owned()), Id("fourth".to_owned()), Id("fifth".to_owned()), Id("sixth".to_owned()), Id("seventh".to_owned()), Id("eight".to_owned())],
-                _ => return Err("Unsupported native type".into())
-            }),
             Ref::This(ref id) => {
                 match *self.this_module.get_component(id){
                     Component::Adt { ref ctrs, .. } => return Ok(ctrs.iter().map(|ctr|ctr.name.clone()).collect()),
-                    Component::Err { .. } => return Err("Not a Adt".into()),
-                    Component::Fun { .. } =>  return Err("Not a Adt".into()),
+                    _ =>  return Err("Not an internal Adt".into()),
                 }
             },
             Ref::Module(ref m_id, ref e_id) => {
                 match *self.mapping[m_id].get_component(e_id){
                     Component::Adt { ref ctrs, .. } => return Ok(ctrs.iter().map(|ctr|ctr.name.clone()).collect()),
-                    Component::Err { .. } => return Err("Not a Adt".into()),
-                    Component::Fun { .. } =>  return Err("Not a Adt".into()),
+                    _ => return Err("Not an internal Adt".into()),
                 }
 
             },
@@ -362,16 +262,12 @@ impl<'a> CodeImportBuilder<'a> {
         }
     }
 
-    pub fn generate_body_import(self) -> BodyImport {
-        BodyImport {
-            base: PublicImport {
+    pub fn generate_body_import(self) -> (Vec<FunctionImport>, PublicImport) {
+        (self.fun_import, PublicImport {
                 modules: self.modules_import,
                 errors: self.err_import,
                 types: self.type_import
-            },
-            functions: self.fun_import
-        }
-
+        })
     }
 }
 
@@ -426,7 +322,7 @@ impl<'a,'c, 'h> ScriptContext<'a,'c, 'h> {
 
     pub fn generate_func_ref(&mut self, r:&Ref) -> Result<RFuncRef,String> {
         match *r {
-            Ref::This(_) | Ref::Generic(_) | Ref::Native(_) | Ref::Account(_) | Ref::Txt(_,_) => Err("Ref is not an funcion".into()),
+            Ref::This(_) | Ref::Generic(_) | Ref::Account(_) | Ref::Txt(_,_) => Err("Ref is not an funcion".into()),
             Ref::Module(ref m_id, ref e_id) => {
                 let module = &self.mapping[m_id];
                 let offset = module.index[e_id].elem_index as u8;
@@ -444,32 +340,7 @@ impl<'a,'c, 'h> ScriptContext<'a,'c, 'h> {
             Ref::Module(ref m_id, ref e_id) => {
                 let module = &self.mapping[m_id];
                 let offset = module.index[e_id].elem_index as u8;
-                Ok(RAdtRef::Ref(self.generate_imp_ref(&module.hash.unwrap()), offset))
-            },
-            Ref::Native(ref id) => {
-                let bt = match id.0.as_ref() {
-                    "bool" => NativeAdtType::Bool,
-                    "tuple0" => NativeAdtType::Tuple(0),
-                    "tuple1" => NativeAdtType::Tuple(1),
-                    "tuple2" => NativeAdtType::Tuple(2),
-                    "tuple3" => NativeAdtType::Tuple(3),
-                    "tuple4" => NativeAdtType::Tuple(4),
-                    "tuple5" => NativeAdtType::Tuple(5),
-                    "tuple6" => NativeAdtType::Tuple(6),
-                    "tuple7" => NativeAdtType::Tuple(7),
-                    "tuple8" => NativeAdtType::Tuple(8), //for tests enough
-                    "alt0" => NativeAdtType::Alternative(0),
-                    "alt1" => NativeAdtType::Alternative(1),
-                    "alt2" => NativeAdtType::Alternative(2),
-                    "alt3" => NativeAdtType::Alternative(3),
-                    "alt4" => NativeAdtType::Alternative(4),
-                    "alt5" => NativeAdtType::Alternative(5),
-                    "alt6" => NativeAdtType::Alternative(6),
-                    "alt7" => NativeAdtType::Alternative(7),
-                    "alt8" => NativeAdtType::Alternative(8), //for tests enough
-                    _ => return Err("Unsupported native type".into())
-                };
-                Ok(RAdtRef::Native(bt))
+                Ok(RAdtRef{module:self.generate_imp_ref(&module.hash.unwrap()), offset})
             },
         }
     }
@@ -490,66 +361,6 @@ impl<'a,'c, 'h> ScriptContext<'a,'c, 'h> {
                     let offset = self.mapping[m_id].index[e_id].elem_index as u8;
                     let applies = self.alloc.iter_result_alloc_slice(t_ref.applies.iter().map(|tar|self.generate_type_ref(tar)))?;
                     TypeApplyRef::Module(self.generate_imp_ref(&module.hash.unwrap()), offset, applies)
-                },
-
-                Ref::Native(ref id) => {
-                    let typ = match id.0.as_ref() {
-                        "bool" => NativeType::Bool,
-                        "publicId" => NativeType::PublicId,
-                        "privateId" => NativeType::PrivateId,
-                        "u8" => NativeType::UInt(1),
-                        "u16" => NativeType::UInt(2),
-                        "u32" => NativeType::UInt(4),
-                        "u64" => NativeType::UInt(8),
-                        "u128" => NativeType::UInt(16),
-                        "i8" => NativeType::SInt(1),
-                        "i16" => NativeType::SInt(2),
-                        "i32" => NativeType::SInt(4),
-                        "i64" => NativeType::SInt(8),
-                        "i128" => NativeType::SInt(16),
-                        "tuple0"  => NativeType::Tuple(0),
-                        "tuple1"  => NativeType::Tuple(1),
-                        "tuple2"  => NativeType::Tuple(2),
-                        "tuple3"  => NativeType::Tuple(3),
-                        "tuple4"  => NativeType::Tuple(4),
-                        "tuple5"  => NativeType::Tuple(5),
-                        "tuple6"  => NativeType::Tuple(6),
-                        "tuple7"  => NativeType::Tuple(7),
-                        "tuple8"  => NativeType::Tuple(8), //for tests enough
-                        "alt0"  => NativeType::Alternative(0),
-                        "alt1"  => NativeType::Alternative(1),
-                        "alt2"  => NativeType::Alternative(2),
-                        "alt3"  => NativeType::Alternative(3),
-                        "alt4"  => NativeType::Alternative(4),
-                        "alt5"  => NativeType::Alternative(5),
-                        "alt6"  => NativeType::Alternative(6),
-                        "alt7"  => NativeType::Alternative(7),
-                        "alt8"  => NativeType::Alternative(8), //for tests enough
-                        "data1"  => NativeType::Data(1),
-                        "data2"  => NativeType::Data(2),
-                        "data4"  => NativeType::Data(4),
-                        "data8"  => NativeType::Data(8),
-                        "data12"  => NativeType::Data(12),
-                        "data16"  => NativeType::Data(16),
-                        "data20"  => NativeType::Data(20),
-                        "data24"  => NativeType::Data(24),
-                        "data28"  => NativeType::Data(28),
-                        "data32"  => NativeType::Data(32),
-                        "data40"  => NativeType::Data(40),
-                        "data48"  => NativeType::Data(48),
-                        "data56"  => NativeType::Data(56),
-                        "data64"  => NativeType::Data(64),
-                        "data80"  => NativeType::Data(80),
-                        "data96"  => NativeType::Data(96),
-                        "data112"  => NativeType::Data(112),
-                        "data128"  => NativeType::Data(128),
-                        "data160"  => NativeType::Data(160),
-                        "data192"  => NativeType::Data(192),
-                        "data224"  => NativeType::Data(224),
-                        _ => return Err("Unsupported native type".into())
-                    };
-                    let applies = self.alloc.iter_result_alloc_slice(t_ref.applies.iter().map(|tar|self.generate_type_ref(tar)))?;
-                    TypeApplyRef::Native(typ,applies)
                 },
 
                 Ref::This(ref id) => {
@@ -580,35 +391,10 @@ impl<'a,'c, 'h> ScriptContext<'a,'c, 'h> {
     pub fn get_tag(&mut self, r:&Ref, ctr:Id) -> Result<Tag,String>{
         match r {
             Ref::This(_) | Ref::Generic(_) | Ref::Account(_) | Ref::Txt(_,_)  => Err("Generics and Phantoms do not have Ctrs".into()),
-            Ref::Native(ref id) => match id.0.as_ref() {
-                "tuple0" | "tuple1" | "tuple2" | "tuple3"
-                | "tuple4" | "tuple5" | "tuple6" | "tuple7"
-                | "tuple8" => if ctr.0 == "tuple" {
-                    Ok(Tag(0))
-                } else {
-                    return Err("Unsupported native type".into())
-                }
-                "alt1" | "alt2" | "alt3" | "alt4"
-                | "alt5" | "alt6" | "alt7" | "alt8" => {
-                    match  ctr.0.as_ref() {
-                        "first" => Ok(Tag(0)),
-                        "second" => Ok(Tag(1)),
-                        "third" => Ok(Tag(2)),
-                        "fourth" => Ok(Tag(3)),
-                        "fifth" => Ok(Tag(4)),
-                        "sixth" => Ok(Tag(5)),
-                        "seventh" => Ok(Tag(6)),
-                        "eight" => Ok(Tag(7)),
-                        _ => Err("Unsupported native type".into())
-                    }
-                },
-                _ => Err("Unsupported native type".into())
-            },
             Ref::Module(ref m_id, ref e_id) => {
                 match *self.mapping[m_id].get_component(e_id){
                     Component::Adt { ref ctrs, .. } => Ok(Tag(ctrs.iter().enumerate().find(|(_,case)|case.name == ctr).unwrap().0 as u8)),
-                    Component::Err { .. } => Err("Not an Adt".into()),
-                    Component::Fun { .. } => Err("Not an Adt".into()),
+                    _ => Err("Not an internal Adt".into()),
                 }
             },
         }

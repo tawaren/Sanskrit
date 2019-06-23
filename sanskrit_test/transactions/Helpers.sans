@@ -1,8 +1,8 @@
 module Helpers {
     err ValidationError;
 
-    public risky<.ValidationError> fun AssertTrue(r:$bool):() {
-         () = &switch r:$bool {
+    public risky<.ValidationError> fun AssertTrue(r:Bool.Bool):() {
+         () = &switch r:Bool.Bool {
              true => {
                  return;
              };
@@ -13,8 +13,8 @@ module Helpers {
          return;
     };
 
-    public risky<.ValidationError> fun AssertFalse(r:$bool):() {
-         () = &switch r:$bool {
+    public risky<.ValidationError> fun AssertFalse(r:Bool.Bool):() {
+         () = &switch r:Bool.Bool {
              false => {
                  return;
              };
@@ -25,93 +25,87 @@ module Helpers {
          return;
     };
 
-    public risky<.ValidationError> fun AssertEqU8(v1:$u8,v2:$u8):() {
-        r = call $Eq[$u8](v1,v2);
+    public risky<.ValidationError> fun AssertEqU8(v1:IntU8.U8,v2:IntU8.U8):() {
+        r = call IntU8.eq(v1,v2);
         () = call .AssertTrue(r);
         return;
     };
 
-    public risky<.ValidationError> fun AssertEqI8(v1:$i8,v2:$i8):() {
-        r = call $Eq[$i8](v1,v2);
+    public risky<.ValidationError> fun AssertEqI8(v1:IntI8.I8,v2:IntI8.I8):() {
+        r = call IntI8.eq(v1,v2);
         () = call .AssertTrue(r);
         return;
     };
 
-    public risky<.ValidationError> fun AssertEqU128(v1:$u128,v2:$u128):() {
-        r = call $Eq[$u128](v1,v2);
+    public risky<.ValidationError> fun AssertEqU128(v1:IntU128.U128,v2:IntU128.U128):() {
+        r = call IntU128.eq(v1,v2);
         () = call .AssertTrue(r);
         return;
     };
 
-    public risky<.ValidationError> fun AssertEqI128(v1:$i128,v2:$i128):() {
-        r = call $Eq[$i128](v1,v2);
+    public risky<.ValidationError> fun AssertEqI128(v1:IntI128.I128,v2:IntI128.I128):() {
+        r = call IntI128.eq(v1,v2);
         () = call .AssertTrue(r);
         return;
     };
 
-    public risky<.ValidationError> fun AssertEqData1(v1:$data1,v2:$data1):() {
-        r = call $Eq[$data1](v1,v2);
+    public risky<.ValidationError> fun AssertEqData1(v1:Data.Data1,v2:Data.Data1):() {
+        r = call Data.eq1(v1,v2);
         () = call .AssertTrue(r);
         return;
     };
 
-    public risky<.ValidationError> fun AssertEqData4(v1:$data4,v2:$data4):() {
-        r = call $Eq[$data4](v1,v2);
+    public risky<.ValidationError> fun AssertEqData4(v1:Data.Data4,v2:Data.Data4):() {
+        r = call Data.eq4(v1,v2);
         () = call .AssertTrue(r);
         return;
     };
 
-    public risky<.ValidationError> fun AssertEqData8(v1:$data8,v2:$data8):() {
-        r = call $Eq[$data8](v1,v2);
+    public risky<.ValidationError> fun AssertEqData8(v1:Data.Data8,v2:Data.Data8):() {
+        r = call Data.eq8(v1,v2);
         () = call .AssertTrue(r);
         return;
     };
 
-    public risky<.ValidationError> fun AssertEqData20(v1:$data20,v2:$data20):() {
-        r = call $Eq[$data20](v1,v2);
+    public risky<.ValidationError> fun AssertEqData20(v1:Data.Data20,v2:Data.Data20):() {
+        r = call Data.eq20(v1,v2);
         () = call .AssertTrue(r);
         return;
     };
 
-    public risky<.ValidationError> fun AssertEqObj(v1:SomeTypes.X[$u8],v2:SomeTypes.X[$u8]):() {
-        r = call $Eq[SomeTypes.X[$u8]](v1,v2);
+    public risky<.ValidationError> fun AssertEqIndex(v1:Ids.PrivateId,v2:Ids.PrivateId):() {
+        r = call Ids.eqPriv(v1,v2);
         () = call .AssertTrue(r);
         return;
     };
 
-    public risky<.ValidationError> fun AssertEqIndex(v1:$privateId,v2:$privateId):() {
-        r = call $Eq[$privateId](v1,v2);
+    public risky<.ValidationError> fun AssertEqRef(v1:Ids.PublicId,v2:Ids.PublicId):() {
+        r = call Ids.eqPub(v1,v2);
         () = call .AssertTrue(r);
         return;
     };
 
-    public risky<.ValidationError> fun AssertEqRef(v1:$publicId,v2:$publicId):() {
-        r = call $Eq[$publicId](v1,v2);
-        () = call .AssertTrue(r);
-        return;
-    };
-
-    public risky<.ValidationError> fun AssertEqBool(v1:$bool,v2:$bool):() {
-        r = call $Eq[$bool](v1,v2);
+    public risky<.ValidationError> fun AssertEqBool(v1:Bool.Bool,v2:Bool.Bool):() {
+        r = call Bool.eq(v1,v2);
         () = call .AssertTrue(r);
         return;
     };
 
 
-    public risky<.ValidationError> fun AssertNotEqData20(v1:$data20,v2:$data20):() {
-        r = call $Eq[$data20](v1,v2);
+    public risky<.ValidationError> fun AssertNotEqData20(v1:Data.Data20,v2:Data.Data20):() {
+        r = call Data.eq20(v1,v2);
         () = call .AssertFalse(r);
         return;
     };
 
-    public risky<.ValidationError> fun AssertNotEqRef(v1:$publicId,v2:$publicId):() {
-        r = call $Eq[$publicId](v1,v2);
+    public risky<.ValidationError> fun AssertNotEqRef(v1:Ids.PublicId,v2:Ids.PublicId):() {
+        r = call Ids.eqPub(v1,v2);
         () = call .AssertFalse(r);
         return;
     };
 
-    public risky<.ValidationError> fun AssertNotEqIndex(v1:$privateId,v2:$privateId):() {
-        r = call $Eq[$privateId](v1,v2);
+    public risky<.ValidationError> fun AssertNotEqIndex(v1:Ids.PrivateId,v2:Ids.PrivateId):() {
+        r = call Ids.eqPriv(v1,v2);
         () = call .AssertFalse(r);
         return;
     };
@@ -120,8 +114,8 @@ module Helpers {
         return;
     };
 
-    public fun ModIndex():(a:$privateId){
-       a = moduleIndex;
+    public fun ModIndex():(a:Ids.PrivateId){
+       a = call Ids.moduleId();
        return a;
     };
 }

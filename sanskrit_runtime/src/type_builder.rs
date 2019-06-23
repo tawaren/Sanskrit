@@ -11,7 +11,6 @@ impl<'a> RuntimeType<'a> {
         match *self {
             RuntimeType::Image { .. } => CapSet::open(),
             RuntimeType::Custom { caps, .. } => caps,
-            RuntimeType::NativeType { caps, .. } => caps,
             RuntimeType::NewType { .. } => CapSet::empty(),
             RuntimeType::AccountType { .. } =>  CapSet::empty(),
         }
@@ -45,12 +44,7 @@ pub fn execute_type_builder<'a,'b,'h>(builder:&TypeBuilder<'b>, refs:&[Ptr<'a,Ru
                         module,
                         offset,
                         applies: applies.finish()
-                    }),
-                    TypeKind::Native { typ } =>  alloc.alloc(RuntimeType::NativeType{
-                        caps,
-                        typ,
-                        applies: applies.finish()
-                    }),
+                    })
                 }
             },
         }

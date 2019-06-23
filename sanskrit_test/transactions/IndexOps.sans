@@ -1,46 +1,46 @@
 module IndexOps {
-    public fun GenId[phantom T](consume in:System.Singleton[T]):(out:$privateId) {
+    public fun GenId[phantom T](consume in:System.Singleton[T]):(out:Ids.PrivateId) {
         out = unpack in:System.Singleton[T];
         return out;
     };
 
-    public fun ToRef(a:$privateId):(b:$publicId) {
-        b = call $GenPublicId[$privateId](a);
+    public fun ToRef(a:Ids.PrivateId):(b:Ids.PublicId) {
+        b = call Ids.privateToPublic(a);
         return b;
     };
 
-    public fun ToRef2(a:$data20):(b:$publicId) {
-        b = call $GenPublicId[$data20](a);
+    public fun ToRef2(a:Data.Data20):(b:Ids.PublicId) {
+        b = call Ids.dataToPublic(a);
         return b;
     };
 
-    public fun ToData(a:$publicId):(c:$data20) {
-        c = call $ToData[$publicId,$data20](a);
+    public fun ToData(a:Ids.PublicId):(c:Data.Data20) {
+        c = call Ids.publicToData(a);
         return c;
     };
 
-    public fun ToData2(a:$privateId):(c:$data20) {
-        c = call $ToData[$privateId,$data20](a);
+    public fun ToData2(a:Ids.PrivateId):(c:Data.Data20) {
+        c = call Ids.privateToData(a);
         return c;
     };
 
-    public fun DeriveIndex(a:$privateId, b:$privateId):(c:$privateId) {
-        c = call $DeriveId[$privateId,$privateId](a,b);
+    public fun DeriveIndex(a:Ids.PrivateId, b:Ids.PrivateId):(c:Ids.PrivateId) {
+        c = call Ids.derivePrivateIdPrivate(a,b);
         return c;
     };
 
-    public fun DeriveRef(a:$publicId, b:$publicId):(c:$publicId) {
-        c = call $DeriveId[$publicId,$publicId](a,b);
+    public fun DeriveRef(a:Ids.PublicId, b:Ids.PublicId):(c:Ids.PublicId) {
+        c = call Ids.derivePublicIdPublic(a,b);
         return c;
     };
 
-    public fun ModIndex():(a:$privateId){
-       a = moduleIndex;
+    public fun ModIndex():(a:Ids.PrivateId){
+       a = call Ids.moduleId();
        return a;
     };
 
-    public fun ModIndex2():(b:$privateId){
-       b = moduleIndex;
+    public fun ModIndex2():(b:Ids.PrivateId){
+       b = call Ids.moduleId();
        return b;
     };
 }

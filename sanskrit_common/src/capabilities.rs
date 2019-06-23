@@ -1,7 +1,6 @@
 use errors::*;
 use encoding::*;
-use model::NativeCap;
-use model::NativeType;
+use model::Capability;
 
 //A special set for representing the capabilities
 //it uses an u8 as bitset where each bit i 1 of the 8 capabilities
@@ -21,17 +20,18 @@ const CREATE_MASK:u8 = 1 << 6;
 impl CapSet {
 
     //define some capability sets
-    const RECURSIVE_MASK:u8 = DROP_MASK | COPY_MASK | PERSIST_MASK;
+    const RECURSIVE_MASK:u8 = DROP_MASK | COPY_MASK | PERSIST_MASK ;
 
     const NON_RECURSIVE_MASK:u8 = CONSUME_MASK | INSPECT_MASK | EMBED_MASK | CREATE_MASK ;
-
     const STD_MASK:u8 = CONSUME_MASK | INSPECT_MASK | EMBED_MASK | CREATE_MASK | DROP_MASK | COPY_MASK | PERSIST_MASK;
 
-    const TXT_LOCAL_MASK:u8 = CONSUME_MASK | INSPECT_MASK | EMBED_MASK | DROP_MASK | COPY_MASK ;
+    const TXT_LOCAL_MASK:u8 = CONSUME_MASK | INSPECT_MASK | EMBED_MASK | DROP_MASK | COPY_MASK;
+
+    const LIT_MASK:u8 = EMBED_MASK | DROP_MASK | COPY_MASK | PERSIST_MASK | CREATE_MASK ;
 
     const OPAQUE_MASK:u8 = EMBED_MASK | DROP_MASK | COPY_MASK | PERSIST_MASK;
 
-    const OPAQUE_AFFINE_MASK:u8 = EMBED_MASK | DROP_MASK  | PERSIST_MASK;
+    const OPAQUE_AFFINE_MASK:u8 = EMBED_MASK | DROP_MASK  | PERSIST_MASK ;
 
     //generate a empty set
     pub fn empty() -> Self {
@@ -49,15 +49,15 @@ impl CapSet {
     }
 
     //A set with a single capability
-    pub fn from_cap(native:NativeCap) -> Self {
+    pub fn from_cap(native: Capability) -> Self {
         CapSet(match native{
-            NativeCap::Drop => DROP_MASK,
-            NativeCap::Copy => COPY_MASK,
-            NativeCap::Persist => PERSIST_MASK,
-            NativeCap::Consume => CONSUME_MASK,
-            NativeCap::Inspect => INSPECT_MASK,
-            NativeCap::Embed => EMBED_MASK,
-            NativeCap::Create => CREATE_MASK,
+            Capability::Drop => DROP_MASK,
+            Capability::Copy => COPY_MASK,
+            Capability::Persist => PERSIST_MASK,
+            Capability::Consume => CONSUME_MASK,
+            Capability::Inspect => INSPECT_MASK,
+            Capability::Embed => EMBED_MASK,
+            Capability::Create => CREATE_MASK,
         })
     }
 
@@ -66,29 +66,30 @@ impl CapSet {
         CapSet(CapSet::STD_MASK)
     }
 
+
     //No Create,Consume,Inspect & No Copy
     pub fn opaque_affine() -> Self {
         CapSet(CapSet::OPAQUE_AFFINE_MASK)
     }
 
     //No Create,Consume,Inspect
-    pub fn opaque() -> Self {
-        CapSet(CapSet::OPAQUE_MASK)
+    pub fn lit() -> Self {
+        CapSet(CapSet::LIT_MASK)
     }
+
 
     //No Create,Consume,Inspect
     pub fn local() -> Self {
         CapSet(CapSet::TXT_LOCAL_MASK)
     }
 
-
     //adds a cap to the set
-    pub fn with_elem(self, native_cap:NativeCap) -> Self {
+    pub fn with_elem(self, native_cap: Capability) -> Self {
         CapSet(self.0 | CapSet::from_cap(native_cap).0)
     }
 
     //add multiple caps to the set
-    pub fn with_elems<I:Iterator<Item=NativeCap>>(mut self, iter:I) -> Self {
+    pub fn with_elems<I:Iterator<Item=Capability>>(mut self, iter:I) -> Self {
         for add in iter {
             self = self.with_elem(add)
         }
@@ -101,7 +102,7 @@ impl CapSet {
     }
 
     //checks if a cap is contained
-    pub fn contains(self, native_cap:NativeCap) -> bool {
+    pub fn contains(self, native_cap: Capability) -> bool {
         self.0 & CapSet::from_cap(native_cap).0 != 0
     }
 
@@ -130,7 +131,7 @@ impl CapSet {
         CapSet(self.0 & set2.0)
     }
 }
-
+/*
 impl NativeType {
     //Assosiates a capset to each basic type
     pub fn base_caps(self) ->  CapSet {
@@ -149,3 +150,4 @@ impl NativeType {
         }
     }
 }
+*/

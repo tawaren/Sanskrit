@@ -1,0 +1,20 @@
+module IntI8 {
+    external(1) lit(1) <Copy,Drop,Persist,Create,Embed> I8;
+
+    external(2) public fun hash(num:.I8):(res:Data.Data20);
+
+    external(1) public fun eq(num1:.I8, num2:.I8):(res:Bool.Bool);
+    external(4) public fun lt(num1:.I8, num2:.I8):(res:Bool.Bool);
+    external(5) public fun lte(num1:.I8, num2:.I8):(res:Bool.Bool);
+    external(6) public fun gt(num1:.I8, num2:.I8):(res:Bool.Bool);
+    external(7) public fun gte(num1:.I8, num2:.I8):(res:Bool.Bool);
+
+    external(8) public risky<Errors.Numeric> fun add(num1:.I8, num2:.I8):(res:.I8);
+    external(9) public risky<Errors.Numeric> fun sub(num1:.I8, num2:.I8):(res:.I8);
+    external(10) public risky<Errors.Numeric> fun div(num1:.I8, num2:.I8):(res:.I8);
+    external(11) public risky<Errors.Numeric> fun mul(num1:.I8, num2:.I8):(res:.I8);
+
+    external(12) public fun toData(num:.I8):(res:Data.Data1);
+
+
+}

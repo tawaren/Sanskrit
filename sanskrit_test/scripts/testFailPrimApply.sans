@@ -1,5 +1,5 @@
 module TestFailPrimApply {
     type Wrapper[A] {
-        Ctr($u8[A]);
+        Ctr(IntU8.U8[A]);
     };
 }

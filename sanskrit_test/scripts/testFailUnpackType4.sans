@@ -1,7 +1,7 @@
 module TestFailUnpackType4 {
 
-    private fun Test(a:$u8):(){
-       () = &unpack a:$u8;
+    private fun Test(a:IntU8.U8):(){
+       () = &unpack a:IntU8.U8;
        return;
     };
 }

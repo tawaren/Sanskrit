@@ -6,7 +6,7 @@ module TestFailFunCall3 {
     };
 
     private fun TestCall[A](consume a:A):(b:A){
-       b = call .Test[$u8](a);
+       b = call .Test[IntU8.U8](a);
        return b;
     };
 

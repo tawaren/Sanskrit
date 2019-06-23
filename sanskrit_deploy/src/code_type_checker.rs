@@ -22,9 +22,8 @@ use sanskrit_common::store::Store;
 use alloc::vec::Vec;
 use sanskrit_core::resolver::Context;
 use sanskrit_common::model::*;
-use native::check_valid_literal_construction;
-use sanskrit_core::native::base::resolved_native_type;
 use sanskrit_core::utils::Crc;
+use sanskrit_common::capabilities::CapSet;
 
 
 pub struct TypeCheckerContext<'a,'b, S:Store + 'b> {
@@ -74,6 +73,7 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
             //if it is not returned discard it if allowed
             if !keep_set.contains(&target) && !self.stack.can_be_released(target)? {
                 self.discard(target)?;
+
             }
         }
 
@@ -82,50 +82,50 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
     }
 
     //Type checks a function in the current context
-    pub fn type_check_function(&mut self, func:&FunctionComponent) -> Result<()>{
+    pub fn type_check_function(&mut self, func:&FunctionComponent, code:&Exp) -> Result<()>{
         //Capture risks declaration: Is later used to check if a throwing operation can be called
-        self.risk = func.risk.iter().map(|r|r.fetch(&self.context)).collect::<Result<_>>()?;
+        self.risk = func.shared.risk.iter().map(|r|r.fetch(&self.context)).collect::<Result<_>>()?;
         //Push the input parameters onto the stack
-        for p in &func.params {
+        for p in &func.shared.params {
             self.stack.provide( p.typ.fetch(&self.context)?)?;
         }
 
         //Start a new block for th body of the function
         let block = self.stack.start_block();
         //Type check the function body
-        let results = self.type_check_exp(&func.code)?;
+        let results = self.type_check_exp(code)?;
         //Type check the Result
         match results {
             //if it is a return we have to check that the result types matches the function signature types
             ExprResult::Return(rets) => {
                 //Ensure the amount is correct
-                if rets.len() != func.returns.len() {return num_return_mismatch()}
+                if rets.len() != func.shared.returns.len() {return num_return_mismatch()}
                 //iterate over each return (deepest first)
-                for (val,t) in rets.iter().zip(func.returns.iter()) {
+                for (val,t) in rets.iter().zip(func.shared.returns.iter()) {
                     //Check if the returned value has the expected type
                     let ret_typ = t.typ.fetch(&self.context)?;
                     if self.stack.value_of(*val)? != ret_typ {return type_mismatch()}
                 }
 
                 //discard unneeded items
-                self.clean_frame(&results, func.params.len())?;
+                self.clean_frame(&results, func.shared.params.len())?;
                 //Close the function body block (leaves just params & results on the Stack)
                 self.stack.end_block(block, results)?;
 
                 //Check that the function signature matches the resulting stack layout
-                let consumes = func.params.iter().map(|p|p.consumes);
-                let borrows = func.returns.iter().map(|r|&r.borrows[..]);
+                let consumes = func.shared.params.iter().map(|p|p.consumes);
+                let borrows = func.shared.returns.iter().map(|r|&r.borrows[..]);
                 self.stack.check_function_signature(consumes, borrows)
             },
             //Probably rarely used but supported (Function that always fails)
             ExprResult::Throw => {
                 //discard unneeded items
-                self.clean_frame(&results, func.params.len())?;
+                self.clean_frame(&results, func.shared.params.len())?;
                 //Close the function body block (leaves just params & results on the Stack)
                 self.stack.end_block(block, ExprResult::Throw)?;
 
                 //Check that the function params matches the resulting stack layout
-                let consumes = func.params.iter().map(|p|p.consumes);
+                let consumes = func.shared.params.iter().map(|p|p.consumes);
                 //the is throw boolean flag instructs the checker to ignore the consume status
                 self.stack.check_function_param_signature(consumes, true)
             },
@@ -188,27 +188,32 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
             OpCode::Field(value, base_ref, field) => self.field(value, base_ref, field, FetchMode::Consume),
             OpCode::CopyField(value, base_ref, field) => self.field(value, base_ref, field, FetchMode::Copy),
             OpCode::BorrowField(value, base_ref, field) => self.field(value, base_ref, field, FetchMode::Borrow),
-            OpCode::ModuleIndex => self.module_index(),
+            //OpCode::ModuleIndex => self.module_index(),
             OpCode::Image(val) =>  self.image(val),
             OpCode::ExtractImage(val) =>  self.unwrap_image(val),
-
+            OpCode::CreateSig(func,offset,ref values) =>  self.create_sig(func,offset,values),
+            OpCode::InvokeSig(fun,typ,  ref vals) => self.invoke_sig(fun, typ,vals)
         }
     }
 
     fn lit(&mut self, data:&LargeVec<u8>, typ:TypeRef) -> Result<()> {
         //Get the Resolved  Type of the Literal
         let r_lit = typ.fetch(&self.context)?;
-        //Check with the Native Module to enforce that tis type can be generated from the provided Byte stream
-        check_valid_literal_construction(&(data.0), &r_lit)?;
+        //Check that tis type can be generated from the provided Byte stream
+        match *r_lit {
+            ResolvedType::Lit {size,..} if size as usize == data.0.len() => {},
+            _ => return not_a_literal_error()
+        }
         //Tell the Stack that an element has appeared out of nowhere
         self.stack.provide(r_lit)
     }
 
+    /*
     fn module_index(&mut self,) -> Result<()> {
         //Tell the Stack that an element has appeared out of nowhere
         self.stack.provide(resolved_native_type(NativeType::PrivateId, &[]))
     }
-
+    */
     //_ as let is keyword
     fn let_(&mut self, bind:&Exp) -> Result<()> {
         //capture frame start for clean up
@@ -228,7 +233,7 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
             //Get the Resolved Type of the source
             let v_typ = self.stack.value_of(value)?;
             //Copy is only allowed for types with the Copy capability
-            if !v_typ.get_caps().contains(NativeCap::Copy) {
+            if !v_typ.get_caps().contains(Capability::Copy) {
                 return capability_missing_error()
             }
         }
@@ -268,7 +273,7 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
             //Get the Resolved Type of the target
             let v_typ = self.stack.value_of(value)?;
             //Drop is only allowed for types with the Drop capability
-            if !v_typ.get_caps().contains(NativeCap::Drop) {
+            if !v_typ.get_caps().contains(Capability::Drop) {
                 return capability_missing_error()
             }
             //Tell the stack that the value is discarded so he can check the linearity constraints
@@ -350,23 +355,23 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
         match mode {
             FetchMode::Consume => {
                 //Consumed values need the consume capability
-                if !e_typ.get_caps().contains(NativeCap::Consume) && !e_typ.is_local() {
+                if !e_typ.get_caps().contains(Capability::Consume) && !e_typ.is_local() {
                     return capability_missing_error()
                 }
             },
             FetchMode::Copy => {
                 //Copied values need the copy capability
-                if !e_typ.get_caps().contains(NativeCap::Copy) {
+                if !e_typ.get_caps().contains(Capability::Copy) {
                     return capability_missing_error()
                 }
                 //Copied values need the inspect capability
-                if !e_typ.get_caps().contains(NativeCap::Inspect) && !e_typ.is_local() {
+                if !e_typ.get_caps().contains(Capability::Inspect) && !e_typ.is_local() {
                     return capability_missing_error()
                 }
             },
             FetchMode::Borrow => {
                 //Borrowed values need the inspect capability
-                if !e_typ.get_caps().contains(NativeCap::Inspect) && !e_typ.is_local() {
+                if !e_typ.get_caps().contains(Capability::Inspect) && !e_typ.is_local() {
                     return capability_missing_error()
                 }
             },
@@ -403,13 +408,13 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
         //Decide if we have to make an inspect or a consume (borrowed values are inspected, rest consumed)
         match mode {
             FetchMode::Consume => {
-                if !e_typ.get_caps().contains(NativeCap::Consume) && !e_typ.is_local() {
+                if !e_typ.get_caps().contains(Capability::Consume) && !e_typ.is_local() {
                     return capability_missing_error()
                 }
             },
             FetchMode::Borrow | FetchMode::Copy => {
                 //Borrowed values need the inspect capability
-                if !e_typ.get_caps().contains(NativeCap::Inspect) && !e_typ.is_local() {
+                if !e_typ.get_caps().contains(Capability::Inspect) && !e_typ.is_local() {
                     return capability_missing_error()
                 }
             },
@@ -421,14 +426,14 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
         match mode {
             FetchMode::Consume => {
                 for (idx,field_type) in r_ctr[0 as usize].iter().enumerate() {
-                    if idx != field as usize && !field_type.get_caps().contains(NativeCap::Drop) {
+                    if idx != field as usize && !field_type.get_caps().contains(Capability::Drop) {
                         return capability_missing_error()
                     }
                 }
             },
             FetchMode::Copy => {
                 //Borrowed values need the copy capability
-                if !typ.get_caps().contains(NativeCap::Copy) {
+                if !typ.get_caps().contains(Capability::Copy) {
                     return capability_missing_error()
                 }
             },
@@ -445,9 +450,16 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
         if cases.len() <= 1 {
             return wrong_opcode()
         };
-
+        //Fetch the provided
+        let e_typ = typ.fetch(&self.context)?;
         //Get the Resolved Type of the value
         let r_typ = self.stack.value_of(value)?;
+        //check that they match
+        if r_typ != e_typ {
+            //expected type does not much provided type
+            return type_mismatch()
+        }
+
         //Get the resolved constructors
         let r_ctr = self.context.get_ctrs(typ, self.context.store)?;
 
@@ -495,7 +507,7 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
         //Get resolved Type
         let r_typ = typ.fetch(&self.context)?;
         // Checkt that it is local or native
-        if !r_typ.get_caps().contains(NativeCap::Create) && !r_typ.is_local() {
+        if !r_typ.get_caps().contains(Capability::Create) && !r_typ.is_local() {
             return capability_missing_error()
         }
 
@@ -533,7 +545,7 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
             }
 
             //check that the value has the copy if required
-            if mode == FetchMode::Copy && !r_v.get_caps().contains(NativeCap::Copy){
+            if mode == FetchMode::Copy && !r_v.get_caps().contains(Capability::Copy){
                 return capability_missing_error()
             }
 
@@ -589,6 +601,63 @@ impl<'a, 'b, S:Store + 'b> TypeCheckerContext<'a,'b,S> {
         self.clean_frame(&loop_res.unwrap(), start_height)?;
         //finish the try catch stack will only contain result types
         self.stack.end_branching(branching, loop_res.unwrap())
+    }
+
+    fn create_sig(&mut self, func:FuncRef, impl_offset:u8, vals:&[ValueRef]) -> Result<()>{
+        let imp = self.context.get_func_impl(func, impl_offset, &self.context.store)?;
+        //check that we capture the right amount
+        if vals.len() != imp.capture_types.len() {
+            return impl_does_not_exist_error()
+        }
+        //check that all the capture match
+        for (r_cap,value) in imp.capture_types.iter().zip(vals) {
+            //get the stack type
+            let c_typ = self.stack.value_of(*value)?;
+            //check if they match
+            if c_typ != r_cap.typ {
+                return type_mismatch();
+            }
+
+            //check captures can be embedded
+            if !c_typ.get_caps().contains(Capability::Embed) {
+                return capability_missing_error();
+            }
+
+            //check that the capture have the correct caps
+            if c_typ.get_caps().intersect(CapSet::recursive()).is_subset_of(imp.sig_type.get_caps().intersect(CapSet::recursive())){
+                return capability_constraints_violation();
+            }
+        }
+
+        // Check that it is local or has create
+        if !imp.sig_type.get_caps().contains(Capability::Create) && !imp.sig_type.is_local() {
+            return capability_missing_error()
+        }
+
+        //push the sig onto the stack
+        self.stack.provide(imp.sig_type.clone())
+
+    }
+
+    fn invoke_sig(&mut self, value:ValueRef, typ:TypeRef, vals:&[ValueRef]) -> Result<()>{
+        //Fetch the provided
+        let e_typ = typ.fetch(&self.context)?;
+        //Get the Resolved Type of the value
+        let r_typ = self.stack.value_of(value)?;
+        //check that they match
+        if r_typ != e_typ {
+            //expected type does not much provided type
+            return type_mismatch()
+        }
+
+        // Check that it is local or has Consume (as calling a sig consumes it)
+        if !r_typ.get_caps().contains(Capability::Consume) && !r_typ.is_local() {
+            return capability_missing_error()
+        }
+
+        //Get the Resolved Function & forward to the method shared wiith entry point
+        let sig = self.context.get_type_sig(typ, &self.context.store)?;
+        self.invoke_direct( &sig, vals)
     }
 
     fn invoke(&mut self, func:FuncRef, vals:&[ValueRef]) -> Result<()>{

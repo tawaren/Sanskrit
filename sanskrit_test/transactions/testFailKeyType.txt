@@ -1,4 +1,4 @@
 signed(A) transaction{
-   a = lit 0x00112233445566778899AABBCCDDEEFF0011223344:$data;
+   a = lit 0x00112233445566778899AABBCCDDEEFF00112233:Data.Data20;
    b = load a;
 };

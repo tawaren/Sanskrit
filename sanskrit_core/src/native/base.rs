@@ -6,7 +6,7 @@ use sanskrit_common::model::*;
 use resolver::apply_types;
 use core::iter::repeat;
 
-
+/*
 //checks if a native type is a literal
 pub fn is_native_literal(typ: NativeType) -> bool {
     match typ {
@@ -89,7 +89,7 @@ pub fn check_native_type_constraints(typ: NativeType, types:&[Crc<ResolvedType>]
     fn have_embed(types:&[Crc<ResolvedType>]) -> Result<()>{
         //Check that the phantom constraints hold
         for appl in types {
-            if !appl.get_caps().contains(NativeCap::Embed) {
+            if !appl.get_caps().contains(Capability::Embed) {
                 return type_apply_constraint_violation()
             }
         }
@@ -137,3 +137,4 @@ pub fn check_native_type_constraints(typ: NativeType, types:&[Crc<ResolvedType>]
         },
     }
 }
+*/

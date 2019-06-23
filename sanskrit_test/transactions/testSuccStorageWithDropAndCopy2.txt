@@ -1,27 +1,27 @@
 signed(A) transaction{
-   a = lit 1:$u8;
-   b = pack SomeTypes.X[$u8]#Ctr(a);
+   a = lit 1:IntU8.U8;
+   b = pack SomeTypes.X[IntU8.U8]#Ctr(a);
    d = call IndexOps.ModIndex();
-   (r, s) = call SomeTypes.GenIndexedAt[SomeTypes.X[$u8]](d,b);
+   (r, s) = call SomeTypes.GenIndexedAt[SomeTypes.X[IntU8.U8]](d,b);
    store s;
 };
 
 signed(A) transaction{
-   orig = lit 1:$u8;
+   orig = lit 1:IntU8.U8;
    a = call IndexOps.ModIndex();
    r = call SomeFunctions.GenRef(a);
    b = &load r;
-   (d0, i0) = call SomeTypes.BorrowEntryX[$u8](b);
+   (d0, i0) = call SomeTypes.BorrowEntryX[IntU8.U8](b);
    d2 = &unpack i0:SomeTypes.X#Ctr;
    () = call Helpers.AssertEqU8(d2,orig);
 };
 
 signed(A) transaction{
-   orig = lit 1:$u8;
+   orig = lit 1:IntU8.U8;
    a = call IndexOps.ModIndex();
    r = call SomeFunctions.GenRef(a);
    b = load r;
-   (d0, i0) = call SomeTypes.BorrowEntryX[$u8](b);
+   (d0, i0) = call SomeTypes.BorrowEntryX[IntU8.U8](b);
    d2 = &unpack i0:SomeTypes.X#Ctr;
    () = call Helpers.AssertEqU8(d2,orig);
    free d2;
@@ -31,19 +31,19 @@ signed(A) transaction{
 };
 
 signed(A) transaction{
-   a = lit 2:$u8;
-   b = pack SomeTypes.X[$u8]#Ctr(a);
+   a = lit 2:IntU8.U8;
+   b = pack SomeTypes.X[IntU8.U8]#Ctr(a);
    d = call IndexOps.ModIndex();
-   (r, s) = call SomeTypes.GenIndexedAt[SomeTypes.X[$u8]](d,b);
+   (r, s) = call SomeTypes.GenIndexedAt[SomeTypes.X[IntU8.U8]](d,b);
    store s;
 };
 
 signed(A) transaction{
-   changed = lit 2:$u8;
+   changed = lit 2:IntU8.U8;
    a = call IndexOps.ModIndex();
    r = call SomeFunctions.GenRef(a);
    b = &load r;
-   (d0, i0) = call SomeTypes.BorrowEntryX[$u8](b);
+   (d0, i0) = call SomeTypes.BorrowEntryX[IntU8.U8](b);
    d2 = &unpack i0:SomeTypes.X#Ctr;
    () = call Helpers.AssertEqU8(d2,changed);
 };

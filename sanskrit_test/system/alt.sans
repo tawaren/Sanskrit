@@ -1,0 +1,6 @@
+module Alt {
+    type <Copy,Drop,Persist,Create,Consume,Inspect,Embed> Alt2[<Embed> T,<Embed> Y]{
+             First(T);
+             Second(Y);
+    };
+}

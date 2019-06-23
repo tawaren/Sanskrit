@@ -1,7 +1,7 @@
 module TestFailPackType2 {
 
     type <Embed> X{
-            Ctr($u8);
+            Ctr(IntU8.U8);
     };
 
     private fun Test[<Embed> A](consume a:A):(b:TestSucAdt.Wrapper[A]){

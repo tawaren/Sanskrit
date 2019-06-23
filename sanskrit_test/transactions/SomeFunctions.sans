@@ -28,8 +28,8 @@ module SomeFunctions {
        return;
     };
 
-    public fun GenRef(b:$privateId):(r:$publicId) {
-         r = call $GenPublicId[$privateId](b);
+    public fun GenRef(b:Ids.PrivateId):(r:Ids.PublicId) {
+         r = call Ids.privateToPublic(b);
          return r;
     };
 

@@ -93,9 +93,10 @@ impl<'a,'h> LinearScriptStack<'a,'h> {
         script_stack.provide(StackEntry{
             store_borrow: false,
             val: alloc.alloc(Object::Data(SlicePtr::empty()))?, //is irrelevant -- so use something safe
-            typ: alloc.alloc(RuntimeType::NativeType{
-                caps: CapSet::empty(),                //better safe then sorry
-                typ: NativeType::Data(0),
+            typ: alloc.alloc(RuntimeType::Custom{
+                caps: CapSet::empty(),
+                module: [0;20],
+                offset: 255,
                 applies: SlicePtr::empty(),
             })?
         })?;
@@ -138,7 +139,7 @@ impl<'a,'h> LinearScriptStack<'a,'h> {
                 }
             } else {
                 //check if we have to / can drop (we should drop if it has the drop cap and can not be handled by free
-                if !elem.status.consumed && elem.value.typ.get_caps().contains(NativeCap::Drop) {
+                if !elem.status.consumed && elem.value.typ.get_caps().contains(Capability::Drop) {
                     self.drop(v_ref)?;
                 }
             }

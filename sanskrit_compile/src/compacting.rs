@@ -21,33 +21,26 @@ use sanskrit_common::errors::*;
 use sanskrit_common::model::*;
 use sanskrit_common::store::*;
 use sanskrit_interpreter::model::Error;
-use sanskrit_interpreter::model::LitDesc;
 use core::mem;
 use sanskrit_common::arena::*;
 use gas_table::gas;
+use sanskrit_interpreter::externals::{CompilationExternals, CallResources};
 
 struct State {
     //the gas used in this trace
-    gas:usize,
+    gas:u64,
     //the maximal number of gas used
-    max_gas:usize,
+    max_gas:u64,
     //number of active frames at runtime
-    frames:usize,
+    frames:u32,
     //maximal number of active frames
-    max_frames:usize,
+    max_frames:u32,
     //number of elements on the stack at runtime
-    manifested_stack:usize,
+    manifested_stack:u32,
     //maximal number of elements on the stack at runtime
-    max_manifest_stack:usize,
+    max_manifest_stack:u32,
     //elements on the stack at compiletime and where to find them on the runtime stack
     stack:Vec<usize>,
-}
-
-#[derive(Copy, Clone, Eq, PartialEq, Debug)]
-pub struct CallResources {
-    pub max_gas:usize,
-    pub max_manifest_stack: usize,
-    pub max_frames: usize,
 }
 
 pub struct Compactor<'b,'h> {
@@ -63,8 +56,8 @@ pub struct Compactor<'b,'h> {
     alloc:&'b HeapArena<'h>
 }
 
-type BranchPoint = (usize,usize);
-type ReturnPoint = (usize,usize);
+type BranchPoint = (u64,u64);
+type ReturnPoint = (u32,usize);
 
 //todo: Comment
 impl State {
@@ -82,7 +75,7 @@ impl State {
 
     fn push_real(&mut self) {
         let pos = self.manifested_stack;
-        self.stack.push(pos);
+        self.stack.push(pos as usize);
         self.manifested_stack+=1;
         if self.manifested_stack > self.max_manifest_stack {
             self.max_manifest_stack = self.manifested_stack;
@@ -100,13 +93,12 @@ impl State {
         }
     }
 
-    //todo: can we do the drop over ret pointers???
     fn drop_frame(&mut self) {
         self.frames -= 1;
     }
 
-    fn use_gas(&mut self, gas:usize) {
-        self.gas += gas;
+    fn use_gas(&mut self, gas:u64) {
+        self.gas = self.gas.saturating_add(gas as u64);
         if self.gas > self.max_gas {
             self.max_gas = self.gas
         }
@@ -167,35 +159,26 @@ impl<'b,'h> Compactor<'b,'h> {
 
     //Strip a error from the Module Hash and assign it a number
     pub fn convert_err(&mut self, err:Rc<ResolvedErr>) -> Result<Error> {
-        match *err {
-            ResolvedErr::Import { offset,  ref module} => {
-                match self.err_mapping.get(&(module.clone(),offset)) {
-                    None => {
-                        //find the next free number
-                        let next_idx = self.err_mapping.len();
-                        //ensure we do not go over the limit
-                        if next_idx > u16::max_value() as usize {return size_limit_exceeded_error()}
-                        //generate the runtime error from the number
-                        let res = Error::Custom(next_idx as u16);
-                        //remember it
-                        self.err_mapping.insert((module.clone(),offset), res);
-                        Ok(res)
-                    },
-                    //if we already have a number return it
-                    Some(ref target) => Ok(**target),
-                }
-
+        match self.err_mapping.get(&(err.module.clone(),err.offset)) {
+            None => {
+                //find the next free number
+                let next_idx = self.err_mapping.len();
+                //ensure we do not go over the limit
+                if next_idx > u16::max_value() as usize {return size_limit_exceeded_error()}
+                //generate the runtime error from the number
+                let res = Error(next_idx as u16);
+                //remember it
+                self.err_mapping.insert((err.module.clone(),err.offset), res);
+                Ok(res)
             },
-            //Native errors are already compact
-            ResolvedErr::Native { err } => Ok(Error::Native(err)),
+            //if we already have a number return it
+            Some(ref target) => Ok(**target),
         }
-
-
     }
 
     //Strip a function from the Module Hash and assign it a number
     // Additionally does compact the function and stores it in the transaction (needed to strip it from Hash)
-    pub fn emit_func<S:Store>(&mut self, fun:&FunctionComponent, module:&Hash, offset:u8, context:&Context<S>) -> Result<(u16,u8,CallResources)> {
+    pub fn emit_func<S:Store,E:CompilationExternals>(&mut self, fun:&FunctionComponent, body:&Exp,  module:&Hash, offset:u8, context:&Context<S>) -> Result<(u16,u8,CallResources)> {
         match self.fun_mapping.get(&(*module,offset)) {
             None => {
                 //find the next free number
@@ -205,9 +188,9 @@ impl<'b,'h> Compactor<'b,'h> {
                 //reserve the Slot in the function code array (it is res.0)
                 self.functions.push(None);
                 //compact the function
-                let (processed, resources) = self.process_func(fun, context)?;
+                let (processed, resources) = self.process_func::<S,E>(fun, body, context)?;
                 //get the infos needed during compaction (number, number of returns)
-                let res = (next_idx as u16,fun.returns.len() as u8, resources);
+                let res = (next_idx as u16,fun.shared.returns.len() as u8, resources);
                 //remember the info
                 let old = self.fun_mapping.insert((*module,offset), res);
                 //  for the case that someone gets the idea to allow recursion
@@ -222,18 +205,18 @@ impl<'b,'h> Compactor<'b,'h> {
     }
 
     //compacts a function
-    fn process_func<S:Store>(&mut self, fun:&FunctionComponent, context:&Context<S>) -> Result<(Ptr<'b,RExp<'b>>,CallResources)> {
+    fn process_func<S:Store,E:CompilationExternals>(&mut self, fun:&FunctionComponent, code:&Exp, context:&Context<S>) -> Result<(Ptr<'b,RExp<'b>>,CallResources)> {
         //Prepare a new Stack (Save old one)
         let mut state = State::new();
         mem::swap(&mut self.state, &mut state);
         //ret point
         let ret_point = self.state.return_point();
         //push initial params to the runtime and compiletime stack
-        for _ in 0..fun.params.len() {
+        for _ in 0..fun.shared.params.len() {
             self.state.push_real();
         }
         //compact body
-        let body = self.process_exp(&fun.code, ret_point, context)?;
+        let body = self.process_exp::<S,E>(&code, ret_point, context)?;
         //restore old Stack
         mem::swap(&mut state, &mut &mut self.state);
         //return body & Ressource infos
@@ -241,7 +224,7 @@ impl<'b,'h> Compactor<'b,'h> {
     }
 
     //compacts an expression (block)
-    fn process_exp<S:Store>(&mut self, exp:&Exp, ret_point:ReturnPoint, context:&Context<S>) -> Result<Ptr<'b,RExp<'b>>>{
+    fn process_exp<S:Store,E:CompilationExternals>(&mut self, exp:&Exp, ret_point:ReturnPoint, context:&Context<S>) -> Result<Ptr<'b,RExp<'b>>>{
         //differentiate between Return and Throw
         Ok(self.alloc.alloc(match *exp {
             Exp::Ret(ref opcodes, ref returns) => {
@@ -253,7 +236,7 @@ impl<'b,'h> Compactor<'b,'h> {
                 let mut new_opcodes = self.alloc.slice_builder(opcodes.0.len())?;
                 for code in &opcodes.0 {
                     //process the opcode
-                    match self.process_opcode(code, context)? {
+                    match self.process_opcode::<S,E>(code, context)? {
                         None => {}, //can be eliminated
                         Some(n_code) => {
                             new_opcodes.push(n_code)  //still needed but some things are stripped Aaway
@@ -284,11 +267,11 @@ impl<'b,'h> Compactor<'b,'h> {
     }
 
     //compact or even eliminate an opcode
-    pub fn process_opcode<S:Store>(&mut self, opcode:&OpCode, context:&Context<S>) -> Result<Option<ROpCode<'b>>>{
+    pub fn process_opcode<S:Store,E:CompilationExternals>(&mut self, opcode:&OpCode, context:&Context<S>) -> Result<Option<ROpCode<'b>>>{
         //delegate each opcode to a dedicated function
         match *opcode {
-            OpCode::Lit(ref data, typ) => self.lit(data,typ, context),
-            OpCode::Let(ref exp) => self.let_(exp, context),
+            OpCode::Lit(ref data, typ) => self.lit::<S,E>(data,typ, context),
+            OpCode::Let(ref exp) => self.let_::<S,E>(exp, context),
             OpCode::CopyFetch(val) => self.copy(val),
             OpCode::Fetch(val) =>  self.copy(val),
             OpCode::BorrowFetch(val) => self.copy(val),
@@ -303,15 +286,18 @@ impl<'b,'h> Compactor<'b,'h> {
             OpCode::Field(val, typ, field) => self.get_field(val, typ, field, context),
             OpCode::CopyField(val, typ, field) => self.get_field(val,typ,field, context),
             OpCode::BorrowField(val, typ, field) => self.get_field(val,typ,field, context),
-            OpCode::BorrowSwitch(val, typ, ref exps) => self.switch(val, typ, exps, context),
-            OpCode::Switch(val, typ, ref exps) => self.switch(val, typ, exps, context),
-            OpCode::CopySwitch(val, typ, ref exps) => self.switch(val, typ, exps, context),
+            OpCode::BorrowSwitch(val, typ, ref exps) => self.switch::<S,E>(val, typ, exps, context),
+            OpCode::Switch(val, typ, ref exps) => self.switch::<S,E>(val, typ, exps, context),
+            OpCode::CopySwitch(val, typ, ref exps) => self.switch::<S,E>(val, typ, exps, context),
             OpCode::BorrowPack(typ, tag, ref values) => self.pack(typ, tag,values, context),
             OpCode::Pack(typ, tag, ref values) => self.pack(typ, tag,values, context),
             OpCode::CopyPack(typ, tag, ref values) => self.pack(typ, tag,values, context),
-            OpCode::Invoke(func, ref values) => self.invoke(func,values, context),
-            OpCode::Try(ref try, ref catches) => self.try(try,catches, context),
-            OpCode::ModuleIndex => self.module_index(context),
+            OpCode::Invoke(func, ref values) => self.invoke::<S,E>(func,values, context),
+            OpCode::Try(ref try, ref catches) => self.try::<S,E>(try,catches, context),
+            //OpCode::ModuleIndex => self.module_index(context),
+            //todo: implement
+            OpCode::CreateSig(_,_,_) => unimplemented!(),
+            OpCode::InvokeSig(_,_,_) => unimplemented!(),
         }
     }
 
@@ -326,47 +312,56 @@ impl<'b,'h> Compactor<'b,'h> {
         //the pos on the runtime stack
         let pos = self.get(val);
         //the distance from the top of the stack
-        let n_index = self.state.manifested_stack - pos -1;
+        let n_index = self.state.manifested_stack - (pos as u32) -1;
         //assert we are not to far away
-        assert!(n_index <= u16::max_value() as usize);
+        assert!(n_index <= u16::max_value() as u32);
         //generate the result
         ValueRef(n_index as u16)
     }
 
-    fn lit<S:Store>(&mut self, data:&LargeVec<u8>, typ:TypeRef, context:&Context<S>) -> Result<Option<ROpCode<'b>>> {
+    fn lit<S:Store, E:CompilationExternals>(&mut self, data:&LargeVec<u8>, typ:TypeRef, context:&Context<S>) -> Result<Option<ROpCode<'b>>> {
         //Extract the kind of lit. This increase runtime rep but speeds up arithmetic
         let r_typ = typ.fetch(context)?;
-        let lit_desc = match *r_typ {
-            ResolvedType::Native { typ:NativeType::Data(_), .. } => LitDesc::Data,
-            ResolvedType::Native { typ:NativeType::PublicId, .. } => LitDesc::Id,
-            ResolvedType::Native { typ:NativeType::SInt(1), .. } => LitDesc::I8,
-            ResolvedType::Native { typ:NativeType::UInt(1), .. } => LitDesc::U8,
-            ResolvedType::Native { typ:NativeType::SInt(2), .. } => LitDesc::I16,
-            ResolvedType::Native { typ:NativeType::UInt(2), .. } => LitDesc::U16,
-            ResolvedType::Native { typ:NativeType::SInt(4), .. } => LitDesc::I32,
-            ResolvedType::Native { typ:NativeType::UInt(4), .. } => LitDesc::U32,
-            ResolvedType::Native { typ:NativeType::SInt(8), .. } => LitDesc::I64,
-            ResolvedType::Native { typ:NativeType::UInt(8), .. } => LitDesc::U64,
-            ResolvedType::Native { typ:NativeType::SInt(16), .. } => LitDesc::I128,
-            ResolvedType::Native { typ:NativeType::UInt(16), .. } => LitDesc::U128,
-            _ => unreachable!()
-        };
+        if let ResolvedType::Lit {ref module, offset, ..} = *r_typ {
+            //load the constructed type from the store
+            let data_typ_cache = context.store.get_data_type(&*module, offset)?;
+            let data_comp = data_typ_cache.retrieve();
 
-        //process the lit
-        self.state.use_gas(gas::lit(r_typ));
-        //push the lit on both stacks
-        self.state.push_real();
-        //create the runtime op
-        Ok(Some(ROpCode::Lit(self.alloc.copy_alloc_slice(&data.0)?,lit_desc)))
+            //push the lit on both stacks
+            self.state.push_real();
+
+            //todo: can we use the lit_size cache here??
+            // if not, where do we use it???
+            match data_comp.body {
+                DataImpl::Adt{..} | DataImpl::ExternalAdt(_) => unreachable!(),
+                DataImpl::Lit(size) => {
+                    //process the lit gas
+                    self.state.use_gas(gas::lit(size));
+                    //create the runtime op
+                    Ok(Some(ROpCode::Lit(self.alloc.copy_alloc_slice(&data.0)?)))
+                },
+                DataImpl::ExternalLit(id,size) => {
+                    let caller = ModRef(0).fetch(&context)?.to_hash();
+                    let (costs, code) = E::compile_lit(id, self.alloc.copy_alloc_slice(&data.0)?, &caller, &self.alloc)?;
+                    //process the lit gas
+                    self.state.include_call_resources(costs);
+                    //create the runtime op
+                    Ok(Some(code))
+                }
+            }
+        } else {
+            unreachable!()
+        }
+
     }
 
-    fn let_<S:Store>(&mut self, exp:&Exp, context:&Context<S>) -> Result<Option<ROpCode<'b>>> {
+    fn let_<S:Store,E:CompilationExternals>(&mut self, exp:&Exp, context:&Context<S>) -> Result<Option<ROpCode<'b>>> {
         //cost
         self.state.use_gas(gas::_let());
         //capture current stack positions
         let ret_point = self.state.return_point();
         //process the nested expression
-        let n_exp = self.process_exp(exp, ret_point, context)?;
+        let n_exp = self.process_exp::<S,E>(exp, ret_point, context)?;
         //generate the let
         Ok(Some(ROpCode::Let(n_exp)))
     }
@@ -459,7 +454,7 @@ impl<'b,'h> Compactor<'b,'h> {
         }
     }
 
-    fn switch<S:Store>(&mut self, val:ValueRef, typ:TypeRef, exps:&[Exp], context:&Context<S>) -> Result<Option<ROpCode<'b>>> {
+    fn switch<S:Store,E:CompilationExternals>(&mut self, val:ValueRef, typ:TypeRef, exps:&[Exp], context:&Context<S>) -> Result<Option<ROpCode<'b>>> {
         //account for the gas
         self.state.use_gas(gas::switch());
         //find the inputs runtime position
@@ -476,7 +471,7 @@ impl<'b,'h> Compactor<'b,'h> {
             //a branch body is a unpack followed by the branch code (reuse the existing function)
             let _ignore = self.unpack(val, typ, Some(Tag(tag as u8)), context)?;
             //process the branch body
-            new_exps.push(self.process_exp(exp, ret_point, context)?);
+            new_exps.push(self.process_exp::<S,E>(exp, ret_point, context)?);
             //ready for the next branch if their is one or not is irrelevant
             self.state.next_branch();
         }
@@ -486,7 +481,7 @@ impl<'b,'h> Compactor<'b,'h> {
         Ok(Some(ROpCode::Switch(new_ref,new_exps.finish())))
     }
 
-    fn try<S:Store>(&mut self, try:&Exp, catches:&[(ErrorRef, Exp)], context:&Context<S>) -> Result<Option<ROpCode<'b>>> {
+    fn try<S:Store,E:CompilationExternals>(&mut self, try:&Exp, catches:&[(ErrorRef, Exp)], context:&Context<S>) -> Result<Option<ROpCode<'b>>> {
         //account for the gas
         self.state.use_gas(gas::try(catches.len()));
         //tries need a extra frame at runtime to keep track of the catch block
@@ -494,7 +489,7 @@ impl<'b,'h> Compactor<'b,'h> {
         //capture the stack
         let ret_point = self.state.return_point();
         //process the try block body
-        let new_try = self.process_exp(try, ret_point, context)?;
+        let new_try = self.process_exp::<S,E>(try, ret_point, context)?;
         //the extra frame is only needed for the catch part
         self.state.drop_frame();
         //process the catches
@@ -504,7 +499,7 @@ impl<'b,'h> Compactor<'b,'h> {
             //eliminate the stack effects of the previous branch
             self.state.rewind(ret_point);
             //process the catch block
-            let new_catch = self.process_exp(exp, ret_point, context)?;
+            let new_catch = self.process_exp::<S,E>(exp, ret_point, context)?;
             //convert the error to a runtime error
             let new_err = self.convert_err(err.fetch(context)?)?;
             //record the mapping
@@ -518,6 +513,7 @@ impl<'b,'h> Compactor<'b,'h> {
         Ok(Some(ROpCode::Try(new_try, new_catches.finish())))
     }
 
+    /*
     fn module_index<S:Store>(&mut self,context:&Context<S>) -> Result<Option<ROpCode<'b>>> {
         //Extract the ModuleHash
         let data = context.get_mod(ModRef(0))?.to_hash();
@@ -529,85 +525,61 @@ impl<'b,'h> Compactor<'b,'h> {
         //this is not domain hashed, as everithing else is domain hashed at runtime this is ok
         Ok(Some(ROpCode::Lit(self.alloc.copy_alloc_slice(&data)?,LitDesc::Data)))
     }
-    
-    fn invoke<S:Store>(&mut self, fun:FuncRef, vals:&[ValueRef], context:&Context<S>) -> Result<Option<ROpCode<'b>>> {
+    */
+    fn invoke<S:Store,E:CompilationExternals>(&mut self, fun:FuncRef, vals:&[ValueRef], context:&Context<S>) -> Result<Option<ROpCode<'b>>> {
         //diferentiate between native and Custom
-        let (code, rets, cost) = match *fun.fetch(context)? {
-            ResolvedFunction::Import { ref module, offset, .. } => {
-                //load the called function from the store
-                let fun_cache = context.store.get_func(&*module, offset)?;
-                let fun_comp = fun_cache.retrieve();
-                //if the function does not have an impact omit it (no returns & no risk will not change anything)
-                if fun_comp.returns.is_empty() && fun_comp.risk.is_empty() {
-                    return Ok(None)
-                }
-                //extract the module Hash (needed by emit & context)
-                let hash = module.to_hash();
-                //get the context of the new function
-                let new_ctx = Context::from_store_func(fun_comp, hash, &context.store)?;
-                //produce it
-                match self.emit_func(fun_comp, &hash,offset,&new_ctx)? {
+        let r_fun = fun.fetch(context)?;
+        //load the called function from the store
+        let fun_cache = context.store.get_func(&*r_fun.module, r_fun.offset)?;
+        let fun_comp = fun_cache.retrieve();
+        //if the function does not have an impact omit it (no returns & no risk will not change anything)
+        if fun_comp.shared.returns.is_empty() && fun_comp.shared.risk.is_empty() {
+            return Ok(None)
+        }
+        //extract the module Hash (needed by emit & context)
+        let hash = r_fun.module.to_hash();
+        //get the context of the new function
+        let new_ctx = Context::from_store_func(fun_comp, hash, &context.store)?;
+        //adapted values
+        let adapted = self.alloc.iter_alloc_slice(vals.iter().map(|val|self.translate_ref(*val)))?;
+        //produce it
+        let (code, rets, cost) = match fun_comp.body {
+            FunctionImpl::External(call_id) => {
+                //caller fetch
+                let caller = ModRef(0).fetch(&context)?.to_hash();
+                //Collect hints for externals
+                let adapted = self.alloc.iter_alloc_slice(vals.iter().map(|val|self.translate_ref(*val)))?;
+
+                //compile
+                let (costs, code) = match E::compile_call(call_id, adapted, &caller, &self.alloc)? {
+                    //indicates that this is a no-op
+                    None => {
+                        //for now only id allowed
+                        assert_eq!(vals.len(), 1);
+                        assert_eq!(fun_comp.shared.returns.len(), 1);
+                        let pos = self.get(vals[0]);
+                        self.state.push_alias(pos);
+                        return Ok(None)
+                    },
+                    Some(res) => res,
+                };
+
+                //account for the ressources
+                self.state.include_call_resources(costs);
+                //return the essential info
+                (code,fun_comp.shared.returns.len() as u8,gas::call(fun_comp.shared.params.len()))
+            },
+            FunctionImpl::Internal {ref code, ..} => {
+                match self.emit_func::<S,E>(fun_comp,  code, &hash,r_fun.offset,&new_ctx)? {
                     (index,rets,resources) => {
                         //adapted values
                         let adapted = self.alloc.iter_alloc_slice(vals.iter().map(|val|self.translate_ref(*val)))?;
                         //account for the ressources
                         self.state.include_call_resources(resources);
                         //return the essential info
-                        (ROpCode::Invoke(index,adapted),rets,gas::call(fun_comp.params.len()))
+                        (ROpCode::Invoke(index,adapted),rets,gas::call(fun_comp.shared.params.len()))
                     }
                 }
-            },
-            //if it is a native do a case by case transformation (most just map 1 to 1)
-            ResolvedFunction::Native { typ, ref applies } => match typ {
-                NativeFunc::And => (ROpCode::And(self.translate_ref(vals[0]), self.translate_ref(vals[1])),1, gas::and(applies)),
-                NativeFunc::Or => (ROpCode::Or(self.translate_ref(vals[0]), self.translate_ref(vals[1])),1, gas::or(applies)),
-                NativeFunc::Xor => (ROpCode::Xor(self.translate_ref(vals[0]), self.translate_ref(vals[1])),1, gas::xor(applies)),
-                NativeFunc::Not => (ROpCode::Not(self.translate_ref(vals[0])),1, gas::not(applies)),
-                //The casts are represented differently at runtime, the compiletime rep was choosen to have Extend not throwing an error
-                NativeFunc::SignCast  | NativeFunc::Cut  | NativeFunc::Extend => match *applies[1] { //the type 1 is the target type
-                    //runtime is split into signed & unsigned conversions
-                    ResolvedType::Native {  typ: NativeType::SInt(size), .. } => (ROpCode::ToI(size,self.translate_ref(vals[0])),1, gas::convert()),
-                    ResolvedType::Native {  typ: NativeType::UInt(size), .. } => (ROpCode::ToU(size,self.translate_ref(vals[0])),1, gas::convert()),
-                    _ => unreachable!()
-                },
-                NativeFunc::Add => (ROpCode::Add(self.translate_ref(vals[0]), self.translate_ref(vals[1])),1, gas::add()),
-                NativeFunc::Sub => (ROpCode::Sub(self.translate_ref(vals[0]), self.translate_ref(vals[1])),1, gas::sub()),
-                NativeFunc::Mul => (ROpCode::Mul(self.translate_ref(vals[0]), self.translate_ref(vals[1])),1, gas::mul()),
-                NativeFunc::Div => (ROpCode::Div(self.translate_ref(vals[0]), self.translate_ref(vals[1])),1, gas::div()),
-                NativeFunc::Eq => (ROpCode::Eq(self.translate_ref(vals[0]), self.translate_ref(vals[1])),1, gas::eq(applies, context)?),
-                NativeFunc::Hash => (ROpCode::Hash(self.translate_ref(vals[0])),1, gas::hash(applies, context)?),
-                NativeFunc::PlainHash => (ROpCode::PlainHash(self.translate_ref(vals[0])),1,gas::hash_plain(applies)),
-                NativeFunc::Lt => (ROpCode::Lt(self.translate_ref(vals[0]), self.translate_ref(vals[1])),1, gas::cmp()),
-                NativeFunc::Gt => (ROpCode::Gt(self.translate_ref(vals[0]), self.translate_ref(vals[1])),1, gas::cmp()),
-                NativeFunc::Lte => (ROpCode::Lte(self.translate_ref(vals[0]), self.translate_ref(vals[1])),1, gas::cmp()),
-                NativeFunc::Gte => (ROpCode::Gte(self.translate_ref(vals[0]), self.translate_ref(vals[1])),1, gas::cmp()),
-                //to Data can be a no op depending on the types
-                NativeFunc::ToData =>  match *applies[0] {
-                    //For ints it is needed
-                    ResolvedType::Native {  typ: NativeType::UInt(_), .. }
-                    | ResolvedType::Native {  typ: NativeType::SInt(_), .. } => (ROpCode::ToData(self.translate_ref(vals[0])),1,  gas::to_data(applies)),
-                    //the rest are no ops --  same bit representation --
-                    _  => {
-                        //is a NoOp, as Unique & Singleton have same repr: Data(20) & are unique (prevails uniqueness)
-                        //push the compiletime stack
-                        let pos = self.get(vals[0]);
-                        self.state.push_alias(pos);
-                        //return eliminated indicator
-                        return Ok(None)
-                    }
-                },
-                NativeFunc::Concat => (ROpCode::Concat(self.translate_ref(vals[0]), self.translate_ref(vals[1])),1, gas::concat(applies)),
-                NativeFunc::GetBit => (ROpCode::GetBit(self.translate_ref(vals[0]), self.translate_ref(vals[1])),1, gas::get_bit()),
-                NativeFunc::SetBit => (ROpCode::SetBit(self.translate_ref(vals[0]), self.translate_ref(vals[1]),self.translate_ref(vals[2])),1, gas::set_bit(applies)),
-                //Private and Public have the same runtime representation, the difference is only in the type and allowed / intended usage
-                NativeFunc::GenPublicId => {
-                    //these are no ops --  same bit representation --
-                    let pos = self.get(vals[0]);
-                    self.state.push_alias(pos);
-                    //return eliminated indicator
-                    return Ok(None)
-                },
-                NativeFunc::DeriveId => (ROpCode::Derive(self.translate_ref(vals[0]), self.translate_ref(vals[1])), 1, gas::join_hash()),
             }
         };
 

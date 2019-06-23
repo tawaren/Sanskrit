@@ -1,5 +1,6 @@
 use model::*;
 use sanskrit_common::capabilities::CapSet;
+use std::str::FromStr;
 
 grammar;
 
@@ -10,11 +11,29 @@ Component:Component = {
     "type"  <name:Id> "[" <generics:Comma<Generic>>  "]" "{" <ctrs:Semi<Case>> "}" => Component::Adt{caps:CapSet::empty(),name,generics,ctrs},
     "type" "<" <caps:Caps> ">" <name:Id>  "{" <ctrs:Semi<Case>> "}" => Component::Adt{caps,name,generics:vec![],ctrs},
     "type"  <name:Id> "{" <ctrs:Semi<Case>> "}" => Component::Adt{caps:CapSet::empty(),name,generics:vec![],ctrs},
+
     "type" "<" <caps:Caps> ">" <name:Id> "[" <generics:Comma<Generic>>  "]" => Component::Adt{caps,name,generics,ctrs:vec![]},
     "type"  <name:Id> "[" <generics:Comma<Generic>>  "]" => Component::Adt{caps:CapSet::empty(),name,generics,ctrs:vec![]},
     "type" "<" <caps:Caps> ">" <name:Id>  => Component::Adt{caps,name,generics:vec![],ctrs:vec![]},
     "type"  <name:Id>  => Component::Adt{caps:CapSet::empty(),name,generics:vec![],ctrs:vec![]},
+
+    "external" "(" <id:Num> ")" "type" "<" <caps:Caps> ">" <name:Id> "[" <generics:Comma<Generic>>  "]" => Component::ExtAdt{id,caps,name,generics},
+    "external" "(" <id:Num> ")" "type"  <name:Id> "[" <generics:Comma<Generic>>  "]" => Component::ExtAdt{id,caps:CapSet::empty(),name,generics},
+    "external" "(" <id:Num> ")" "type" "<" <caps:Caps> ">" <name:Id>  => Component::ExtAdt{id,caps,name,generics:vec![]},
+    "external" "(" <id:Num> ")" "type"  <name:Id>  => Component::ExtAdt{id,caps:CapSet::empty(),name,generics:vec![]},
+
+    "lit" "(" <size:Num> ")" "<" <caps:Caps> ">" <name:Id> "[" <generics:Comma<Generic>>  "]" => Component::Lit{caps,name,generics,size},
+    "lit" "(" <size:Num> ")" <name:Id> "[" <generics:Comma<Generic>>  "]" => Component::Lit{caps:CapSet::empty(),name,generics,size},
+    "lit" "(" <size:Num> ")" "<" <caps:Caps> ">" <name:Id>  => Component::Lit{caps,name,generics:vec![],size},
+    "lit" "(" <size:Num> ")" <name:Id>  => Component::Lit{caps:CapSet::empty(),name,generics:vec![],size},
+
+    "external" "(" <id:Num> ")" "lit" "(" <size:Num> ")" "<" <caps:Caps> ">" <name:Id> "[" <generics:Comma<Generic>>  "]" => Component::ExtLit{id,caps,name,generics,size},
+    "external" "(" <id:Num> ")" "lit" "(" <size:Num> ")" <name:Id> "[" <generics:Comma<Generic>>  "]" => Component::ExtLit{id,caps:CapSet::empty(),name,generics,size},
+    "external" "(" <id:Num> ")" "lit" "(" <size:Num> ")" "<" <caps:Caps> ">" <name:Id>  => Component::ExtLit{id,caps,name,generics:vec![],size},
+    "external" "(" <id:Num> ")" "lit" "(" <size:Num> ")" <name:Id>  => Component::ExtLit{id,caps:CapSet::empty(),name,generics:vec![],size},
+
     "err" <name:Id> => Component::Err{name},
+
     "risky" "<" <risks:Comma<Ref>> ">" "fun" <name:Id> "[" <generics:Comma<Generic>> "]" "(" <params:Comma<Var>> ")" ":" "(" <returns:Comma<Ret>> ")" <code:Block> => Component::Fun{name,vis:Visibility::Private,risks,generics,params,returns,code},
     "risky" "<" <risks:Comma<Ref>> ">" "fun" <name:Id> "(" <params:Comma<Var>>  ")" ":" "(" <returns:Comma<Ret>> ")" <code:Block> => Component::Fun{name,vis:Visibility::Private,risks,generics:vec![],params,returns,code},
     "fun" <name:Id> "[" <generics:Comma<Generic>> "]" "(" <params:Comma<Var>> ")" ":" "(" <returns:Comma<Ret>> ")" <code:Block> => Component::Fun{name,vis:Visibility::Private,risks:vec![],generics,params,returns,code},
@@ -23,6 +42,16 @@ Component:Component = {
     <vis:Visibility> "risky" "<" <risks:Comma<Ref>> ">" "fun" <name:Id> "(" <params:Comma<Var>>  ")" ":" "(" <returns:Comma<Ret>> ")" <code:Block> => Component::Fun{name,vis,risks,generics:vec![],params,returns,code},
     <vis:Visibility> "fun" <name:Id> "[" <generics:Comma<Generic>> "]" "(" <params:Comma<Var>> ")" ":" "(" <returns:Comma<Ret>> ")" <code:Block> => Component::Fun{name,vis,risks:vec![],generics,params,returns,code},
     <vis:Visibility> "fun" <name:Id> "(" <params:Comma<Var>> ")" ":" "(" <returns:Comma<Ret>> ")" <code:Block> => Component::Fun{name,vis,risks:vec![],generics:vec![],params,returns,code},
+
+    "external" "(" <id:Num> ")" "risky" "<" <risks:Comma<Ref>> ">" "fun" <name:Id> "[" <generics:Comma<Generic>> "]" "(" <params:Comma<Var>> ")" ":" "(" <returns:Comma<Ret>> ")" => Component::ExtFun{id,name,vis:Visibility::Private,risks,generics,params,returns},
+    "external" "(" <id:Num> ")" "risky" "<" <risks:Comma<Ref>> ">" "fun" <name:Id> "(" <params:Comma<Var>>  ")" ":" "(" <returns:Comma<Ret>> ")" => Component::ExtFun{id,name,vis:Visibility::Private,risks,generics:vec![],params,returns},
+    "external" "(" <id:Num> ")" "fun" <name:Id> "[" <generics:Comma<Generic>> "]" "(" <params:Comma<Var>> ")" ":" "(" <returns:Comma<Ret>> ")" => Component::ExtFun{id,name,vis:Visibility::Private,risks:vec![],generics,params,returns},
+    "external" "(" <id:Num> ")" "fun" <name:Id> "(" <params:Comma<Var>> ")" ":" "(" <returns:Comma<Ret>> ")" => Component::ExtFun{id,name,vis:Visibility::Private,risks:vec![],generics:vec![],params,returns},
+    "external" "(" <id:Num> ")" <vis:Visibility> "risky" "<" <risks:Comma<Ref>> ">" "fun" <name:Id> "[" <generics:Comma<Generic>> "]" "(" <params:Comma<Var>> ")" ":" "(" <returns:Comma<Ret>> ")" => Component::ExtFun{id,name,vis,risks,generics,params,returns},
+    "external" "(" <id:Num> ")" <vis:Visibility> "risky" "<" <risks:Comma<Ref>> ">" "fun" <name:Id> "(" <params:Comma<Var>>  ")" ":" "(" <returns:Comma<Ret>> ")" => Component::ExtFun{id,name,vis,risks,generics:vec![],params,returns},
+    "external" "(" <id:Num> ")" <vis:Visibility> "fun" <name:Id> "[" <generics:Comma<Generic>> "]" "(" <params:Comma<Var>> ")" ":" "(" <returns:Comma<Ret>> ")" => Component::ExtFun{id,name,vis,risks:vec![],generics,params,returns},
+    "external" "(" <id:Num> ")" <vis:Visibility> "fun" <name:Id> "(" <params:Comma<Var>> ")" ":" "(" <returns:Comma<Ret>> ")" => Component::ExtFun{id,name,vis,risks:vec![],generics:vec![],params,returns},
+
 };
 
 Caps: CapSet = {
@@ -72,8 +101,6 @@ Ref:Ref = {
     "this" "." <name:Id> => Ref::This(name),
     "." <name:Id> => Ref::This(name),
     <module:Id> "." <name:Id> => Ref::Module(Id(module.0.to_lowercase()),name),
-    "native" "." <name:Id> => Ref::Native(name),
-    "$" <name:Id> => Ref::Native(name),
 };
 
 Block:Block = {
@@ -110,8 +137,6 @@ OpCode:OpCode = {
     <assigs:Assigns> "call" <function:Ref> "[" <generics:Comma<Type>> "]" "(" <vars:Comma<Id>> ")" =>  OpCode::Call(assigs, function, generics, vars),
     <assigs:Assigns> "call" <function:Ref> "(" <vars:Comma<Id>> ")" =>  OpCode::Call(assigs, function, vec![], vars),
     <assigs:Assigns> "try" <b:Block> "catch" "{" <catches:Semi<Catch>> "}" => OpCode::Try(assigs, Box::new(b), catches),
-    <id:Id> "=" "moduleIndex" => OpCode::ModuleIndex(id),
-
 };
 
 Assigns:Vec<Id> = {
@@ -142,6 +167,8 @@ Lit:Lit = {
     <s:r"(-)?[0-9]+"> => Lit(s.into()),
     <s:r"0x[0-9a-fA-F]+"> => Lit(s.into()),
 };
+
+Num:u16 = <s:r"(-)?[0-9]+"> => u16::from_str(s).unwrap();
 
 
 Semi<T>: Vec<T> = {

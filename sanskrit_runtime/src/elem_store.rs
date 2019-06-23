@@ -152,7 +152,7 @@ impl<'a,S:Store> ElemStore<'a,S> {
                     //slot is present
                     Some((res, false)) => {
                         //If it is not copy the slot is emptied on load
-                        if !res.typ.get_caps().contains(NativeCap::Copy) {
+                        if !res.typ.get_caps().contains(Capability::Copy) {
                             entry.txt_store = None;
                         }
                         StackEntry::new(res.val,res.typ)
@@ -165,7 +165,7 @@ impl<'a,S:Store> ElemStore<'a,S> {
                 //create the result
                 let ret = StackEntry::new(res.val,res.typ);
                 //calc the current slot cache value
-                let txt_store =  if res.typ.get_caps().contains(NativeCap::Copy) {
+                let txt_store =  if res.typ.get_caps().contains(Capability::Copy) {
                     Some((res,false))
                 } else {
                     None
@@ -223,7 +223,7 @@ impl<'a,S:Store> ElemStore<'a,S> {
                     //Slot is already occupied
                     Some((res, false)) => {
                         //Check if it can be dropped / overwritten
-                        if res.typ.get_caps().contains(NativeCap::Drop) {
+                        if res.typ.get_caps().contains(Capability::Drop) {
                             //Overwrite with the new one
                             entry.txt_store = Some((StoreElem{
                                 val: elem.val,
@@ -290,7 +290,7 @@ impl<'a,S:Store> ElemStore<'a,S> {
                 (None, None) => if self.backend.contains(StorageClass::Elem, key){
                     //ups was full, check if the slot can be dropped to make it empty
                     let elem:StoreElem = self.backend.parsed_get::<StoreElem, VirtualHeapArena>(StorageClass::Elem, &key, CONFIG.max_structural_dept, alloc)?;
-                    if elem.typ.get_caps().contains(NativeCap::Drop) {
+                    if elem.typ.get_caps().contains(Capability::Drop) {
                         //Drop it later
                         commands.push(StorageCommand::Delete(*key))
                     } else {
@@ -303,7 +303,7 @@ impl<'a,S:Store> ElemStore<'a,S> {
                 (None, Some((val,false))) => if self.backend.contains(StorageClass::Elem, key){
                     //ups was full, check if the slot can be dropped to make it empty
                     let elem:StoreElem = self.backend.parsed_get::<StoreElem, VirtualHeapArena>(StorageClass::Elem, &key, CONFIG.max_structural_dept, alloc)?;
-                    if elem.typ.get_caps().contains(NativeCap::Drop) {
+                    if elem.typ.get_caps().contains(Capability::Drop) {
                         //Overwrite it later
                         commands.push(StorageCommand::Replace(*key, val))
                     } else {

@@ -3,7 +3,7 @@ use model::resolved::*;
 use sanskrit_common::store::Store;
 use sanskrit_common::errors::*;
 use alloc::rc::Rc;
-use loader::AdtCache;
+use loader::DataCache;
 use loader::FuncCache;
 use utils::Crc;
 use resolver::Context;
@@ -129,14 +129,12 @@ impl Link<FuncCache> for FuncLink {
     }
 }
 
-
-
 //A AdtLink resolves to a AdtCache containing an AdtComponent
-impl Link<AdtCache> for AdtLink {
+impl Link<DataCache> for DataLink {
     //Gets the Adt Cache
-    fn resolve<'a, 'b:'a, S:Store + 'b>(self, context:&Context<'a,'b,S>) -> Result<AdtCache> {
+    fn resolve<'a, 'b:'a, S:Store + 'b>(self, context:&Context<'a,'b,S>) -> Result<DataCache> {
         let mod_link = self.module.fetch(&context)?;
-        context.store.get_adt(&mod_link,self.offset)
+        context.store.get_data_type(&mod_link, self.offset)
     }
 
     //Checks if the adt is from the this module (Mod0)

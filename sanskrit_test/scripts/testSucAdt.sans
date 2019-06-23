@@ -29,12 +29,12 @@ module TestSucAdt {
 
 
     type <Copy, Drop, Persist, Embed> Test[<Embed> A, <Embed> B] {
-           Ctr1($alt2[A,B]);
-           Ctr2($tuple2[A,B]);
+           Ctr1(Alt.Alt2[A,B]);
+           Ctr2(Tuple.Tuple2[A,B]);
            Ctr3(A);
            Ctr4(B);
            Ctr5(.Wrapper[A]);
-           Ctr6($alt2[$tuple2[B,.Wrapper[A]],$tuple2[A,.Wrapper[B]]]);
+           Ctr6(Alt.Alt2[Tuple.Tuple2[B,.Wrapper[A]],Tuple.Tuple2[A,.Wrapper[B]]]);
     };
 
     type <Embed> Struct {

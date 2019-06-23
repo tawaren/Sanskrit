@@ -1,8 +1,8 @@
 signed(A) transaction{
-   a = lit 1:$u8;
-   b = pack SomeTypes.NoDrop[$u8]#Ctr(a);
+   a = lit 1:IntU8.U8;
+   b = pack SomeTypes.NoDrop[IntU8.U8]#Ctr(a);
    d = call IndexOps.ModIndex();
-   (r, s) = call SomeTypes.GenIndexedAt[SomeTypes.NoDrop[$u8]](d,b);
+   (r, s) = call SomeTypes.GenIndexedAt[SomeTypes.NoDrop[IntU8.U8]](d,b);
    store s;
 };
 
@@ -18,8 +18,8 @@ signed(A) transaction{
    r = call SomeFunctions.GenRef(a);
    b = load r;
    c = load r;
-   (d0, i0) = call SomeTypes.DeEntryNoDrop[$u8](b);
-   (d1, i1) = call SomeTypes.DeEntryNoDrop[$u8](c);
+   (d0, i0) = call SomeTypes.DeEntryNoDrop[IntU8.U8](b);
+   (d1, i1) = call SomeTypes.DeEntryNoDrop[IntU8.U8](c);
    d2 = unpack i0:SomeTypes.NoDrop#Ctr;
    d3 = unpack i1:SomeTypes.NoDrop#Ctr;
 };
@@ -29,6 +29,6 @@ signed(A) transaction{
    r = call SomeFunctions.GenRef(a);
    b = load r;
    c = &load r;
-   (d0, i0) = call SomeTypes.DeEntryNoDrop[$u8](b);
+   (d0, i0) = call SomeTypes.DeEntryNoDrop[IntU8.U8](b);
    d1 = unpack i0:SomeTypes.NoDrop#Ctr;
 };

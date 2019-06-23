@@ -24,6 +24,7 @@ pub struct Transaction<#[AllocLifetime] 'c> {
     pub witness: SlicePtr<'c, SlicePtr<'c,u8>>,
 }
 
+/*
 //The Native Adt types
 #[derive(Copy, Clone, Debug, Parsable, Serializable, VirtualSize)]
 pub enum NativeAdtType {
@@ -31,15 +32,16 @@ pub enum NativeAdtType {
     Alternative(u8),
     Bool,
 }
+*/
 
 #[derive(Copy, Clone, Debug, Parsable, Serializable, VirtualSize)]
 pub struct ImpRef(pub u8);
 
 //A reference to identify an Adt descriptor
 #[derive(Copy, Clone, Debug, Parsable, Serializable, VirtualSize)]
-pub enum AdtRef {
-    Ref(ImpRef, u8),
-    Native(NativeAdtType)
+pub struct AdtRef {
+    pub module:ImpRef,
+    pub offset:u8
 }
 
 
@@ -47,7 +49,7 @@ pub enum AdtRef {
 //A reference to identify an Adfunctiont descriptor
 #[derive(Copy, Clone, Debug, Parsable, Serializable, VirtualSize)]
 pub struct FuncRef{
-    pub module: ImpRef,
+    pub module:ImpRef,
     pub offset:u8
 }
 
@@ -60,7 +62,6 @@ pub enum TypeApplyRef<#[AllocLifetime] 'c> {
     RemoteNewType(ImpRef,u8),
     TypeOf(ValueRef),
     ArgTypeOf(ValueRef, SlicePtr<'c, u8>),
-    Native(NativeType, SlicePtr<'c, Ptr<'c,TypeApplyRef<'c>>>),
     Module(ImpRef, u8,  SlicePtr<'c, Ptr<'c,TypeApplyRef<'c>>>),
     Image(Ptr<'c,TypeApplyRef<'c>>),
 }
@@ -74,8 +75,8 @@ pub enum ScriptCode<#[AllocLifetime] 'c> {
     BorrowUnpack(AdtRef, Tag, ValueRef),                                                        //Borrow the fields of an adt
     //todo: ImageUnpack
     Invoke(FuncRef, SlicePtr<'c,Ptr<'c,TypeApplyRef<'c>>>, SlicePtr<'c,ValueRef>),              //Call a function
-    Lit(SlicePtr<'c, u8>, LitDesc),                                                             //Generate a literal
-    Wit(u8, LitDesc),                                                                           //Generate a literal from a Witness
+    Lit(SlicePtr<'c, u8>, LitDesc, AdtRef),                                                             //Generate a literal
+    Wit(u8, LitDesc, AdtRef),                                                                           //Generate a literal from a Witness
     Copy(ValueRef),                                                                             //Copy a stack value
     Fetch(ValueRef),                                                                            //Move a stack value
     BorrowFetch(ValueRef), //Borrow a stack value
@@ -97,12 +98,6 @@ pub enum RuntimeType<#[AllocLifetime] 'a> {
         caps: CapSet,
         module: Hash,
         offset: u8,
-        applies: SlicePtr<'a, Ptr<'a, RuntimeType<'a>>>
-    },
-
-    NativeType {
-        caps: CapSet,
-        typ: NativeType,
         applies: SlicePtr<'a, Ptr<'a, RuntimeType<'a>>>
     },
 

@@ -1,4 +1,4 @@
 signed(A) transaction{
-     a = lit 1:$u8;
-     b = pack SomeTypes.X[$u16]#Ctr(a);
+     a = lit 1:IntU8.U8;
+     b = pack SomeTypes.X[IntU16.U16]#Ctr(a);
 };

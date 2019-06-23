@@ -72,16 +72,16 @@ impl Operand {
             Operand::Mul => OpCode::Mul(ptr[0],ptr[1]),
             Operand::Div => OpCode::Div(ptr[0],ptr[1]),
             Operand::Eq => OpCode::Eq(ptr[0],ptr[1]),
-            Operand::Hash => OpCode::Hash(ptr[0]),
-            Operand::PlainHash => OpCode::PlainHash(ptr[0]),
+            Operand::Hash => unimplemented!(),//OpCode::Hash(ptr[0]),
+            Operand::PlainHash => OpCode::Hash(ptr[0]),
             Operand::Lt => OpCode::Lt(ptr[0],ptr[1]),
             Operand::Gt => OpCode::Gt(ptr[0],ptr[1]),
             Operand::Lte => OpCode::Lte(ptr[0],ptr[1]),
             Operand::Gte => OpCode::Gte(ptr[0],ptr[1]),
             Operand::ToData => OpCode::ToData(ptr[0]),
-            Operand::Concat => OpCode::Concat(ptr[0],ptr[1]),
-            Operand::SetBit => OpCode::SetBit(ptr[0],ptr[1], ptr[2]),
-            Operand::GetBit => OpCode::GetBit(ptr[0],ptr[1]),
+            Operand::Concat => unimplemented!(),//OpCode::Concat(ptr[0],ptr[1]),
+            Operand::SetBit => unimplemented!(),//OpCode::SetBit(ptr[0],ptr[1], ptr[2]),
+            Operand::GetBit => unimplemented!(),//OpCode::GetBit(ptr[0],ptr[1]),
             Operand::Derive => OpCode::Derive(ptr[0],ptr[1]),
             Operand::Id => OpCode::Id(ptr[0]),
         }
@@ -327,7 +327,7 @@ fn execute_script<F,O>(b: &mut Bencher, v_gen:F, mut code_gen:O, rets:usize, do_
     })
 }
 
-
+/*
 mod add;
 mod sub;
 mod div;
@@ -365,3 +365,4 @@ mod switch;
 
 mod script_lit;
 mod sig;
+*/
