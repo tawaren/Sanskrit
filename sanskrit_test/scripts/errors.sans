@@ -1,4 +1,0 @@
-module Errors {
-    err Numeric;
-    err Unexpected;
-}

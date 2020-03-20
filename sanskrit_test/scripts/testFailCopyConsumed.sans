@@ -1,5 +1,5 @@
 module TestFailCopyConsumed {
-    private fun Test[<Copy, Drop> A](a:A):(b:A){
+    private fun Test[<Copy, Drop, Value, Unbound>  A](a:A):(b:A){
        discard a;
        b = copy a;
        return b;

@@ -1,5 +1,5 @@
 module TestSucAdtImport {
-    type Importer[<Embed> A,<Embed> B] {
+    type Importer[A,B] {
         Phantom(TestSucAdt.Phantom);
         Wrapper(TestSucAdt.Wrapper[A]);
         Enum(TestSucAdt.Enum);

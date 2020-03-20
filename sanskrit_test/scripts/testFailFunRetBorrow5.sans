@@ -1,6 +1,0 @@
-module TestFailFunRetBorrow5 {
-   public fun TestFun[<Drop> A](a:A, consume b:A):(borrowed(b) c:A) {
-       c = &a;
-       return c;
-   };
-}

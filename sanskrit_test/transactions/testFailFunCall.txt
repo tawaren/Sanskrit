@@ -1,3 +1,4 @@
-signed(A) transaction{
+transaction{
      a = call SomeFunctions.Identity[IntU8.U8]();
+     return;
 };

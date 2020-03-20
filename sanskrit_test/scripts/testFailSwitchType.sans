@@ -1,11 +1,11 @@
 module TestFailSwitchType {
 
-    type X[<Embed> A] {
+    type X[A] {
         X(A);
     };
 
 
-    private fun Test[<Embed> A](a:.X[A]):(b:A){
+    private fun Test[<Value, Unbound> A](a:.X[A]):(b:A){
        b = switch a:.X[A] {
             X(a) => {
                 return a;

@@ -1,3 +1,4 @@
-signed(A) transaction{
+transaction{
    a = pack SomeTypes.NoArg[Tuple.Tuple2[IntU8.U8,IntU8.U8,IntU8.U8]]#Ctr();
+   return;
 };

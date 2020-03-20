@@ -1,5 +1,5 @@
 module Alt {
-    type <Copy,Drop,Persist,Create,Consume,Inspect,Embed> Alt2[<Embed> T,<Embed> Y]{
+    public type <Copy,Drop,Persist,Primitive,Value,Unbound> Alt2[T,Y]{
              First(T);
              Second(Y);
     };

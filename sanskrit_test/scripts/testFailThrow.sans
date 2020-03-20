@@ -1,7 +1,0 @@
-module TestFailThrow {
-    err X;
-
-    private fun Test():(){
-        throw .X;
-    };
-}

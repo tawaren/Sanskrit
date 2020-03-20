@@ -43,7 +43,7 @@ use rand::rngs::OsRng;
 use sha2::Sha512;
 use ed25519_dalek::Keypair;
 use hex::encode;
-use sanskrit_common::arena::Heap;
+use sanskrit_common::ptrs::Heap;
 
 struct State<'a> {
     transaction: Compiler<'a>,
@@ -176,7 +176,7 @@ pub fn main() {
                             };
                         },
                         "elems" =>  {
-                            let mods = state.store.list(StorageClass::Elem);
+                            let mods = state.store.list(StorageClass::EntryValue);
                             let res:Vec<StoreElem> = mods.iter().map(|(_,data)| ParserState::parse_fully::<StoreElem>(&*data, &mut NoCustomAlloc()).unwrap()).collect();
 
                             for elem in res {

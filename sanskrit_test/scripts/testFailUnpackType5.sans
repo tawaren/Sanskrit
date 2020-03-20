@@ -1,8 +1,8 @@
 module TestFailUnpackType5 {
 
-    type X[<Embed> A];
+    type X[A];
 
-    private fun Test[<Embed> A](a:.X[A]):(){
+    private fun Test[A](a:.X[A]):(){
        () = unpack a:.X[A];
        return;
     };

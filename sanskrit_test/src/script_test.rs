@@ -8,22 +8,46 @@ mod tests {
     use std::fs::File;
     use sanskrit_core::model::Module;
     use sanskrit_deploy::deploy_module;
-    use sanskrit_compile::compile_module;
     use std::io::Write;
     use test::Bencher;
     use sanskrit_memory_store::BTreeMapStore;
     use std::env::current_dir;
+    use sanskrit_core::accounting::Accounting;
+    use std::cell::Cell;
 
-    fn parse_and_compile(id:&str) -> Result<()>{
-        let id = Id(id.into());
+    fn max_accounting() -> Accounting {
+        Accounting {
+            load_byte_budget: Cell::new(usize::max_value()),
+            store_byte_budget: Cell::new(usize::max_value()),
+            process_byte_budget: Cell::new(usize::max_value()),
+            stack_elem_budget: Cell::new(usize::max_value()),
+            nesting_limit: 10,
+            input_limit: 1000000
+        }
+    }
+
+    fn parse_and_deploy(id:&str) -> Result<()>{
+        parse_and_deploy_template(id,true)
+    }
+    fn parse_and_deploy_plain(id:&str) -> Result<()>{
+        parse_and_deploy_template(id,false)
+    }
+    fn parse_and_deploy_template(id:&str, include_system:bool) -> Result<()>{
+        let id = Id(id.to_lowercase().into());
         let folder = current_dir().unwrap().join("scripts");
         let out_folder = folder.join("out");
         let mut comp = Compiler::new(&folder);
-        comp.parse_module_tree(Id("system".into()));
-        comp.parse_module_tree(id.clone());
+        let system_level = if !include_system {
+            0
+        } else {
+            comp.parse_module_tree(Id("system".into()), 0)
+        };
+        comp.parse_module_tree(id.clone(), system_level+1);
         comp.compile_module_tree().unwrap();
         let s = BTreeMapStore::new();
-        for (c_id,r) in comp.get_results() {
+        let accounting = max_accounting();
+        let res = comp.get_module_results();
+        for (c_id,r) in comp.get_module_results() {
             if c_id == id {
                 let fb_path = out_folder.join(&id.0.to_lowercase()).with_extension("bin");
                 let mut bin = File::create(fb_path).expect("file not found");
@@ -32,8 +56,9 @@ mod tests {
                 let mut asm = File::create(fa_path).expect("file not found");
                 asm.write_all(format!("{:?}",Parser::parse_fully::<Module,NoCustomAlloc>(&r,usize::max_value(), &NoCustomAlloc()).unwrap()).as_bytes()).unwrap();
             }
-            let res = deploy_module(&s, r, true)?;
-            compile_module(&s, res)?;
+            println!("Deploying module {:?} of {} Bytes", c_id, r.len());
+            let res = deploy_module(&s, &accounting,r, true)?;
+
             if c_id == id {
                 let fh_path = out_folder.join(&id.0.to_lowercase()).with_extension("hash");
                 let mut hs = File::create(fh_path).expect("file not found");
@@ -43,1151 +68,857 @@ mod tests {
         Ok(())
     }
 
-    fn parse_and_compile_deploy_bench(id:&str,b: &mut Bencher) -> Result<()>{
+    fn parse_and_deploy_bench(id:&str, b: &mut Bencher) -> Result<()>{
         let id = Id(id.into());
         let folder = current_dir().unwrap().join("scripts");
         let mut comp = Compiler::new(&folder);
-        comp.parse_module_tree(Id("system".into()));
-        comp.parse_module_tree(id.clone());
+        let system_level = comp.parse_module_tree(Id("system".into()), 0);
+        comp.parse_module_tree(id.clone(), system_level+1);
         comp.compile_module_tree().unwrap();
 
+        let res = comp.get_module_results().into_iter().map(|(_,r)|r).collect::<Vec<_>>();
         b.iter(|| {
             let s = BTreeMapStore::new();
-            for (c_id,r) in comp.get_results() {
-                let res = deploy_module(&s, r, true).unwrap();
-                compile_module(&s, res).unwrap();
+            let accounting = max_accounting();
+            for r in res.clone() {
+                let res = deploy_module(&s, &accounting, r, true).unwrap();
             }
         });
         Ok(())
     }
 
-    #[bench]
-    fn build_diff_adts_bench_deploy(b: &mut Bencher) {
-        parse_and_compile_deploy_bench("testSucAdt",b).unwrap();
+    #[test]
+    fn build_system() {
+        parse_and_deploy_plain("system").unwrap();
     }
 
     #[test]
-    fn build_system() {
-        parse_and_compile("system").unwrap();
+    fn build_alt() {
+        parse_and_deploy_plain("alt").unwrap();
     }
 
+    #[test]
+    fn build_data() {
+        parse_and_deploy_plain("data").unwrap();
+    }
+
+    #[test]
+    fn build_bool() {
+        parse_and_deploy_plain("bool").unwrap();
+    }
+
+    #[test]
+    fn build_ids() {
+        parse_and_deploy("ids").unwrap();
+    }
+
+    #[test]
+    fn build_int_i8() {
+        parse_and_deploy_plain("intI8").unwrap();
+    }
+
+    #[test]
+    fn build_int_i16() {
+        parse_and_deploy_plain("intI16").unwrap();
+    }
+
+    #[test]
+    fn build_int_i32() {
+        parse_and_deploy_plain("intI32").unwrap();
+    }
+
+    #[test]
+    fn build_int_i64() {
+        parse_and_deploy_plain("intI64").unwrap();
+    }
+
+    #[test]
+    fn build_int_i128() {
+        parse_and_deploy_plain("intI128").unwrap();
+    }
+
+    #[test]
+    fn build_int_u8() {
+        parse_and_deploy_plain("intU8").unwrap();
+    }
+
+    #[test]
+    fn build_int_u16() {
+        parse_and_deploy_plain("intU16").unwrap();
+    }
+
+    #[test]
+    fn build_int_u32() {
+        parse_and_deploy_plain("intU32").unwrap();
+    }
+
+    #[test]
+    fn build_int_u64() {
+        parse_and_deploy_plain("intU64").unwrap();
+    }
+
+    #[test]
+    fn build_int_u128() {
+        parse_and_deploy_plain("intU128").unwrap();
+    }
+
+    #[bench]
+    fn build_diff_adts_bench_deploy(b: &mut Bencher) {
+        parse_and_deploy_bench("testSucAdt", b).unwrap();
+    }
 
     #[bench]
     fn build_system_bench(b: &mut Bencher) {
-        parse_and_compile_deploy_bench("system",b).unwrap();
+        parse_and_deploy_bench("system", b).unwrap();
     }
 
     #[test]
     fn build_diff_adts() {
-        parse_and_compile("testSucAdt").unwrap();
+        parse_and_deploy("testSucAdt").unwrap();
     }
 
     #[test]
     fn build_diff_open_adts() {
-        parse_and_compile("testSucOpenAdt").unwrap();
+        parse_and_deploy("testSucOpenAdt").unwrap();
     }
 
     #[bench]
     fn build_diff_adts_import_bench_deploy(b: &mut Bencher) {
-        parse_and_compile_deploy_bench("testSucAdtImport",b).unwrap();
+        parse_and_deploy_bench("testSucAdtImport", b).unwrap();
     }
 
     #[test]
     fn build_diff_adts_import() {
-        parse_and_compile("testSucAdtImport").unwrap();
+        parse_and_deploy("testSucAdtImport").unwrap();
     }
 
     #[bench]
     fn build_create_open_adts_bench(b: &mut Bencher) {
-        parse_and_compile_deploy_bench("testSucCreateOpenAdts",b).unwrap();
+        parse_and_deploy_bench("testSucCreateOpenAdts", b).unwrap();
     }
 
     #[test]
     fn build_create_open_adts() {
-        parse_and_compile("testSucCreateOpenAdts").unwrap();
+        parse_and_deploy("testSucCreateOpenAdts").unwrap();
     }
 
     #[bench]
     fn build_create_closed_adts_bench(b: &mut Bencher) {
-        parse_and_compile_deploy_bench("testSucCreateClosedAdts",b).unwrap();
+        parse_and_deploy_bench("testSucCreateClosedAdts", b).unwrap();
     }
 
     #[test]
     fn build_create_closed_adts() {
-        parse_and_compile("testSucCreateClosedAdts").unwrap();
-    }
-
-    #[bench]
-    fn build_borrow_create_open_adts_bench(b: &mut Bencher) {
-        parse_and_compile_deploy_bench("testSucBorrowCreateOpenAdts",b).unwrap();
-    }
-
-    #[test]
-    fn build_borrow_create_open_adts() {
-        parse_and_compile("testSucBorrowCreateOpenAdts").unwrap();
+        parse_and_deploy("testSucCreateClosedAdts").unwrap();
     }
 
     #[bench]
     fn define_and_call_functions_bench(b: &mut Bencher) {
-        parse_and_compile_deploy_bench("testSucFun",b).unwrap();
+        parse_and_deploy_bench("testSucFun", b).unwrap();
     }
 
     #[test]
     fn define_and_call_functions() {
-        parse_and_compile("testSucFun").unwrap();
+        parse_and_deploy("testSucFun").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Required capability is missing")]
-    fn unsat_adts_embed() {
-        parse_and_compile("testFailAdtWrongCapsEmbed").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Required capability is missing")]
-    fn unsat_adts_embed2() {
-        parse_and_compile("testFailAdtWrongCapsEmbed2").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Type does not full fill capability requirements")]
+    #[should_panic(expected="Capabilities of type must full fill the constraints")]
     fn rec_unsat_adts_copy() {
-        parse_and_compile("testFailAdtWrongRecCapsCopy").unwrap();
+        parse_and_deploy("testFailAdtWrongRecCapsCopy").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Type does not full fill capability requirements")]
+    #[should_panic(expected="Capabilities of type must full fill the constraints")]
     fn rec_unsat_adts_drop() {
-        parse_and_compile("testFailAdtWrongRecCapsDrop").unwrap();
+        parse_and_deploy("testFailAdtWrongRecCapsDrop").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Type does not full fill capability requirements")]
+    #[should_panic(expected="Capabilities of type must full fill the constraints")]
     fn rec_unsat_adts_persist() {
-        parse_and_compile("testFailAdtWrongRecCapsPersist").unwrap();
+        parse_and_deploy("testFailAdtWrongRecCapsPersist").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="An apply must have all capabilities required by the generic")]
+    #[should_panic(expected="Capabilities of type must full fill the constraints")]
     fn rec_unsat_adts_copy_infer() {
-        parse_and_compile("testFailAdtWrongRecCapsCopyInfer").unwrap();
+        parse_and_deploy("testFailAdtWrongRecCapsCopyInfer").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="An apply must have all capabilities required by the generic")]
+    #[should_panic(expected="Capabilities of type must full fill the constraints")]
     fn rec_unsat_adts_drop_infer() {
-        parse_and_compile("testFailAdtWrongRecCapsDropInfer").unwrap();
+        parse_and_deploy("testFailAdtWrongRecCapsDropInfer").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="An apply must have all capabilities required by the generic")]
+    #[should_panic(expected="Capabilities of type must full fill the constraints")]
     fn rec_unsat_adts_persist_infer() {
-        parse_and_compile("testFailAdtWrongRecCapsPersistInfer").unwrap();
+        parse_and_deploy("testFailAdtWrongRecCapsPersistInfer").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Type does not full fill capability requirements")]
+    #[should_panic(expected="Capabilities of type must full fill the constraints")]
     fn rec_unsat_adts_copy_remote() {
-        parse_and_compile("testFailAdtWrongRecCapsCopyRemote").unwrap();
+        parse_and_deploy("testFailAdtWrongRecCapsCopyRemote").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Type does not full fill capability requirements")]
+    #[should_panic(expected="Capabilities of type must full fill the constraints")]
     fn rec_unsat_adts_drop_remote() {
-        parse_and_compile("testFailAdtWrongRecCapsDropRemote").unwrap();
+        parse_and_deploy("testFailAdtWrongRecCapsDropRemote").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Type does not full fill capability requirements")]
+    #[should_panic(expected="Capabilities of type must full fill the constraints")]
     fn rec_unsat_adts_persist_remote() {
-        parse_and_compile("testFailAdtWrongRecCapsPersistRemote").unwrap();
+        parse_and_deploy("testFailAdtWrongRecCapsPersistRemote").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Number of applied type parameters must match the number of declared generics")]
+    #[should_panic(expected="Applied types mismatch required generics")]
     fn wrong_num_args_adt() {
-        parse_and_compile("testFailAdtApply").unwrap();
+        parse_and_deploy("testFailAdtApply").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Number of applied type parameters must match the number of declared generics")]
+    #[should_panic(expected="Applied types mismatch required generics")]
     fn wrong_num_args_adt2() {
-        parse_and_compile("testFailAdtApply2").unwrap();
+        parse_and_deploy("testFailAdtApply2").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Number of applied type parameters must match the number of declared generics")]
+    #[should_panic(expected="Applied types mismatch required generics")]
     fn wrong_num_args_fun() {
-        parse_and_compile("testFailFunApply").unwrap();
+        parse_and_deploy("testFailFunApply").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Number of applied type parameters must match the number of declared generics")]
+    #[should_panic(expected="Applied types mismatch required generics")]
     fn wrong_num_args_fun2() {
-        parse_and_compile("testFailFunApply2").unwrap();
+        parse_and_deploy("testFailFunApply2").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Number of applied type parameters must match the number of declared generics")]
+    #[should_panic(expected="Applied types mismatch required generics")]
     fn wrong_num_args_prim() {
-        parse_and_compile("testFailPrimApply").unwrap();
+        parse_and_deploy("testFailPrimApply").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Physical generics can not be instantiated by phantom generics")]
+    #[should_panic(expected="Phantom types can not be used as to apply non phantom generics")]
     fn wrong_phantom_args_fun() {
-        parse_and_compile("testFailFunPhantomApply").unwrap();
+        parse_and_deploy("testFailFunPhantomApply").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Physical generics can not be instantiated by phantom generics")]
+    #[should_panic(expected="Phantom types can not be used as to apply non phantom generics")]
     fn wrong_phantom_args_adt() {
-        parse_and_compile("testFailAdtPhantomApply").unwrap();
+        parse_and_deploy("testFailAdtPhantomApply").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="An apply must have all capabilities required by the generic")]
+    #[should_panic(expected="Capabilities of type must full fill the constraints")]
     fn wrong_constraint_args_fun() {
-        parse_and_compile("testFailFunConstraintApply").unwrap();
+        parse_and_deploy("testFailFunConstraintApply").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="An apply must have all capabilities required by the generic")]
+    #[should_panic(expected="Capabilities of type must full fill the constraints")]
     fn wrong_constraint_args_adt() {
-        parse_and_compile("testFailAdtConstraintApply").unwrap();
+        parse_and_deploy("testFailAdtConstraintApply").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="An apply must have all capabilities required by the generic")]
+    #[should_panic(expected="Capabilities of type must full fill the constraints")]
     fn wrong_constraint_args_adt2() {
-        parse_and_compile("testFailAdtConstraintApply2").unwrap();
+        parse_and_deploy("testFailAdtConstraintApply2").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Phantom Generics can not be used for values")]
+    #[should_panic(expected="Phantom types can not be used as constructor fields")]
     fn phantom_adt_field() {
-        parse_and_compile("testFailAdtPhantomUse").unwrap();
+        parse_and_deploy("testFailAdtPhantomUse").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Phantom Generics can not be used for values")]
+    #[should_panic(expected="Phantom types can not be used as parameter types")]
     fn phantom_fun_param() {
-        parse_and_compile("testFailFunPhantomParam").unwrap();
+        parse_and_deploy("testFailFunPhantomParam").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Phantom Generics can not be used for values")]
+    #[should_panic(expected="Phantom types can not be used as return types")]
     fn phantom_fun_return() {
-        parse_and_compile("testFailFunPhantomReturn").unwrap();
+        parse_and_deploy("testFailFunPhantomReturn").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Function is not visible")]
+    #[should_panic(expected="A type from the current module is required to be applied to a protected generic")]
     fn protected_fun_call_fail1() {
-        parse_and_compile("testFailProtectedCall1").unwrap();
+        parse_and_deploy("testFailProtectedCall1").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Function is not visible")]
+    #[should_panic(expected="A type from the current module is required to be applied to a protected generic")]
     fn protected_fun_call_fail2() {
-        parse_and_compile("testFailProtectedCall2").unwrap();
+        parse_and_deploy("testFailProtectedCall2").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Function is not visible")]
+    #[should_panic(expected="A type from the current module is required to be applied to a protected generic")]
     fn protected_fun_call_fail3() {
-        parse_and_compile("testFailProtectedCall3").unwrap();
+        parse_and_deploy("testFailProtectedCall3").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Function is not visible")]
+    #[should_panic(expected="A type from the current module is required to be applied to a protected generic")]
     fn protected_fun_call_fail4() {
-        parse_and_compile("testFailProtectedCall4").unwrap();
+        parse_and_deploy("testFailProtectedCall4").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Function is not visible")]
+    #[should_panic(expected="A type from the current module is required to be applied to a protected generic")]
     fn protected_fun_call_fail5() {
-        parse_and_compile("testFailProtectedCall5").unwrap();
+        parse_and_deploy("testFailProtectedCall5").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Function is not visible")]
+    #[should_panic(expected="A private permission must be from the current module")]
     fn private_fun_call_fail() {
-        parse_and_compile("testFailPrivateCall").unwrap();
+        parse_and_deploy("testFailPrivateCall").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Risk is not declared")]
-    fn throw_fun_fail() {
-        parse_and_compile("testFailThrow").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Risk is not declared")]
-    fn throw_fun_fail2() {
-        parse_and_compile("testFailThrow2").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Risk is not declared")]
-    fn throw_fun_fail3() {
-        parse_and_compile("testFailThrow3").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Required capability is missing")]
+    #[should_panic(expected="Copy requires copy capability for input")]
     fn copy_adt_fail() {
-        parse_and_compile("testFailCopy").unwrap();
+        parse_and_deploy("testFailCopy").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Required capability is missing")]
+    #[should_panic(expected="Copy requires copy capability for input")]
     fn copy_adt_fail2() {
-        parse_and_compile("testFailCopy2").unwrap();
+        parse_and_deploy("testFailCopy2").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="An apply must have all capabilities required by the generic")]
+    #[should_panic(expected="Capabilities of type must full fill the constraints")]
     fn persist_fail() {
-        parse_and_compile("testFailPersist").unwrap();
+        parse_and_deploy("testFailPersist").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Required capability is missing")]
+    #[should_panic(expected="Discard requires drop capability for input")]
     fn drop_fail() {
-        parse_and_compile("testFailDrop").unwrap();
+        parse_and_deploy("testFailDrop").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Required capability is missing")]
+    #[should_panic(expected="Discard requires drop capability for input")]
     fn drop_fail2() {
-        parse_and_compile("testFailDrop2").unwrap();
+        parse_and_deploy("testFailDrop2").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Required capability is missing")]
+    #[should_panic(expected="Discard requires drop capability for input")]
     fn drop_fail3() {
-        parse_and_compile("testFailDrop3").unwrap();
+        parse_and_deploy("testFailDrop3").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Required capability is missing")]
+    #[should_panic(expected="Discard requires drop capability for input")]
     fn drop_fail4() {
-        parse_and_compile("testFailDrop4").unwrap();
+        parse_and_deploy("testFailDrop4").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Type mismatch")]
+    #[should_panic(expected="Types with the Primitive capability must have Drop, Copy, Persist, and Unbound as well")]
+    fn prim_fail() {
+        parse_and_deploy("testFailPrimitive").unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected="Types with the Primitive capability must have Drop, Copy, Persist, and Unbound as well")]
+    fn prim_fail2() {
+        parse_and_deploy("testFailPrimitive2").unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected="Types with the Primitive capability must have Drop, Copy, Persist, and Unbound as well")]
+    fn prim_fail3() {
+        parse_and_deploy("testFailPrimitive3").unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected="Types with the Primitive capability must have Drop, Copy, Persist, and Unbound as well")]
+    fn prim_fail4() {
+        parse_and_deploy("testFailPrimitive4").unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected="A primitive data type can only have public permissions")]
+    fn prim_fail5() {
+        parse_and_deploy("testFailPrimitive5").unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected="A primitive data type can only have public permissions")]
+    fn prim_fail6() {
+        parse_and_deploy("testFailPrimitive6").unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected="A primitive data type can only have public permissions")]
+    fn prim_fail7() {
+        parse_and_deploy("testFailPrimitive7").unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected="A primitive data type can only have public permissions")]
+    fn prim_fail8() {
+        parse_and_deploy("testFailPrimitive8").unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected="Wrong Permission supplied")]
     fn unpack_type_fail() {
-        parse_and_compile("testFailUnpackType").unwrap();
+        parse_and_deploy("testFailUnpackType").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Type mismatch")]
-    fn borrow_unpack_type_fail() {
-        parse_and_compile("testFailUnpackType2").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Type has no constructors")]
+    #[should_panic(expected="Permissions not applicable to literal")]
     fn lit_unpack_fail() {
-        parse_and_compile("testFailUnpackType3").unwrap();
+        parse_and_deploy("testFailUnpackType3").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Type has no constructors")]
-    fn lit_borrow_unpack_fail() {
-        parse_and_compile("testFailUnpackType4").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Requested Constructor unavailable")]
+    #[should_panic(expected="Unpack must target a data type with a single constructor")]
     fn empty_unpack_fail() {
-        parse_and_compile("testFailUnpackType5").unwrap();
+        parse_and_deploy("testFailUnpackType5").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Requested Constructor unavailable")]
-    fn empty_borrow_unpack_fail() {
-        parse_and_compile("testFailUnpackType6").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="opcode not defined for the requested type")]
+    #[should_panic(expected="Unpack must target a data type with a single constructor")]
     fn union_unpack_fail() {
-        parse_and_compile("testFailUnpackType7").unwrap();
+        parse_and_deploy("testFailUnpackType7").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="opcode not defined for the requested type")]
-    fn union_borrow_unpack_fail() {
-        parse_and_compile("testFailUnpackType8").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Type mismatch")]
+    #[should_panic(expected="Returned value has different type from return type declaration of function")]
     fn unpack_image_type_fail() {
-        parse_and_compile("testFailImageUnpack").unwrap();
+        parse_and_deploy("testFailImageUnpack").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Type mismatch")]
+    #[should_panic(expected="Returned value has different type from return type declaration of function")]
     fn unpack_image_type_fail2() {
-        parse_and_compile("testFailImageUnpack2").unwrap();
+        parse_and_deploy("testFailImageUnpack2").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Type mismatch")]
+    #[should_panic(expected="Wrong Permission supplied")]
     fn unpack_image_type_fail3() {
-        parse_and_compile("testFailImageUnpack3").unwrap();
+        parse_and_deploy("testFailImageUnpack3").unwrap();
+    }
+
+
+    #[test]
+    #[should_panic(expected="Returned value has different type from return type declaration of function")]
+    fn switch_image_type_fail() {
+        parse_and_deploy("testFailImageSwitch").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Type mismatch")]
+    #[should_panic(expected="Returned value has different type from return type declaration of function")]
+    fn switch_image_type_fail2() {
+        parse_and_deploy("testFailImageSwitch2").unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected="Returned value has different type from return type declaration of function")]
+    fn switch_image_type_fail3() {
+        parse_and_deploy("testFailImageSwitch3").unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected="Consumed, borrowed, or locked element can not be consumed")]
+    fn switch_read_type_fail() {
+        parse_and_deploy("testFailReadSwitch").unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected="A consumed or locked element can not be fetched")]
+    fn switch_read_type_fail2() {
+        parse_and_deploy("testFailReadSwitch2").unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected="Consumed, borrowed, or locked element can not be consumed")]
+    fn switch_read_type_fail3() {
+        parse_and_deploy("testFailReadSwitch3").unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected="Consumed, borrowed, or locked element can not be consumed")]
+    fn switch_read_type_fail4() {
+        parse_and_deploy("testFailReadSwitch4").unwrap();
+    }
+
+
+    #[test]
+    #[should_panic(expected="Returned value has different type from return type declaration of function")]
     fn field_image_type_fail() {
-        parse_and_compile("testFailImageField").unwrap();
+        parse_and_deploy("testFailImageField").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Type mismatch")]
+    #[should_panic(expected="Returned value has different type from return type declaration of function")]
     fn field_image_type_fail2() {
-        parse_and_compile("testFailImageField").unwrap();
+        parse_and_deploy("testFailImageField").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Type mismatch")]
+    #[should_panic(expected="Wrong Permission supplied")]
     fn field_image_type_fail3() {
-        parse_and_compile("testFailImageField3").unwrap();
-    }
-
-
-    #[test]
-    #[should_panic(expected="Type mismatch")]
-    fn borrow_unpack_image_type_fail() {
-        parse_and_compile("testFailBorrowImageUnpack").unwrap();
+        parse_and_deploy("testFailImageField3").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Type mismatch")]
-    fn borrow_unpack_image_type_fail2() {
-        parse_and_compile("testFailBorrowImageUnpack2").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Type mismatch")]
-    fn borrow_unpack_image_type_fail3() {
-        parse_and_compile("testFailBorrowImageUnpack3").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Type mismatch")]
-    fn borrow_field_image_type_fail() {
-        parse_and_compile("testFailBorrowImageField").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Type mismatch")]
-    fn borrow_field_image_type_fail2() {
-        parse_and_compile("testFailBorrowImageField2").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Type mismatch")]
-    fn borrow_field_image_type_fail3() {
-        parse_and_compile("testFailBorrowImageField3").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Input not allowed to be borrowed")]
-    fn borrow_unpack_fail() {
-        parse_and_compile("testFailBorrowUnpack").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Required capability is missing")]
+    #[should_panic(expected="A private permission must be from the current module")]
     fn unpack_cap_fail() {
-        parse_and_compile("testFailCapUnpack").unwrap();
+        parse_and_deploy("testFailCapUnpack").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Required capability is missing")]
-    fn unpack_cap_fail2() {
-        parse_and_compile("testFailCapUnpack2").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="opcode not defined for the requested type")]
+    #[should_panic(expected="Consumed, borrowed, or locked element can not be consumed")]
     fn switch_type_fail() {
-        parse_and_compile("testFailSwitchType").unwrap();
+        parse_and_deploy("testFailSwitchType").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="opcode not defined for the requested type")]
-    fn switch_type_fail2() {
-        parse_and_compile("testFailSwitchType2").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Requested Constructor unavailable")]
-    fn switch_type_fail3() {
-        parse_and_compile("testFailSwitchType3").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Requested Constructor unavailable")]
+    #[should_panic(expected="Requested constructor does not exist")]
     fn switch_type_fail4() {
-        parse_and_compile("testFailSwitchType4").unwrap();
+        parse_and_deploy("testFailSwitchType4").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Input not allowed to be borrowed")]
-    fn borrow_switch_fail() {
-        parse_and_compile("testFailBorrowSwitch").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Type mismatch")]
-    fn switch_image_fail() {
-        parse_and_compile("testFailImageSwitch").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Type mismatch")]
-    fn switch_image_fail2() {
-        parse_and_compile("testFailImageSwitch2").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Type mismatch")]
-    fn switch_image_fail3() {
-        parse_and_compile("testFailImageSwitch3").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Type mismatch")]
-    fn borrow_switch_image_fail() {
-        parse_and_compile("testFailBorrowImageSwitch").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Type mismatch")]
+    #[should_panic(expected="Returned value has different type from return type declaration of function")]
     fn image_fail() {
-        parse_and_compile("testFailImage").unwrap();
+        parse_and_deploy("testFailImage").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Type mismatch")]
+    #[should_panic(expected="Returned value has different type from return type declaration of function")]
     fn image_fail2() {
-        parse_and_compile("testFailImage2").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Type mismatch")]
-    fn borrow_switch_image_fail2() {
-        parse_and_compile("testFailBorrowImageSwitch2").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Type mismatch")]
-    fn borrow_switch_image_fail3() {
-        parse_and_compile("testFailBorrowImageSwitch3").unwrap();
+        parse_and_deploy("testFailImage2").unwrap();
     }
 
 
     #[test]
-    #[should_panic(expected="Type mismatch")]
+    #[should_panic(expected="Returned value has different type from return type declaration of function")]
     fn pack_image_type_fail() {
-        parse_and_compile("testFailImagePack").unwrap();
+        parse_and_deploy("testFailImagePack").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Type mismatch")]
+    #[should_panic(expected="Parameter for data constructor has wrong type")]
     fn pack_image_type_fail2() {
-        parse_and_compile("testFailImagePack2").unwrap();
+        parse_and_deploy("testFailImagePack2").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Type mismatch")]
+    #[should_panic(expected="Returned value has different type from return type declaration of function")]
     fn pack_image_type_fail3() {
-        parse_and_compile("testFailImagePack3").unwrap();
+        parse_and_deploy("testFailImagePack3").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Required capability is missing")]
+    #[should_panic(expected="A private permission must be from the current module")]
     fn pack_caps_fail() {
-        parse_and_compile("testFailCreate").unwrap();
+        parse_and_deploy("testFailCreate").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Required capability is missing")]
-    fn pack_caps_fail2() {
-        parse_and_compile("testFailCreate2").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Not an internal Adt")]
+    #[should_panic(expected="Only create, consume & inspect permissions have constructors")]
     fn pack_lit_fail() {
-        parse_and_compile("testFailCreate3").unwrap();
+        parse_and_deploy("testFailCreate3").unwrap();
     }
 
 
     #[test]
-    #[should_panic(expected="Requested Constructor unavailable")]
+    #[should_panic(expected="Requested constructor does not exist")]
     fn pack_no_ctr_fail() {
-        parse_and_compile("testFailCreate4").unwrap();
+        parse_and_deploy("testFailCreate4").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Can only borrow if their is an argument")]
-    fn pack_no_arg_fail() {
-        parse_and_compile("testFailCreate5").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Input not allowed to be borrowed")]
-    fn pack_borrow_fail() {
-        parse_and_compile("testFailCreate6").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Type mismatch")]
+    #[should_panic(expected="Parameter for data constructor has wrong type")]
     fn pack_type_fail() {
-        parse_and_compile("testFailPackType").unwrap();
+        parse_and_deploy("testFailPackType").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Type mismatch")]
+    #[should_panic(expected="Parameter for data constructor has wrong type")]
     fn pack_type_fail2() {
-        parse_and_compile("testFailPackType2").unwrap();
+        parse_and_deploy("testFailPackType2").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Risk is not declared")]
-    fn risky_call_fail() {
-        parse_and_compile("testFailRiskyCall").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Risk is not declared")]
-    fn risky_call_fail2() {
-        parse_and_compile("testFailRiskyCall2").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Number of params is wrong")]
+    #[should_panic(expected="Wrong number of parameter for function call")]
     fn wrong_arg_call_fail() {
-        parse_and_compile("testFailFunCall").unwrap();
+        parse_and_deploy("testFailFunCall").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Number of params is wrong")]
+    #[should_panic(expected="Wrong number of parameter for function call")]
     fn wrong_arg_call_fail2() {
-        parse_and_compile("testFailFunCall2").unwrap();
+        parse_and_deploy("testFailFunCall2").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Type mismatch")]
+    #[should_panic(expected="Parameter for function call has wrong type")]
     fn wrong_arg_type_fail() {
-        parse_and_compile("testFailFunCall3").unwrap();
+        parse_and_deploy("testFailFunCall3").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Consuming moved slot is forbidden")]
+    #[should_panic(expected="Consumed, borrowed, or locked element can not be consumed")]
     fn consume_moved_fail() {
-        parse_and_compile("testFailConsumeMoved").unwrap();
+        parse_and_deploy("testFailConsumeMoved").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Consuming moved slot is forbidden")]
+    #[should_panic(expected="Consumed, borrowed, or locked element can not be consumed")]
     fn consume_moved_fail2() {
-        parse_and_compile("testFailConsumeMoved2").unwrap();
+        parse_and_deploy("testFailConsumeMoved2").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Consuming moved slot is forbidden")]
+    #[should_panic(expected="Consumed, borrowed, or locked element can not be consumed")]
     fn consume_moved_fail3() {
-        parse_and_compile("testFailConsumeMoved3").unwrap();
+        parse_and_deploy("testFailConsumeMoved3").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Input not allowed to be borrowed")]
-    fn consume_borrowed_fail() {
-        parse_and_compile("testFailConsumeBorrowed").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Input not allowed to be borrowed")]
-    fn consume_borrowed_fail2() {
-        parse_and_compile("testFailConsumeBorrowed2").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Input not allowed to be borrowed")]
-    fn consume_borrowed_fail3() {
-        parse_and_compile("testFailConsumeBorrowed3").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Locking moved slot is forbidden")]
-    fn borrow_borrowed_fail() {
-        parse_and_compile("testFailBorrowBorrowed").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Locking moved slot is forbidden")]
-    fn borrow_borrowed_fail2() {
-        parse_and_compile("testFailBorrowBorrowed2").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Locking moved slot is forbidden")]
-    fn borrow_borrowed_fail3() {
-        parse_and_compile("testFailBorrowBorrowed3").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Locking moved slot is forbidden")]
-    fn borrow_moved_fail() {
-        parse_and_compile("testFailBorrowMoved").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Locking moved slot is forbidden")]
-    fn borrow_moved_fail2() {
-        parse_and_compile("testFailBorrowMoved2").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Locking moved slot is forbidden")]
-    fn borrow_moved_fail3() {
-        parse_and_compile("testFailBorrowMoved3").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Required capability is missing")]
+    #[should_panic(expected="Discard requires drop capability for input")]
     fn free_unconsumed_fail() {
-        parse_and_compile("testFailFreeUnconsumed").unwrap();
+        parse_and_deploy("testFailFreeUnconsumed").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Required capability is missing")]
+    #[should_panic(expected="Discard requires drop capability for input")]
     fn free_unconsumed_fail2() {
-        parse_and_compile("testFailFreeUnconsumed2").unwrap();
+        parse_and_deploy("testFailFreeUnconsumed2").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Required capability is missing")]
+    #[should_panic(expected="Discard requires drop capability for input")]
     fn free_unconsumed_fail3() {
-        parse_and_compile("testFailFreeUnconsumed3").unwrap();
+        parse_and_deploy("testFailFreeUnconsumed3").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="A consumed slots can not be returned")]
+    #[should_panic(expected="Consumed, borrowed, or locked element can not be consumed")]
     fn return_consumed_fail() {
-        parse_and_compile("testFailReturnMoved").unwrap();
+        parse_and_deploy("testFailReturnMoved").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="A consumed slots can not be returned")]
+    #[should_panic(expected="Consumed, borrowed, or locked element can not be consumed")]
     fn return_consumed_fail2() {
-        parse_and_compile("testFailReturnMoved2").unwrap();
+        parse_and_deploy("testFailReturnMoved2").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="A consumed slots can not be returned")]
+    #[should_panic(expected="Consumed, borrowed, or locked element can not be consumed")]
     fn return_consumed_fail3() {
-        parse_and_compile("testFailReturnMoved3").unwrap();
+        parse_and_deploy("testFailReturnMoved3").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Can not access already moved slot")]
+    #[should_panic(expected="A consumed, locked or hidden element can not be hidden")]
     fn dual_arg_fail() {
-        parse_and_compile("testFailDualArg").unwrap();
+        parse_and_deploy("testFailDualArg").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Can not access already moved slot")]
+    #[should_panic(expected="Consumed, borrowed, or locked element can not be consumed")]
     fn copy_consumed_fail() {
-        parse_and_compile("testFailCopyConsumed").unwrap();
-    }
-    
-    #[test]
-    #[should_panic(expected="Consuming moved slot is forbidden")]
-    fn ret_borrow_dropped_fail() {
-        parse_and_compile("testFailRetBorrowDropped").unwrap();
+        parse_and_deploy("testFailCopyConsumed").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Consuming moved slot is forbidden")]
-    fn ret_borrow_dropped_fail2() {
-        parse_and_compile("testFailRetBorrowDropped2").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Consuming moved slot is forbidden")]
-    fn ret_borrow_dropped_fail3() {
-        parse_and_compile("testFailRetBorrowDropped3").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Can not borrow from a later element")]
-    fn ret_borrow_later_fail() {
-        parse_and_compile("testFailRetBorrowLater").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Can not borrow from a later element")]
-    fn ret_borrow_later_fail2() {
-        parse_and_compile("testFailRetBorrowLater2").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Can not borrow from a later element")]
-    fn ret_borrow_later_fail3() {
-        parse_and_compile("testFailRetBorrowLater3").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Can not handle element from outside of the active frame")]
-    fn fun_return_fail() {
-        parse_and_compile("testFailFunReturn").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Can not handle element from outside of the active frame")]
-    fn let_return_fail() {
-        parse_and_compile("testFailLetReturn").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Can not handle element from outside of the active frame")]
-    fn try_return_fail() {
-        parse_and_compile("testFailTryReturn").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Can not handle element from outside of the active frame")]
-    fn try_return_fail2() {
-        parse_and_compile("testFailTryReturn2").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Can not handle element from outside of the active frame")]
-    fn switch_return_fail() {
-        parse_and_compile("testFailSwitchReturn").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Can not handle element from outside of the active frame")]
-    fn switch_return_fail2() {
-        parse_and_compile("testFailSwitchReturn2").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Consuming moved slot is forbidden")]
+    #[should_panic(expected="Consumed, borrowed, or locked element can not be consumed")]
     fn fun_double_return_fail() {
-        parse_and_compile("testFailFunDoubleReturn").unwrap();
+        parse_and_deploy("testFailFunDoubleReturn").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Consuming moved slot is forbidden")]
+    #[should_panic(expected="Consumed, borrowed, or locked element can not be consumed")]
     fn let_double_return_fail() {
-        parse_and_compile("testFailLetDoubleReturn").unwrap();
+        parse_and_deploy("testFailLetDoubleReturn").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Consuming moved slot is forbidden")]
-    fn try_double_return_fail() {
-        parse_and_compile("testFailTryDoubleReturn").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Consuming moved slot is forbidden")]
-    fn try_double_return_fail2() {
-        parse_and_compile("testFailTryDoubleReturn2").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Consuming moved slot is forbidden")]
+    #[should_panic(expected="Consumed, borrowed, or locked element can not be consumed")]
     fn switch_double_return_fail() {
-        parse_and_compile("testFailSwitchDoubleReturn").unwrap();
+        parse_and_deploy("testFailSwitchDoubleReturn").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Consuming moved slot is forbidden")]
+    #[should_panic(expected="Consumed, borrowed, or locked element can not be consumed")]
     fn switch_double_return_fail2() {
-        parse_and_compile("testFailSwitchDoubleReturn2").unwrap();
+        parse_and_deploy("testFailSwitchDoubleReturn2").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Consuming moved slot is forbidden")]
+    #[should_panic(expected="Consumed, borrowed, or locked element can not be consumed")]
     fn fun_double_drop_fail() {
-        parse_and_compile("testFailFunDoubleDrop").unwrap();
+        parse_and_deploy("testFailFunDoubleDrop").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Consuming moved slot is forbidden")]
+    #[should_panic(expected="Consumed, borrowed, or locked element can not be consumed")]
     fn let_double_drop_fail() {
-        parse_and_compile("testFailLetDoubleDrop").unwrap();
+        parse_and_deploy("testFailLetDoubleDrop").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Consuming moved slot is forbidden")]
-    fn try_double_drop_fail() {
-        parse_and_compile("testFailTryDoubleDrop").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Consuming moved slot is forbidden")]
-    fn try_double_drop_fail2() {
-        parse_and_compile("testFailTryDoubleDrop2").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Consuming moved slot is forbidden")]
+    #[should_panic(expected="Consumed, borrowed, or locked element can not be consumed")]
     fn switch_double_drop_fail() {
-        parse_and_compile("testFailSwitchDoubleDrop").unwrap();
+        parse_and_deploy("testFailSwitchDoubleDrop").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="Consuming moved slot is forbidden")]
+    #[should_panic(expected="Consumed, borrowed, or locked element can not be consumed")]
     fn switch_double_drop_fail2() {
-        parse_and_compile("testFailSwitchDoubleDrop2").unwrap();
+        parse_and_deploy("testFailSwitchDoubleDrop2").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="A consumed slots can not be returned")]
+    #[should_panic(expected="Consumed, borrowed, or locked element can not be consumed")]
     fn fun_return_drop_fail() {
-        parse_and_compile("testFailFunReturnDrop").unwrap();
+        parse_and_deploy("testFailFunReturnDrop").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="A consumed slots can not be returned")]
+    #[should_panic(expected="Consumed, borrowed, or locked element can not be consumed")]
     fn let_return_drop_fail() {
-        parse_and_compile("testFailLetReturnDrop").unwrap();
+        parse_and_deploy("testFailLetReturnDrop").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="A consumed slots can not be returned")]
-    fn try_return_drop_fail() {
-        parse_and_compile("testFailTryReturnDrop").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="A consumed slots can not be returned")]
-    fn try_return_drop_fail2() {
-        parse_and_compile("testFailTryReturnDrop2").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="A consumed slots can not be returned")]
+    #[should_panic(expected="Consumed, borrowed, or locked element can not be consumed")]
     fn switch_return_drop_fail() {
-        parse_and_compile("testFailSwitchReturnDrop").unwrap();
+        parse_and_deploy("testFailSwitchReturnDrop").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="A consumed slots can not be returned")]
+    #[should_panic(expected="Consumed, borrowed, or locked element can not be consumed")]
     fn switch_return_drop_fail2() {
-        parse_and_compile("testFailSwitchReturnDrop2").unwrap();
+        parse_and_deploy("testFailSwitchReturnDrop2").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="branches must induce the same post state")]
-    fn branch_return_type_fail() {
-        parse_and_compile("testFailBranchReturnType").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="branches must induce the same post state")]
-    fn branch_return_type_fail2() {
-        parse_and_compile("testFailBranchReturnType2").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="branches must induce the same post state")]
-    fn branch_return_type_fail3() {
-        parse_and_compile("testFailBranchReturnType3").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="branches must induce the same post state")]
-    fn branch_return_type_fail4() {
-        parse_and_compile("testFailBranchReturnType4").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="branches must induce the same post state")]
-    fn branch_return_type_fail5() {
-        parse_and_compile("testFailBranchReturnType5").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="branches must induce the same post state")]
+    #[should_panic(expected="Branches must produce same returns")]
     fn branch_return_type_fail6() {
-        parse_and_compile("testFailBranchReturnType6").unwrap();
+        parse_and_deploy("testFailBranchReturnType6").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="branches must induce the same post state")]
+    #[should_panic(expected="Branches must produce same returns")]
     fn branch_return_type_fail7() {
-        parse_and_compile("testFailBranchReturnType7").unwrap();
+        parse_and_deploy("testFailBranchReturnType7").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="branches must induce the same post state")]
+    #[should_panic(expected="Branches must produce same returns")]
     fn branch_return_type_fail8() {
-        parse_and_compile("testFailBranchReturnType8").unwrap();
+        parse_and_deploy("testFailBranchReturnType8").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="branches must induce the same post state")]
+    #[should_panic(expected="Branches must produce same returns")]
     fn branch_return_type_fail9() {
-        parse_and_compile("testFailBranchReturnType9").unwrap();
+        parse_and_deploy("testFailBranchReturnType9").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="branches must induce the same post state")]
-    fn branch_return_type_fail10() {
-        parse_and_compile("testFailBranchReturnType10").unwrap();
-    }
-
-
-    #[test]
-    #[should_panic(expected="branches must induce the same post state")]
-    fn branch_diff_consumes_fail() {
-        parse_and_compile("testFailBranchDiffConsumes").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="branches must induce the same post state")]
-    fn branch_diff_consumes_fail2() {
-        parse_and_compile("testFailBranchDiffConsumes2").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="branches must induce the same post state")]
-    fn branch_diff_consumes_fail3() {
-        parse_and_compile("testFailBranchDiffConsumes3").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="branches must induce the same post state")]
-    fn branch_diff_consumes_fail4() {
-        parse_and_compile("testFailBranchDiffConsumes4").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="branches must induce the same post state")]
-    fn branch_diff_consumes_fail5() {
-        parse_and_compile("testFailBranchDiffConsumes5").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="branches must induce the same post state")]
+    #[should_panic(expected="Branches must consume same stack slots")]
     fn branch_diff_consumes_fail6() {
-        parse_and_compile("testFailBranchDiffConsumes6").unwrap();
+        parse_and_deploy("testFailBranchDiffConsumes6").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="branches must induce the same post state")]
+    #[should_panic(expected="Branches must consume same stack slots")]
     fn branch_diff_consumes_fail7() {
-        parse_and_compile("testFailBranchDiffConsumes7").unwrap();
+        parse_and_deploy("testFailBranchDiffConsumes7").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="branches must induce the same post state")]
+    #[should_panic(expected="Branches must consume same stack slots")]
     fn branch_diff_consumes_fail8() {
-        parse_and_compile("testFailBranchDiffConsumes8").unwrap();
+        parse_and_deploy("testFailBranchDiffConsumes8").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="branches must induce the same post state")]
+    #[should_panic(expected="Branches must consume same stack slots")]
     fn branch_diff_consumes_fail9() {
-        parse_and_compile("testFailBranchDiffConsumes9").unwrap();
+        parse_and_deploy("testFailBranchDiffConsumes9").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="branches must induce the same post state")]
+    #[should_panic(expected="Branches must consume same stack slots")]
     fn branch_diff_consumes_fail10() {
-        parse_and_compile("testFailBranchDiffConsumes10").unwrap();
+        parse_and_deploy("testFailBranchDiffConsumes10").unwrap();
     }
 
     #[test]
-    #[should_panic(expected= "Function signature mismatch")]
+    #[should_panic(expected= "Parameters must be borrowed or consumed at the end of a function body")]
     fn param_consume_fail() {
-        parse_and_compile("testFailFunParamConsume").unwrap();
+        parse_and_deploy("testFailFunParamConsume").unwrap();
     }
 
     #[test]
-    #[should_panic(expected= "Function signature mismatch")]
+    #[should_panic(expected= "Consumed, borrowed, or locked element can not be consumed")]
     fn param_consume_fail2() {
-        parse_and_compile("testFailFunParamConsume2").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Function signature mismatch")]
-    fn ret_borrow_fail() {
-        parse_and_compile("testFailFunRetBorrow").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Function signature mismatch")]
-    fn ret_borrow_fail2() {
-        parse_and_compile("testFailFunRetBorrow2").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Function signature mismatch")]
-    fn ret_borrow_fail3() {
-        parse_and_compile("testFailFunRetBorrow3").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Function signature mismatch")]
-    fn ret_borrow_fail4() {
-        parse_and_compile("testFailFunRetBorrow4").unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected="Function signature mismatch")]
-    fn ret_borrow_fail5() {
-        parse_and_compile("testFailFunRetBorrow5").unwrap();
+        parse_and_deploy("testFailFunParamConsume2").unwrap();
     }
 
     #[bench]
     fn validate_succ_bench_deploy(b: &mut Bencher) {
-        parse_and_compile_deploy_bench("testSucValidate",b).unwrap();
+        parse_and_deploy_bench("testSucValidate", b).unwrap();
     }
 
     #[test]
     fn validate_succ(){
-        parse_and_compile("testSucValidate").unwrap();
+        parse_and_deploy("testSucValidate").unwrap();
     }
 
     #[bench]
     fn check_succ_bench_deploy(b: &mut Bencher) {
-        parse_and_compile_deploy_bench("testSucTypeCheck",b).unwrap();
+        parse_and_deploy_bench("testSucTypeCheck", b).unwrap();
     }
 
     #[test]
     fn check_succ(){
-        parse_and_compile("testSucTypeCheck").unwrap();
+        parse_and_deploy("testSucTypeCheck").unwrap();
     }
 
     #[bench]
     fn lin_succ_bench_deploy(b: &mut Bencher) {
-        parse_and_compile_deploy_bench("testSucLinearity",b).unwrap();
+        parse_and_deploy_bench("testSucLinearity", b).unwrap();
     }
 
     #[test]
     fn lin_succ(){
-        parse_and_compile("testSucLinearity").unwrap();
+        parse_and_deploy("testSucLinearity").unwrap();
     }
 
     #[test]
     fn cap_succ(){
-        parse_and_compile("testSucCaps").unwrap();
+        parse_and_deploy("testSucCaps").unwrap();
     }
 
 }

@@ -7,60 +7,40 @@ extern crate sanskrit_core;
 extern crate sanskrit_interpreter;
 extern crate sanskrit_common;
 
+pub mod limiter;
+mod collector;
 mod compacting;
-mod compiler;
+pub mod compiler;
 mod gas_table;
 
 use sanskrit_common::model::*;
 use sanskrit_common::store::*;
 use sanskrit_common::errors::*;
 use sanskrit_common::encoding::*;
-use compiler::ComponentProcessor;
-use sanskrit_interpreter::model::AdtDescriptor;
-use sanskrit_interpreter::model::FunctionDescriptor;
+use sanskrit_interpreter::model::TransactionDescriptor;
 use sanskrit_interpreter::externals::Externals;
+use sanskrit_core::accounting::Accounting;
+use limiter::Limiter;
+use sanskrit_common::arena::Heap;
 
-struct StoreDescriptorProcessor<'a, S:Store> {
-    module_hash:Hash,
-    store:&'a S
-}
-
-impl<'a, S:Store> ComponentProcessor for StoreDescriptorProcessor<'a, S> {
-    fn process_adt<'b>(&mut self, offset: u8, a_desc: &AdtDescriptor<'b>) -> Result<()> {
-        //calcs the Key for the store
-        let key = store_hash(&[&self.module_hash,&[offset]]);
-        //serializes the content
-        let mut s = Serializer::new(usize::max_value());
-        a_desc.serialize(&mut s)?;
-        let data = s.extract();
-        //stores it
-        //println!("{}",key);
-        self.store.set(StorageClass::AdtDesc, key, data)
-    }
-
-    fn process_fun<'b>(&mut self, offset: u8, f_desc: &FunctionDescriptor<'b>) -> Result<()> {
-        //calcs the Key for the store
-        let key = store_hash(&[&self.module_hash,&[offset]]);
-        //serializes the content
-        let mut s = Serializer::new(usize::max_value());
-        f_desc.serialize(&mut s)?;
-        let data = s.extract();
-        //stores it
-        self.store.set(StorageClass::FunDesc, key, data)
-    }
-}
-
-//compiles a whole module
-pub fn compile_module<S:Store>(store:&S, module_hash:Hash) -> Result<()>{
-    //todo: ensure that the store makes only a single transaction or stuff may be partially stored
-
-    let mut proc = StoreDescriptorProcessor {module_hash, store};
-
-    //Todo: Start Txt
+//compiles a single top function
+pub fn compile_function<S:Store>(store:&S, accounting:&Accounting, limiter:&Limiter, function_hash:Hash) -> Result<Hash>{
+    let heap = Heap::new(10000,4.0);
+    let mut alloc = heap.new_arena(10000);
     //compiles the content
-    compiler::compile::<S,StoreDescriptorProcessor<S>,Externals>(&module_hash,store, &mut proc)?;
+    let txt_desc = compiler::compile_transaction::<S, Externals>(&function_hash, store, accounting, limiter, &alloc)?;
+    //serializes the content
+    let data = Serializer::serialize_fully(&txt_desc, usize::max_value())?;
+    //calcs the Key for the store
+    let key = store_hash(&[&data]);
+    //we ignore if it is already in
+    if !store.contains(StorageClass::Descriptor, &key){
+        //store it
+        store.set(StorageClass::Descriptor, key, data)?;
+        store.commit(StorageClass::Descriptor);
+    }
 
-    //Todo: End Txt
+    Ok(key)
 
-    Ok(())
+
 }

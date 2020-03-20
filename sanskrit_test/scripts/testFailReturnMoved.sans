@@ -1,5 +1,5 @@
 module TestFailReturnMoved {
-    private fun Test[<Drop> A](consume a:A):(a:A){
+    private fun Test[<Drop, Value, Unbound> A](consume a:A):(a:A){
        b = a;
        discard b;
        return b;

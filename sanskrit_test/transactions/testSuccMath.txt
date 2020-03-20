@@ -1,4 +1,4 @@
-signed(A) transaction{
+transactional transaction{
    a = lit 1:IntU8.U8;
    b = lit 2:IntU8.U8;
    c = lit 3:IntU8.U8;
@@ -6,7 +6,13 @@ signed(A) transaction{
    () = call Helpers.AssertEqU8(c,c2);
 };
 
-signed(A) transaction{
+transactional transaction:(log r:IntU8.U8){
+   a = lit 1:IntU8.U8;
+   b = lit 2:IntU8.U8;
+   return call Math.Add(a,b);
+};
+
+transactional transaction{
    a = lit 1:IntI128.I128;
    b = lit -2:IntI128.I128;
    c = lit -1:IntI128.I128;
@@ -14,14 +20,20 @@ signed(A) transaction{
    () = call Helpers.AssertEqI128(c,c2);
 };
 
-signed(A) transaction{
+transactional transaction:(log r:IntI128.I128){
+   a = lit 1:IntI128.I128;
+   b = lit -2:IntI128.I128;
+   return call Math.Add2(a,b);
+};
+
+transactional transaction{
    a = lit 255:IntU8.U8;
    b = lit 2:IntU8.U8;
    c = call Math.ErrorAdd(a,b);
    () = call Helpers.AssertTrue(c);
 };
 
-signed(A) transaction{
+transactional transaction{
    a = lit 3:IntU8.U8;
    b = lit 2:IntU8.U8;
    c = lit 1:IntU8.U8;
@@ -29,7 +41,13 @@ signed(A) transaction{
    () = call Helpers.AssertEqU8(c,c2);
 };
 
-signed(A) transaction{
+transactional transaction:(log r:IntU8.U8){
+   a = lit 3:IntU8.U8;
+   b = lit 2:IntU8.U8;
+   return call Math.Sub(a,b);
+};
+
+transactional transaction{
    a = lit -3:IntI128.I128;
    b = lit 2:IntI128.I128;
    c = lit -5:IntI128.I128;
@@ -37,14 +55,20 @@ signed(A) transaction{
    () = call Helpers.AssertEqI128(c,c2);
 };
 
-signed(A) transaction{
+transactional transaction:(log r:IntI128.I128){
+   a = lit -3:IntI128.I128;
+   b = lit 2:IntI128.I128;
+   return call Math.Sub2(a,b);
+};
+
+transactional transaction{
    a = lit 1:IntU8.U8;
    b = lit 2:IntU8.U8;
    c = call Math.ErrorSub(a,b);
    () = call Helpers.AssertTrue(c);
 };
 
-signed(A) transaction{
+transactional transaction{
    a = lit 3:IntU8.U8;
    b = lit 2:IntU8.U8;
    c = lit 6:IntU8.U8;
@@ -52,7 +76,13 @@ signed(A) transaction{
    () = call Helpers.AssertEqU8(c,c2);
 };
 
-signed(A) transaction{
+transactional transaction:(log r:IntU8.U8){
+   a = lit 3:IntU8.U8;
+   b = lit 2:IntU8.U8;
+   return call Math.Mul(a,b);
+};
+
+transactional transaction{
    a = lit -3:IntI128.I128;
    b = lit 2:IntI128.I128;
    c = lit -6:IntI128.I128;
@@ -60,14 +90,20 @@ signed(A) transaction{
    () = call Helpers.AssertEqI128(c,c2);
 };
 
-signed(A) transaction{
+transactional transaction:(log r:IntI128.I128){
+   a = lit -3:IntI128.I128;
+   b = lit 2:IntI128.I128;
+   return call Math.Mul2(a,b);
+};
+
+transactional transaction{
    a = lit 3:IntU8.U8;
    b = lit 100:IntU8.U8;
    c = call Math.ErrorMul(a,b);
    () = call Helpers.AssertTrue(c);
 };
 
-signed(A) transaction{
+transactional transaction{
    a = lit 6:IntU8.U8;
    b = lit 2:IntU8.U8;
    c = lit 3:IntU8.U8;
@@ -75,7 +111,13 @@ signed(A) transaction{
    () = call Helpers.AssertEqU8(c,c2);
 };
 
-signed(A) transaction{
+transactional transaction:(log r:IntU8.U8){
+   a = lit 6:IntU8.U8;
+   b = lit 2:IntU8.U8;
+   return call Math.Div(a,b);
+};
+
+transactional transaction{
    a = lit -6:IntI128.I128;
    b = lit 2:IntI128.I128;
    c = lit -3:IntI128.I128;
@@ -83,14 +125,20 @@ signed(A) transaction{
    () = call Helpers.AssertEqI128(c,c2);
 };
 
-signed(A) transaction{
+transactional transaction:(log r:IntI128.I128){
+   a = lit -6:IntI128.I128;
+   b = lit 2:IntI128.I128;
+   return call Math.Div2(a,b);
+};
+
+transactional transaction{
    a = lit 6:IntU8.U8;
    b = lit 0:IntU8.U8;
    c = call Math.ErrorDiv(a,b);
    () = call Helpers.AssertTrue(c);
 };
 
-signed(A) transaction{
+transactional transaction{
    a = lit -128:IntI8.I8;
    b = lit -1:IntI8.I8;
    c = call Math.ErrorDiv2(a,b);

@@ -1,5 +1,6 @@
-signed(A) transaction{
+transaction{
    a = lit 1:IntU8.U8;
    b = pack SomeTypes.NoConsume[IntU8.U8]#Ctr(a);
-   c = unpack b:SomeTypes.NoConsume#Ctr;
+   c = unpack b:SomeTypes.NoConsume[IntU8.U8];
+   return;
 };

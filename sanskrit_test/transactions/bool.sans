@@ -1,11 +1,12 @@
 module Bool {
-    type <Copy,Drop,Persist,Create,Consume,Inspect,Embed> Bool{
+    public type <Copy,Drop,Persist,Primitive,Value,Unbound> Bool{
              False;
              True;
     };
 
     public fun not(b1:.Bool):(b3:.Bool) {
-        r = &switch b1 : .Bool {
+        bc = copy b1;
+        r = switch bc : .Bool {
             False => {
                 r = pack .Bool#True();
                 return r;
@@ -19,7 +20,8 @@ module Bool {
     };
 
     public fun and(b1:.Bool, b2:.Bool):(b3:.Bool) {
-        r = &switch b1 : .Bool {
+        bc = copy b1;
+        r = switch bc : .Bool {
             False => {
                 r = pack .Bool#False();
                 return r;
@@ -34,7 +36,8 @@ module Bool {
 
 
     public fun or(b1:.Bool, b2:.Bool):(b3:.Bool) {
-        r = &switch b1 : .Bool {
+        bc = copy b1;
+        r = switch bc : .Bool {
             False => {
                 r = copy b2;
                 return r;
@@ -48,7 +51,8 @@ module Bool {
     };
 
     public fun xor(b1:.Bool, b2:.Bool):(b3:.Bool) {
-        r = &switch b1 : .Bool {
+        bc = copy b1;
+        r = switch bc : .Bool {
             False => {
                 r = copy b2;
                 return r;

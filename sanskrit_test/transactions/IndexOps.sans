@@ -1,8 +1,4 @@
 module IndexOps {
-    public fun GenId[phantom T](consume in:System.Singleton[T]):(out:Ids.PrivateId) {
-        out = unpack in:System.Singleton[T];
-        return out;
-    };
 
     public fun ToRef(a:Ids.PrivateId):(b:Ids.PublicId) {
         b = call Ids.privateToPublic(a);
@@ -42,5 +38,20 @@ module IndexOps {
     public fun ModIndex2():(b:Ids.PrivateId){
        b = call Ids.moduleId();
        return b;
+    };
+
+    public fun GenIndex1(k:Data.Data1):(a:Ids.PrivateId){
+       a = call Ids.moduleId();
+       return call Ids.derivePrivateId1(a,k);
+    };
+
+    public fun GenIndex2(k:Data.Data2):(a:Ids.PrivateId){
+       a = call Ids.moduleId();
+       return call Ids.derivePrivateId2(a,k);
+    };
+
+    public fun GenIndex4(k:Data.Data4):(a:Ids.PrivateId){
+       a = call Ids.moduleId();
+       return call Ids.derivePrivateId4(a,k);
     };
 }

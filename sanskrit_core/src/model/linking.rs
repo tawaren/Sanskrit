@@ -2,59 +2,10 @@ use model::*;
 use model::resolved::*;
 use sanskrit_common::store::Store;
 use sanskrit_common::errors::*;
-use alloc::rc::Rc;
-use loader::DataCache;
-use loader::FuncCache;
+use loader::{FetchCache, Loader};
 use utils::Crc;
 use resolver::Context;
 use sanskrit_common::model::ModuleLink;
-
-//Cache keys are used to provide an highly efficient O(1) cache when the amount of slots is known
-pub trait CacheKey {
-    fn as_key(self) -> usize;
-}
-
-//u8 can be used as cache key
-impl CacheKey for u8 {
-    fn as_key(self) -> usize {
-        self as usize
-    }
-}
-
-//ModRef can be used as cache key
-impl CacheKey for ModRef {
-    fn as_key(self) -> usize {
-        self.0 as usize
-    }
-}
-
-//TypeRef can be used as cache key
-impl CacheKey for TypeRef {
-    fn as_key(self) -> usize {
-        self.0 as usize
-    }
-}
-
-//GenRef can be used as cache key
-impl CacheKey for GenRef {
-    fn as_key(self) -> usize {
-        self.0 as usize
-    }
-}
-
-//FuncRef can be used as cache key
-impl CacheKey for FuncRef {
-    fn as_key(self) -> usize {
-        self.0 as usize
-    }
-}
-
-//ErrorRef can be used as cache key
-impl CacheKey for ErrorRef {
-    fn as_key(self) -> usize {
-        self.0 as usize
-    }
-}
 
 //The ref trait allows to fetch the target it reference from a context
 pub trait Ref<T, S:Store> {
@@ -62,8 +13,8 @@ pub trait Ref<T, S:Store> {
 }
 
 //ModRef is a Ref to a ModuleLink
-impl<S:Store> Ref<Rc<ModuleLink>,S> for ModRef {
-    fn fetch(self, ctx:&Context<S>) ->  Result<Rc<ModuleLink>> {
+impl<S:Store> Ref<Crc<ModuleLink>,S> for ModRef {
+    fn fetch(self, ctx:&Context<S>) ->  Result<Crc<ModuleLink>> {
         ctx.get_mod(self)
     }
 }
@@ -75,33 +26,33 @@ impl<S:Store> Ref<Crc<ResolvedType>,S> for TypeRef {
     }
 }
 
-//FuncRef is a Ref to a FunctionImport
-impl<S:Store> Ref<Rc<ResolvedFunction>,S> for FuncRef {
-    fn fetch(self, ctx: &Context<S>) ->  Result<Rc<ResolvedFunction>> {
-        ctx.get_func(self)
+//PermRef is a Ref to a Type
+impl<S:Store> Ref<Crc<ResolvedPermission>,S> for PermRef {
+    fn fetch(self, ctx: &Context<S>) ->  Result<Crc<ResolvedPermission>> {
+        ctx.get_perm(self)
     }
 }
 
-//ErrorRef is a Ref to a ErrorImport
-impl<S:Store> Ref<Rc<ResolvedErr>,S> for ErrorRef {
-    fn fetch(self, ctx: &Context<S>) ->  Result<Rc<ResolvedErr>> {
-        ctx.get_err(self)
+//FuncRef is a Ref to a FunctionImport
+impl<S:Store> Ref<Crc<ResolvedCallable>,S> for CallRef {
+    fn fetch(self, ctx: &Context<S>) ->  Result<Crc<ResolvedCallable>> {
+        ctx.get_callable(self)
     }
 }
 
 //A link is allows to fetch the corresponding target from Storage
 pub trait Link<T> {
     // Gets the target
-    fn resolve<'a, 'b:'a, S:Store + 'b>(self, context:&Context<'a,'b,S>) -> Result<T>;
+    fn resolve<'b, S:Store + 'b>(self, context:&Context<'b,S>) -> Result<T>;
     //checks if the target resides in the current module
     fn is_local_link(self) -> bool;
 }
 
 //A Module Link resolves to a Rc<Module>
-impl Link<Rc<Module>> for ModuleLink {
+impl Link<Crc<Module>> for ModuleLink {
     //Gets the Module Link
-    fn resolve<'a, 'b:'a, S:Store + 'b>(self, context:&Context<'a,'b,S>) -> Result<Rc<Module>> {
-        context.store.get_module(&self.to_hash())
+    fn resolve<'b, S:Store + 'b>(self, context:&Context<'b,S>) -> Result<Crc<Module>> {
+        context.store.get_module(self.to_hash())
     }
 
     //Checks if this is the this module
@@ -113,13 +64,12 @@ impl Link<Rc<Module>> for ModuleLink {
     }
 }
 
-
 //A FuncLink resolves to a FuncCache containing an FunctionComponent
-impl Link<FuncCache> for FuncLink {
+impl Link<FetchCache<FunctionComponent>> for FuncLink {
     //Gets the Function Cache
-    fn resolve<'a, 'b:'a, S:Store + 'b>(self, context:&Context<'a,'b,S>) -> Result<FuncCache> {
+    fn resolve<'b,  S:Store + 'b>(self, context:&Context<'b,S>) -> Result<FetchCache<FunctionComponent>> {
         let mod_link =  self.module.fetch(&context)?;
-        context.store.get_func(&mod_link,self.offset)
+        context.store.get_component(&mod_link,self.offset)
 
     }
 
@@ -130,15 +80,226 @@ impl Link<FuncCache> for FuncLink {
 }
 
 //A AdtLink resolves to a AdtCache containing an AdtComponent
-impl Link<DataCache> for DataLink {
+impl Link<FetchCache<DataComponent>> for DataLink {
     //Gets the Adt Cache
-    fn resolve<'a, 'b:'a, S:Store + 'b>(self, context:&Context<'a,'b,S>) -> Result<DataCache> {
+    fn resolve<'b, S:Store + 'b>(self, context:&Context<'b,S>) -> Result<FetchCache<DataComponent>> {
         let mod_link = self.module.fetch(&context)?;
-        context.store.get_data_type(&mod_link, self.offset)
+        context.store.get_component(&mod_link, self.offset)
     }
 
     //Checks if the adt is from the this module (Mod0)
     fn is_local_link(self) -> bool {
         self.module.0 == 0
+    }
+}
+
+pub trait Component {
+    fn get(module:&Module, offset:u8) -> &Self;
+    fn num_elems(module:&Module) -> usize;
+    fn get_local_limit<'a,S:Store+'a>(cache:&Loader<'a, S>) -> usize;
+    fn get_signature_byte_size(&self) -> Result<usize>;
+    fn get_full_byte_size(&self) -> Result<usize>;
+    fn get_public_import(&self) -> &PublicImport;
+    fn get_body_import(&self) -> Option<&BodyImport>;
+    fn get_generics(&self) -> &[Generic];
+}
+
+pub trait CallableComponent:Component {
+    fn get_params(&self) -> &[Param];
+    fn get_returns(&self) -> &[TypeRef];
+    fn is_transactional(&self) -> bool;
+}
+
+impl Component for DataComponent {
+    fn get(module: &Module, offset: u8) -> &Self {
+        &module.data[offset as usize]
+    }
+
+    fn num_elems(module: &Module) -> usize {
+        module.data.len()
+    }
+
+    fn get_local_limit<'a, S: Store + 'a>(cache: &Loader<S>) -> usize {
+        cache.this_deployed_data.get()
+    }
+
+    fn get_signature_byte_size(&self) -> Result<usize> {
+        match self.byte_size {
+            None => error(||"Byte size is missing"),
+            Some(size) => Ok(size),
+        }
+    }
+
+    fn get_full_byte_size(&self) -> Result<usize> {
+        self.get_signature_byte_size()
+    }
+
+    fn get_public_import(&self) -> &PublicImport {
+        &self.import
+    }
+
+    fn get_body_import(&self) -> Option<&BodyImport> {
+        None
+    }
+
+    fn get_generics(&self) -> &[Generic] {
+        &self.generics
+    }
+}
+
+impl Component for SigComponent {
+    fn get(module: &Module, offset: u8) -> &Self {
+        &module.sigs[offset as usize]
+    }
+
+    fn num_elems(module: &Module) -> usize {
+        module.sigs.len()
+    }
+
+    fn get_local_limit<'a, S: Store + 'a>(cache: &Loader<S>) -> usize {
+        cache.this_deployed_sigs.get()
+    }
+
+    fn get_signature_byte_size(&self) -> Result<usize> {
+        match self.byte_size {
+            None => error(|| "Byte size is missing"),
+            Some(size) => Ok(size),
+        }
+    }
+
+    fn get_full_byte_size(&self) -> Result<usize> {
+        self.get_signature_byte_size()
+    }
+
+    fn get_public_import(&self) -> &PublicImport {
+        &self.shared.import
+    }
+
+    fn get_body_import(&self) -> Option<&BodyImport> {
+        None
+    }
+
+    fn get_generics(&self) -> &[Generic] {
+        &self.shared.generics
+    }
+}
+
+impl CallableComponent for SigComponent {
+    fn get_params(&self) -> &[Param] {
+        &self.shared.params
+    }
+
+    fn get_returns(&self) -> &[TypeRef] {
+        &self.shared.returns
+    }
+
+    fn is_transactional(&self) -> bool {
+        self.shared.transactional
+    }
+}
+
+impl Component for FunctionComponent {
+    fn get(module: &Module, offset: u8) -> &Self {
+        &module.functions[offset as usize]
+    }
+
+    fn num_elems(module: &Module) -> usize {
+        module.functions.len()
+    }
+
+    fn get_local_limit<'a, S: Store + 'a>(cache: &Loader<S>) -> usize {
+        cache.this_deployed_functions.get()
+    }
+
+    fn get_signature_byte_size(&self) -> Result<usize> {
+        match self.byte_size {
+            None => error(||"Byte size is missing"),
+            Some(size) => match self.body {
+                CallableImpl::Internal { byte_size:Some(body_size), .. } => Ok(size - body_size),
+                _ => Ok(size)
+            },
+        }
+    }
+
+    fn get_full_byte_size(&self) -> Result<usize> {
+        match self.byte_size {
+            None => error(||"Byte size is missing"),
+            Some(size) => Ok(size),
+        }
+    }
+
+    fn get_public_import(&self) -> &PublicImport {
+        &self.shared.import
+    }
+
+    fn get_body_import(&self) -> Option<&BodyImport> {
+        match self.body {
+            CallableImpl::External => None,
+            CallableImpl::Internal {ref imports, .. } => Some(imports),
+        }
+    }
+
+    fn get_generics(&self) -> &[Generic] {
+        &self.shared.generics
+    }
+}
+
+impl CallableComponent for FunctionComponent {
+    fn get_params(&self) -> &[Param] {
+        &self.shared.params
+    }
+
+    fn get_returns(&self) -> &[TypeRef] {
+        &self.shared.returns
+    }
+
+    fn is_transactional(&self) -> bool {
+        self.shared.transactional
+    }
+}
+
+impl Component for ImplementComponent {
+    fn get(module: &Module, offset: u8) -> &Self {
+        &module.implements[offset as usize]
+    }
+
+    fn num_elems(module: &Module) -> usize {
+        module.implements.len()
+    }
+
+    fn get_local_limit<'a, S: Store + 'a>(cache: &Loader<S>) -> usize {
+        cache.this_deployed_implements.get()
+    }
+
+    fn get_signature_byte_size(&self) -> Result<usize> {
+        match self.byte_size {
+            None => error(||"Byte size is missing"),
+            Some(size) => match self.body {
+                CallableImpl::Internal { byte_size:Some(body_size), .. } => Ok(size - body_size),
+                _ => Ok(size)
+            },
+        }
+    }
+
+    fn get_full_byte_size(&self) -> Result<usize> {
+        match self.byte_size {
+            None => error(||"Byte size is missing"),
+            Some(size) => Ok(size),
+        }
+    }
+
+    fn get_public_import(&self) -> &PublicImport {
+        &self.import
+    }
+
+    fn get_body_import(&self) -> Option<&BodyImport> {
+        match self.body {
+            CallableImpl::External => None,
+            CallableImpl::Internal {ref imports, .. } => Some(imports),
+        }
+    }
+
+    fn get_generics(&self) -> &[Generic] {
+        &self.generics
     }
 }

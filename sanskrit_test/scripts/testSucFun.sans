@@ -1,9 +1,8 @@
 module TestSucFun {
-    type <Copy> DummyForProtected;
+    type <Copy, Value, Unbound>  DummyForProtected;
 
-    private fun Test[A](consume a:A):(a:A){
-        b = a;
-        return b;
+    private fun Test[<Value, Unbound> A](consume a:A):(a:A){
+        return a;
     };
 
     private fun TestEmptyPriv():(){
@@ -14,32 +13,17 @@ module TestSucFun {
         return;
     };
 
-    protected[A] fun TestProt[A](consume a:A):(a:A){
-        b = a;
-        return b;
+    protected[A] fun TestProt[<Unbound> A](consume a:A):(a:A){
+        return a;
     };
 
-    fun CopyTest[<Copy> A](a:A):(a:A){
+    fun CopyTest[<Copy, Value, Unbound> A](a:A):(a:A){
         b = copy a;
-        c = call .Test[A](b);
-        return c;
+        return call .Test[A](b);
     };
 
     fun CopyProtTest(a:.DummyForProtected):(a:.DummyForProtected){
             b = copy a;
-            c = call .TestProt[.DummyForProtected](b);
-            return c;
-    };
-
-    protected[A] fun CopyProtTest2[<Copy> A](a:A):(a:A){
-        b = copy a;
-        c = call .TestProt[A](b);
-        return c;
-    };
-
-    err X;
-
-    risky <.X> fun ThrowTest[A](a:A):(a:A){
-        throw .X;
+            return call .TestProt[.DummyForProtected](b);
     };
 }

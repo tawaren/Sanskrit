@@ -1,5 +1,5 @@
 module TestFailCreate4 {
-    type X;
+    type <Value, Unbound> X;
 
     private fun Test():(b:.X){
        b = pack .X#Val();

@@ -1,6 +1,6 @@
 module TestSucTypeCheck{
 
-   fun TestFun[A](consume a:A):(b:A, c:IntU8.U8){
+   fun TestFun[<Unbound> A](consume a:A):(b:A, c:IntU8.U8){
      b = a;
      c = lit 1 :IntU8.U8;
      return (b,c);
@@ -18,217 +18,127 @@ module TestSucTypeCheck{
         return;
    };
 
-   err X;
-
-   risky<.X> fun TestFun4():() {
-        throw .X;
-   };
-
-   fun TestFun5[<Copy> A](a:A,  b:TestSucValidate.DropCopy):(a2:A,  b2:TestSucValidate.DropCopy){
+   fun TestFun5[<Copy, Value, Unbound>  A](a:A,  b:TestSucValidate.DropCopy):(a2:A, b2:TestSucValidate.DropCopy){
        a2 = copy a;
        b2 = copy b;
        return (a2,b2);
    };
 
-   fun TestFun6[A](a:A):(){
-         a2 = &a;
-         return;
+   fun TestFun7[<Value, Unbound> A](consume a:TestSucAdt.Wrapper[A]):(b:A){
+        return unpack a:TestSucAdt.Wrapper[A];
    };
 
-   fun TestFun7[<Embed> A](consume a:TestSucAdt.Wrapper[A]):(b:A){
-        b = unpack a:TestSucAdt.Wrapper[A];
-        return b;
+   fun TestFun71[A](consume a:%TestSucAdt.Wrapper[A]):(b:%A){
+        return unpack a:%TestSucAdt.Wrapper[A];
    };
 
-   fun TestFun71[<Embed> A](consume a:%TestSucAdt.Wrapper[A]):(b:%A){
-        b = unpack a:%TestSucAdt.Wrapper[A];
-        return b;
+   fun TestFun72[A](consume a:TestSucAdt.Wrapper[%A]):(b:%A){
+        return unpack a:TestSucAdt.Wrapper[%A];
    };
 
-   fun TestFun72[<Embed> A](consume a:TestSucAdt.Wrapper[%A]):(b:%A){
-        b = unpack a:TestSucAdt.Wrapper[%A];
-        return b;
+   fun TestFun73[A](a:TestSucAdt.Wrapper[%A]):(c:%A){
+        b = project a:%TestSucAdt.Wrapper[%A];
+        c = unpack b:%TestSucAdt.Wrapper[%A];
+        return c;
    };
 
-   fun TestFun73[<Embed> A](a:%TestSucAdt.Wrapper[A]):(borrowed(a) b:%A){
-        b = &unpack a:%TestSucAdt.Wrapper[A];
-        return b;
-   };
-
-   fun TestFun74[<Embed> A](a:TestSucAdt.Wrapper[%A]):(borrowed(a) b:%A){
-        b = &unpack a:TestSucAdt.Wrapper[%A];
-        return b;
-   };
-
-   fun TestFun75[<Embed> A](consume a:%TestSucAdt.Wrapper[A]):(b:%A){
+   fun TestFun74[A](consume a:%TestSucAdt.Wrapper[A]):(c:%A){
         b = field[0] a:%TestSucAdt.Wrapper[A];
-        return b;
+        c = project b:%A;
+        return c;
    };
 
-   fun TestFun76[<Embed> A](a:%TestSucAdt.Wrapper[A]):(borrowed(a) b:%A){
-       b = &field[0] a:%TestSucAdt.Wrapper[A];
-       return b;
+   fun TestFun75[A](consume a:%TestSucAdt.Wrapper[A]):(b:%A){
+        return field[0] a:%TestSucAdt.Wrapper[A];
    };
 
-   fun TestFun77[<Embed> A](a:A):(b:%A){
-        b = image a;
-        return b;
+   fun TestFun76[A](a:A):(b:%A){
+        return project a:%A;
    };
 
-   fun TestFun8[<Embed> A](a:TestSucAdt.Wrapper[A]):(borrowed(a) b:A){
-        b = &unpack a:TestSucAdt.Wrapper[A];
-        return b;
+   fun TestFun77[A](a:A):(c:%A){
+        b = project a:%A;
+        c = project b:%A;
+        return c;
    };
 
-   fun TestFun9[<Embed> A](a:TestSucAdt.Wrapper[TestSucAdt.Wrapper[A]]):(borrowed(a) b:A){
-       b = &unpack a:TestSucAdt.Wrapper[TestSucAdt.Wrapper[A]];
-       c = &unpack b:TestSucAdt.Wrapper[A];
-       discard b borrowedBy c;
-       return c;
-   };
-
-   fun TestFun10[<Embed, Drop> A](consume a:TestSucAdt.Option[A], consume b:A):(c:A){
-       c = switch a:TestSucAdt.Option[A] {
+   fun TestFun10[<Drop, Value, Unbound> A](consume a:TestSucAdt.Option[A], consume b:A):(c:A){
+       return switch a:TestSucAdt.Option[A] {
             None() => {
-                d = b;
-                return d;
+                return b;
             };
             Some(d) => {
                 discard b;
                 return d;
             };
        };
-       return c;
    };
 
-   fun TestFun101[<Embed, Drop> A](consume a:%TestSucAdt.Option[A], consume b:%A):(c:%A){
-      c = switch a:%TestSucAdt.Option[A] {
+   fun TestFun101[<Drop> A](consume a:%TestSucAdt.Option[A], consume b:%A):(c:%A){
+      return switch a:%TestSucAdt.Option[A] {
            None() => {
-               d = b;
-               return d;
+               return b;
            };
            Some(d) => {
                discard b;
                return d;
            };
       };
-      return c;
    };
 
-   fun TestFun102[<Embed, Drop> A](consume a:TestSucAdt.Option[%A], consume b:%A):(c:%A){
-     c = switch a:TestSucAdt.Option[%A] {
+   fun TestFun102[<Drop> A](consume a:TestSucAdt.Option[%A], consume b:%A):(c:%A){
+     return switch a:TestSucAdt.Option[%A] {
           None() => {
-              d = b;
-              return d;
+              return b;
           };
           Some(d) => {
               discard b;
               return d;
           };
      };
-     return c;
    };
 
-   fun TestFun11[<Embed, Copy, Drop> A](a:TestSucAdt.Option[A], b:A):(c:A){
-      c = &switch a:TestSucAdt.Option[A] {
+   fun TestFun103[<Drop, Copy, Value, Unbound> A](a:TestSucAdt.Option[A], consume b:A):(c:A){
+      return inspect a:TestSucAdt.Option[A] {
            None() => {
-                  e = copy b;
-                  return e;
+               return b;
            };
            Some(d) => {
+               discard b;
                e = copy d;
                return e;
            };
       };
-      return c;
    };
 
-   fun TestFun111[<Embed, Copy, Drop> A](a:%TestSucAdt.Option[A], b:%A):(c:%A){
-     c = &switch a:%TestSucAdt.Option[A] {
-          None() => {
-                 e = copy b;
-                 return e;
-          };
-          Some(d) => {
-              e = copy d;
-              return e;
-          };
-     };
-     return c;
-   };
-
-   fun TestFun112[<Embed, Copy, Drop> A](a:TestSucAdt.Option[%A], b:%A):(c:%A){
-    c = &switch a:TestSucAdt.Option[%A] {
-         None() => {
-                e = copy b;
-                return e;
-         };
-         Some(d) => {
-             e = copy d;
-             return e;
-         };
-    };
-    return c;
-   };
-
-   fun TestFun12[<Embed, Copy, Drop> A](a:TestSucAdt.Wrapper[TestSucAdt.Option[A]], b:A):(c:A){
-      f = &unpack a:TestSucAdt.Wrapper[TestSucAdt.Option[A]];
-      c = &switch f:TestSucAdt.Option[A] {
+   fun TestFun104[<Drop, Copy, Value, Unbound> A](consume a:TestSucAdt.Option[A], consume b:A):(c:A){
+      c = inspect a:TestSucAdt.Option[A] {
            None() => {
-                  e = copy b;
-                  return e;
+               return b;
            };
            Some(d) => {
+               discard b;
                e = copy d;
                return e;
            };
       };
+      discard a;
       return c;
    };
 
-   fun TestFun13[<Embed> A](consume a:A):(b:TestSucAdt.Option[A]){
-        b = pack TestSucAdt.Option[A]#Some(a);
-        return b;
+   fun TestFun13[<Value, Unbound> A](consume a:A):(b:TestSucAdt.Option[A]){
+        return pack TestSucAdt.Option[A]#Some(a);
    };
 
-   fun TestFun14[<Embed> A](a:A):(borrowed(a) c:TestSucAdt.Option[A]){
-        b = &pack TestSucAdt.Option[A]#Some(a);
-        return b;
-   };
-
-   type Pair[<Embed> A, <Embed> B] {
+   type <Unbound> Pair[A, B] {
       Ctr(A,B);
    };
 
-   fun TestFun15[<Embed> A, <Embed> B](consume a:A, consume b:B):(c:.Pair[A,B]){
-       c = pack .Pair[A,B]#Ctr(a,b);
-       return c;
+   fun TestFun15[<Value, Unbound> A, <Value, Unbound> B](consume a:A, consume b:B):(c:.Pair[A,B]){
+       return pack .Pair[A,B]#Ctr(a,b);
    };
 
-   fun TestFun16[<Embed> A, <Embed> B](a:A, b:B):(borrowed(a,b) c:.Pair[A,B]){
-        c = &pack .Pair[A,B]#Ctr(a,b);
-        return c;
-   };
-
-   fun TestFun17[<Embed> A, <Embed> B](a:A, b:B):(borrowed(b,a) c:.Pair[A,B]){
-        c = &pack .Pair[A,B]#Ctr(a,b);
-        return c;
-   };
-
-   fun TestFun18[<Embed> A, <Embed> B](a:A, b:B):(borrowed(b,a) c:.Pair[A,B]){
-        d = &a;
-        c = &pack .Pair[A,B]#Ctr(d,b);
-        discard d borrowedBy c;
-        return c;
-   };
-
-   risky<.X> fun TestFun19():(){
-        () = call .TestFun4();
-        return;
-   };
-
-   fun TestFun20[<Embed> A, <Embed> B](consume a:A, consume b:B):(c:.Pair[A,B]){
-        c = call .TestFun15[A,B](a,b);
-        return c;
+   fun TestFun20[<Value, Unbound> A, <Value, Unbound> B](consume a:A, consume b:B):(c:.Pair[A,B]){
+        return call .TestFun15[A,B](a,b);
    };
 }

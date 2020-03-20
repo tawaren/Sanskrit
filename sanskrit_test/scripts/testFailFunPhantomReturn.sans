@@ -1,7 +1,7 @@
 module TestFailFunPhantomReturn {
-   err X;
 
-   risky <.X> fun TestFunApply[phantom A]():(a:A) {
-      throw .X;
+   fun TestFunApply[phantom <Value, Unbound> A]():(a:A) {
+      a = abort : (A);
+      return a;
    };
 }

@@ -26,7 +26,7 @@ impl ParserAllocator for NoCustomAlloc {
 
 //the state needed during parsing including the input
 pub struct Parser<'a>{
-    index:usize,
+    pub index:usize,
     max_depth:usize,
     data:&'a [u8]
 }
@@ -45,13 +45,17 @@ impl<'a> Parser<'a> {
     pub fn parse_fully<'b,T:Parsable<'b>, A: ParserAllocator>(data:&'a [u8], max_depth:usize, alloc:&'b A) -> Result<T>{
         let mut parser = Parser::new(data,max_depth);
         let parsed = T::parse(&mut parser, alloc)?;
-        if parser.data.len() != parser.index {return parsing_terminated()}
+        if parser.data.len() != parser.index {
+            return error(||"Decoding error: input data has not enough bytes")
+        }
         Ok(parsed)
     }
 
     pub fn increment_depth(&mut self) -> Result<()> {
         self.max_depth -=1;
-        if self.max_depth == 0 {return size_limit_exceeded_error()}
+        if self.max_depth == 0 {
+            return error(||"Allowed structural dept exceeded during decoding")
+        }
         Ok(())
     }
 
@@ -61,7 +65,9 @@ impl<'a> Parser<'a> {
 
     //fetch a single byte
     pub fn consume_byte(&mut self) -> Result<u8>{
-        if self.index+1 > self.data.len() {return parsing_terminated()}
+        if self.index+1 > self.data.len() {
+            return error(||"Decoding error: input data has not enough bytes")
+        }
         let res = self.data[self.index];
         self.index+=1;
         Ok(res)
@@ -69,7 +75,9 @@ impl<'a> Parser<'a> {
 
     //fetch a fix amount of bytes
     pub fn consume_bytes(&mut self, amount:usize) -> Result<&[u8]>{
-        if self.index+amount > self.data.len() {return parsing_terminated()}
+        if self.index+amount > self.data.len() {
+            return error(||"Decoding error: input data has not enough bytes")
+        }
         let res = &self.data[self.index..(self.index+amount)];
         self.index+=amount;
         Ok(res)
@@ -83,8 +91,7 @@ pub trait Parsable<'a> where Self:Sized {
 }
 
 //the state during serialization
-//todo: can we get along with arena??
-//      can we directly serialize to store??
+//todo: can we directly serialize to store??
 #[derive(Default)]
 pub struct Serializer{
     out:Vec<u8>,
@@ -131,7 +138,9 @@ impl Serializer{
 
     pub fn increment_depth(&mut self) -> Result<()> {
         self.max_depth -=1;
-        if self.max_depth == 0 {return size_limit_exceeded_error()}
+        if self.max_depth == 0 {
+            return error(||"Allowed structural dept exceeded during encoding")
+        }
         Ok(())
     }
 
@@ -186,6 +195,14 @@ impl<T:Serializable> Serializable for Vec<T>{
         }
         s.decrement_depth();
         Ok(())
+    }
+}
+
+impl<T> Deref for LargeVec<T> {
+    type Target = [T];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
@@ -347,6 +364,10 @@ impl<K:VirtualSize,V:VirtualSize> VirtualSize for (K,V){
     const SIZE: usize = K::SIZE + V::SIZE;
 }
 
+impl<K:VirtualSize> VirtualSize for Option<K>{
+    const SIZE: usize = 1 + K::SIZE;
+}
+
 impl<'a, T:Parsable<'a>> Parsable<'a> for Option<T> {
     fn parse<A: ParserAllocator>(p: &mut Parser, alloc:&'a A) -> Result<Self> {
        Ok(match p.consume_byte()? {
@@ -357,7 +378,8 @@ impl<'a, T:Parsable<'a>> Parsable<'a> for Option<T> {
                p.decrement_depth();
                res
            },
-           _ => return parsing_case_failure()
+           _ => return error(||"Decoding error: an Options tag must be 0 or 1")
+
        })
     }
 }
@@ -555,13 +577,13 @@ impl VirtualSize for i32{
 
 impl<'a> Parsable<'a> for i64 {
     fn parse<A: ParserAllocator>(p: &mut Parser, _alloc:&'a A) -> Result<Self> {
-        Ok(EncodingByteOrder::read_i64(p.consume_bytes(4)?))
+        Ok(EncodingByteOrder::read_i64(p.consume_bytes(8)?))
     }
 }
 
 impl Serializable for i64 {
     fn serialize(&self, s:&mut Serializer) -> Result<()> {
-        EncodingByteOrder::write_i64(s.get_buf(4),*self);
+        EncodingByteOrder::write_i64(s.get_buf(8),*self);
         Ok(())
     }
 }
@@ -572,13 +594,13 @@ impl VirtualSize for i64{
 
 impl<'a> Parsable<'a> for i128 {
     fn parse<A: ParserAllocator>(p: &mut Parser, _alloc:&'a A) -> Result<Self> {
-        Ok(EncodingByteOrder::read_i128(p.consume_bytes(4)?))
+        Ok(EncodingByteOrder::read_i128(p.consume_bytes(16)?))
     }
 }
 
 impl Serializable for i128 {
     fn serialize(&self, s:&mut Serializer) -> Result<()> {
-        EncodingByteOrder::write_i128(s.get_buf(4),*self);
+        EncodingByteOrder::write_i128(s.get_buf(16),*self);
         Ok(())
     }
 }
@@ -643,11 +665,11 @@ impl<'a, T:Parsable<'a> + Copy + VirtualSize> Parsable<'a> for SlicePtr<'a, T>  
     }
 }
 
-impl<'a, T:Serializable> Serializable for SlicePtr<'a, T> {
+impl<'a, T:Serializable+Copy> Serializable for SlicePtr<'a, T> {
     fn serialize(&self, s: &mut Serializer) -> Result<()>{
-        (self.0.len() as u16).serialize(s)?;
+        self.0.serialize(s)?;
         s.increment_depth()?;
-        for v in self.0 {
+        for v in self.iter() {
             v.serialize(s)?;
         }
         s.decrement_depth();
@@ -656,5 +678,5 @@ impl<'a, T:Serializable> Serializable for SlicePtr<'a, T> {
 }
 
 impl<'a, T> VirtualSize for SlicePtr<'a, T> {
-    const SIZE: usize = 16;
+    const SIZE: usize = 10;
 }

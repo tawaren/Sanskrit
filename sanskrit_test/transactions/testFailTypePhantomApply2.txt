@@ -1,3 +1,0 @@
-signed(A) new(B) transaction{
-     c = pack SomeTypes.NoArg[B]#Ctr();
-};

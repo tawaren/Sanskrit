@@ -1,21 +1,44 @@
 module BitOps {
     public fun And(a:IntU8.U8,b:IntU8.U8):(c:IntU8.U8) {
-        c = call IntU8.and(a,b);
-        return c;
+        return call IntU8.and(a,b);
+    };
+
+    public fun And2(a:Data.Data8,b:Data.Data8):(c:Data.Data8) {
+        ai = call IntU64.fromData(a);
+        bi = call IntU64.fromData(b);
+        ci = call IntU64.and(ai,bi);
+        return call IntU64.toData(ci);
     };
 
     public fun Or(a:IntU8.U8,b:IntU8.U8):(c:IntU8.U8) {
-        c = call IntU8.or(a,b);
-        return c;
+        return call IntU8.or(a,b);
+    };
+
+    public fun Or2(a:Data.Data8,b:Data.Data8):(c:Data.Data8) {
+        ai = call IntU64.fromData(a);
+        bi = call IntU64.fromData(b);
+        ci = call IntU64.or(ai,bi);
+        return call IntU64.toData(ci);
     };
 
     public fun Xor(a:IntU8.U8,b:IntU8.U8):(c:IntU8.U8) {
-        c = call IntU8.xor(a,b);
-        return c;
+        return call IntU8.xor(a,b);
     };
 
-     public fun Not(a:IntU8.U8):(c:IntU8.U8) {
-        c = call IntU8.Not(a);
-        return c;
+    public fun Xor2(a:Data.Data8,b:Data.Data8):(c:Data.Data8) {
+        ai = call IntU64.fromData(a);
+        bi = call IntU64.fromData(b);
+        ci = call IntU64.xor(ai,bi);
+        return call IntU64.toData(ci);
+    };
+
+    public fun Not(a:IntU8.U8):(c:IntU8.U8) {
+        return call IntU8.not(a);
+    };
+
+    public fun Not2(a:Data.Data8):(c:Data.Data8) {
+        ai = call IntU64.fromData(a);
+        ci = call IntU64.not(ai);
+        return call IntU64.toData(ci);
     };
 }

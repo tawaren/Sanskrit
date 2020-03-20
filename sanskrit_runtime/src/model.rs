@@ -1,123 +1,94 @@
 use sanskrit_common::model::*;
-use sanskrit_common::capabilities::CapSet;
 use sanskrit_common::encoding::*;
 use sanskrit_common::errors::*;
 use sanskrit_interpreter::model::*;
+use alloc::vec::Vec;
+
+//A set of transactions
+#[derive(Clone, Debug, Parsable, Serializable, VirtualSize)]
+pub struct TransactionBundle<#[AllocLifetime] 'c> {
+    //Dynamic execution costs
+    //Todo: Do we require this per section?? -- Else a payment could load tons of stuff and then fail
+    pub storage_read_limit: u16,
+    pub param_heap_limit: u16,
+    //Static execution costs
+    pub stack_elem_limit:u16,
+    pub stack_frame_limit:u16,
+    pub runtime_heap_limit:u16,
+    //Transaction Sections
+    pub sections: SlicePtr<'c, BundleSection<'c>>,
+    //Constants
+    pub descriptors: SlicePtr<'c, Hash>,
+    //ids for params loaded from the blockchain
+    pub stored: SlicePtr<'c, SlicePtr<'c,u8>>,
+    //params passed in from the outside
+    pub literal: SlicePtr<'c, SlicePtr<'c,u8>>,
+    //witnesses
+    pub witness: SlicePtr<'c, SlicePtr<'c,u8>>,         //witnesses are ignored in the Hash
+    pub store_witness: SlicePtr<'c, SlicePtr<'c,u8>>,   //witnesses are ignored in the Hash
+
+}
+
+#[derive(Clone, Copy, Debug, Parsable, Serializable, VirtualSize)]
+pub enum SectionType {
+    Payment,
+    Custom
+}
+
+//A section of transactions
+#[derive(Clone, Copy, Debug, Parsable, Serializable, VirtualSize)]
+pub struct BundleSection<#[AllocLifetime] 'c> {
+    //Section type
+    pub typ:SectionType,
+    //Storage costs
+    pub extra_entries_limit: u32,
+    pub storage_volume_limit: u32,
+    //Execution Cost
+    pub gas_limit: u64,
+    //Transactions
+    pub txts: SlicePtr<'c, Transaction<'c>>,
+}
 
 
 //A transaction
-#[derive(Copy, Clone, Parsable, Serializable, VirtualSize)]
+#[derive(Clone, Copy, Debug, Parsable, Serializable, VirtualSize)]
 pub struct Transaction<#[AllocLifetime] 'c> {
-    //Config:
-    pub start_block_no: u64,
-    //the earliest block to include it
-    //Todo: Memory Claim
-    //Todo: Stack Depth Claim / Stack Heap Claim
-    //Todo: Desc Buffer Claim
-    //Todo: Entry Cache Claim
-    //Consts:
-    pub signers: SlicePtr<'c, [u8; 32]>, //todo: Not needed if we can recover from sig
-    pub imports: SlicePtr<'c, Hash>,
-    pub new_types:u8,
-    pub code: SlicePtr<'c, Ptr<'c, ScriptCode<'c>>>,
-    pub signatures: SlicePtr<'c, [u8; 64]>,
-    pub witness: SlicePtr<'c, SlicePtr<'c,u8>>,
-}
-
-/*
-//The Native Adt types
-#[derive(Copy, Clone, Debug, Parsable, Serializable, VirtualSize)]
-pub enum NativeAdtType {
-    Tuple(u8),
-    Alternative(u8),
-    Bool,
-}
-*/
-
-#[derive(Copy, Clone, Debug, Parsable, Serializable, VirtualSize)]
-pub struct ImpRef(pub u8);
-
-//A reference to identify an Adt descriptor
-#[derive(Copy, Clone, Debug, Parsable, Serializable, VirtualSize)]
-pub struct AdtRef {
-    pub module:ImpRef,
-    pub offset:u8
+    //transaction type
+    pub txt_desc: u16,
+    //parameter source & fetch mode
+    pub params: SlicePtr<'c, ParamRef>,
+    //parameter source & fetch mode
+    pub returns: SlicePtr<'c, RetType>,
 }
 
 
+#[derive(Copy, Eq, PartialEq, Clone, Parsable, Serializable, VirtualSize, Debug)]
+pub enum ParamMode {
+    Copy,
+    Borrow,
+    Consume
+}
 
-//A reference to identify an Adfunctiont descriptor
-#[derive(Copy, Clone, Debug, Parsable, Serializable, VirtualSize)]
-pub struct FuncRef{
-    pub module:ImpRef,
-    pub offset:u8
+#[derive(Copy, Eq, PartialEq, Clone, Parsable, Serializable, VirtualSize, Debug)]
+pub enum ParamRef {
+    Load(ParamMode, u16),
+    Fetch(ParamMode, u16),
+    Literal(u16),
+    Witness(u16),
+    Provided
+}
+
+#[derive(Copy, Eq, PartialEq, Clone, Parsable, Serializable, VirtualSize, Debug)]
+pub enum RetType {
+    Store,
+    Put(u16),
+    Drop,
+    Log
 }
 
 
-#[derive(Copy, Clone, Debug, Parsable, Serializable, VirtualSize)]
-pub enum TypeApplyRef<#[AllocLifetime] 'c> {
-    Account(u8),                //Count as Priviledged (can call protected)
-    RemoteAccount(ImpRef),
-    NewType(u8),                //Count as Priviledged (can call protected)
-    RemoteNewType(ImpRef,u8),
-    TypeOf(ValueRef),
-    ArgTypeOf(ValueRef, SlicePtr<'c, u8>),
-    Module(ImpRef, u8,  SlicePtr<'c, Ptr<'c,TypeApplyRef<'c>>>),
-    Image(Ptr<'c,TypeApplyRef<'c>>),
-}
-
-#[derive(Copy, Clone, Debug, Parsable, Serializable, VirtualSize)]
-pub enum ScriptCode<#[AllocLifetime] 'c> {
-    Pack(AdtRef, SlicePtr<'c, Ptr<'c,TypeApplyRef<'c>>>, Tag, SlicePtr<'c,ValueRef>),           //Packs an adt
-    BorrowPack(AdtRef, SlicePtr<'c, Ptr<'c,TypeApplyRef<'c>>>, Tag, SlicePtr<'c,ValueRef>),     //Generate an adt by borrowing the fields
-    //todo: ImagePack
-    Unpack(AdtRef, Tag, ValueRef),                                                              //Unpack an adt
-    BorrowUnpack(AdtRef, Tag, ValueRef),                                                        //Borrow the fields of an adt
-    //todo: ImageUnpack
-    Invoke(FuncRef, SlicePtr<'c,Ptr<'c,TypeApplyRef<'c>>>, SlicePtr<'c,ValueRef>),              //Call a function
-    Lit(SlicePtr<'c, u8>, LitDesc, AdtRef),                                                             //Generate a literal
-    Wit(u8, LitDesc, AdtRef),                                                                           //Generate a literal from a Witness
-    Copy(ValueRef),                                                                             //Copy a stack value
-    Fetch(ValueRef),                                                                            //Move a stack value
-    BorrowFetch(ValueRef), //Borrow a stack value
-    //todo: ImageFetch
-    //todo: FlattenImage
-    Free(ValueRef),                                                                             //Free a borrowed stack value
-    Drop(ValueRef),                                                                             //Drop a stack value
-    Load(ValueRef),                                                                             //Load a value from the store
-    BorrowLoad(ValueRef),                                                                       //Borrow a value from the store
-    Store(ValueRef),                                                                            //Save a value to the store
-    //todo: Should we have a Derive Here
-}
-
-//todo: MeasuredRuntimeType
-//  (nodes, leaves, empty_nodes, RuntimeType) //the former is used to calc gas cost of comparing
-#[derive(Clone, Copy, Eq, PartialEq, Debug, Parsable, Serializable, VirtualSize)]
-pub enum RuntimeType<#[AllocLifetime] 'a> {
-    Custom {
-        caps: CapSet,
-        module: Hash,
-        offset: u8,
-        applies: SlicePtr<'a, Ptr<'a, RuntimeType<'a>>>
-    },
-
-    Image {
-        typ:  Ptr<'a, RuntimeType<'a>>
-    },
-
-    NewType {
-        txt: Hash,
-        offset: u8,
-    },
-
-    AccountType {
-        address: Hash,
-    },
-}
-
-//an element in the backing store
-#[derive(Clone, Copy, Eq, PartialEq, Debug, Parsable, Serializable)]
-pub struct StoreElem<#[AllocLifetime] 'a> {
-    pub val: Ptr<'a, Object<'a>>,
-    pub typ: Ptr<'a, RuntimeType<'a>>
+#[derive(Parsable, Serializable)]
+pub struct TypedData<#[AllocLifetime] 'a>{
+    pub typ:Ptr<'a, RuntimeType<'a>>,
+    pub value:Vec<u8>
 }

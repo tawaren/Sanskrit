@@ -4,8 +4,8 @@ version = "0.1.0"
 authors = ["tawaren <markus.knecht85@gmail.com>"]
 
 [dependencies]
-rustyline = "3.0.0"
-ed25519-dalek = "0.8.1"
+rustyline = "5.0.4"
+ed25519-dalek = "0.9.1"
 sha2 = "0.7.0"
 rand = "0.6.1"
 sled = "0.16.11"

@@ -13,7 +13,7 @@ regex = "0.2.1"
 byteorder = { version = "1.2.6", features = ["i128"]}
 hex = "0.3.2"
 itertools = "0.8.0"
-ed25519-dalek = "0.8.1"
+ed25519-dalek = "0.9.1"
 sha2 = "0.7.0"
 rand = "0.6.1"
 

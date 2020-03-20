@@ -1,14 +1,14 @@
 use blake2_rfc::blake2b::{Blake2b};
-use model::Hash;
-use arena::VirtualHeapArena;
-use model::SlicePtr;
+use model::{Hash, SlicePtr};
 use errors::*;
+use arena::VirtualHeapArena;
 
 //Hashing Domains to ensure there are no collisions
 pub enum HashingDomain {
     Unique,
     Singleton,
     Transaction,
+    Bundle,
     Id,
     Derive,
     Object,
@@ -56,6 +56,7 @@ impl HashingDomain {
             HashingDomain::Object => 5,
             HashingDomain::Account => 6,
             HashingDomain::Code => 7,
+            HashingDomain::Bundle => 8,
         }
     }
 
@@ -74,5 +75,6 @@ impl HashingDomain {
         //calc the Hash
         context.finalize()
     }
+
 }
 

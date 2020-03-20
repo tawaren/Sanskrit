@@ -1,83 +1,37 @@
 module ErrorOps {
-    err Err1;
-    err Err2;
-    err Err3;
+
+    public transactional fun Throw():() {
+        abort;
+    };
 
     public fun CatchOne():(r:Bool.Bool) {
-        res = try {
-            throw .Err1;
-        } catch {
-            .Err1 => {
-                r = pack Bool.Bool#True();
-                return r;
-            };
+        return try call .Throw(){
+           success => {
+               return pack Bool.Bool#False();
+           };
+           failure => {
+               return pack Bool.Bool#True();
+           };
         };
-        return res;
     };
 
-    type <Create, Copy, Drop> ErrSwitch {
-        One;
-        Two;
-        Three;
+    public transactional fun Propagate():() {
+        return call .Throw();
     };
 
-     public fun CatchMany(a:.ErrSwitch):(r:IntU8.U8) {
-        res = try {
-            () = &switch a:.ErrSwitch {
-                One => {throw .Err1;};
-                Two => {throw .Err2;};
-                Three => {throw .Err3;};
-            };
-            r = lit 0:IntU8.U8;
-            return r;
-        } catch {
-            .Err1 => {
-                r = lit 1:IntU8.U8;
-                return r;
-            };
-            .Err2 => {
-                r = lit 2:IntU8.U8;
-                return r;
-            };
-            .Err3 => {
-                r = lit 3:IntU8.U8;
-                return r;
-            };
-        };
-        return res;
+
+    public fun CatchPropagate():(r:Bool.Bool) {
+        return try call .Propagate(){
+           success => {
+               return pack Bool.Bool#False();
+           };
+           failure => {
+               return pack Bool.Bool#True();
+           };
+       };
     };
 
-    public fun CatchMany2(a:.ErrSwitch):(r:IntU8.U8) {
-        res = try {
-            res = try {
-               res = try {
-                   () = &switch a:.ErrSwitch {
-                       One => {throw .Err1;};
-                       Two => {throw .Err2;};
-                       Three => {throw .Err3;};
-                   };
-                   r = lit 0:IntU8.U8;
-                   return r;
-               } catch {
-                   .Err1 => {
-                       r = lit 1:IntU8.U8;
-                       return r;
-                   };
-               };
-               return res;
-            } catch {
-                .Err2 => {
-                    r = lit 2:IntU8.U8;
-                    return r;
-                };
-            };
-            return res;
-        } catch {
-            .Err3 => {
-                r = lit 3:IntU8.U8;
-                return r;
-            };
-        };
-        return res;
+    public transactional fun NoThrow():() {
+        return;
     };
 }

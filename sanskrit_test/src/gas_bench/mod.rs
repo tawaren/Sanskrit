@@ -327,7 +327,6 @@ fn execute_script<F,O>(b: &mut Bencher, v_gen:F, mut code_gen:O, rets:usize, do_
     })
 }
 
-/*
 mod add;
 mod sub;
 mod div;
@@ -365,4 +364,3 @@ mod switch;
 
 mod script_lit;
 mod sig;
-*/

@@ -1,20 +1,25 @@
 module IntU64 {
-   external(0) lit(8) <Copy,Drop,Persist,Create,Embed> U64;
-   
-   external(2) public fun hash(num:.U64):(res:Data.Data20);
+   public extType(8) <Copy,Drop,Persist,Primitive,Value,Unbound> U64;
 
-   external(1) public fun eq(num1:.U64, num2:.U64):(res:Bool.Bool);
-   external(4) public fun lt(num1:.U64, num2:.U64):(res:Bool.Bool);
-   external(5) public fun lte(num1:.U64, num2:.U64):(res:Bool.Bool);
-   external(6) public fun gt(num1:.U64, num2:.U64):(res:Bool.Bool);
-   external(7) public fun gte(num1:.U64, num2:.U64):(res:Bool.Bool);
+   public extFun eq(num1:.U64, num2:.U64):(res:Bool.Bool);
+   public extFun lt(num1:.U64, num2:.U64):(res:Bool.Bool);
+   public extFun lte(num1:.U64, num2:.U64):(res:Bool.Bool);
+   public extFun gt(num1:.U64, num2:.U64):(res:Bool.Bool);
+   public extFun gte(num1:.U64, num2:.U64):(res:Bool.Bool);
 
-   external(8) public risky<Errors.Numeric> fun add(num1:.U64, num2:.U64):(res:.U64);
-   external(9) public risky<Errors.Numeric> fun sub(num1:.U64, num2:.U64):(res:.U64);
-   external(10) public risky<Errors.Numeric> fun div(num1:.U64, num2:.U64):(res:.U64);
-   external(11) public risky<Errors.Numeric> fun mul(num1:.U64, num2:.U64):(res:.U64);
+   public transactional extFun add(num1:.U64, num2:.U64):(res:.U64);
+   public transactional extFun sub(num1:.U64, num2:.U64):(res:.U64);
+   public transactional extFun div(num1:.U64, num2:.U64):(res:.U64);
+   public transactional extFun mul(num1:.U64, num2:.U64):(res:.U64);
 
-   external(12) public fun toData(num:.U64):(res:Data.Data8);
+   public extFun and(num1:.U64, num2:.U64):(res:.U64);
+   public extFun or(num1:.U64, num2:.U64):(res:.U64);
+   public extFun xor(num1:.U64, num2:.U64):(res:.U64);
+   public extFun not(num1:.U64):(res:.U64);
 
+   public extFun toData(num:.U64):(res:Data.Data8);
+   public extFun fromData(data:Data.Data8):(res:.U64);
+
+   public extFun hash(num:.U64):(res:Data.Data20);
 
 }

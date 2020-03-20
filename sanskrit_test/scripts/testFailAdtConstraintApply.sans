@@ -1,5 +1,5 @@
 module TestFailAdtConstraintApply {
-    type <Embed> Inner[<Drop> A] {
+    type Inner[<Drop> A] {
         Inner;
     };
 

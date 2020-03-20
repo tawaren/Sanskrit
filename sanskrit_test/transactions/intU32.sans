@@ -1,18 +1,25 @@
 module IntU32 {
-    external(0) lit(4) <Copy,Drop,Persist,Create,Embed> U32;
+    public extType(4) <Copy,Drop,Persist,Primitive,Value,Unbound> U32;
 
-    external(2) public fun hash(num:.U32):(res:Data.Data20);
+    public extFun eq(num1:.U32, num2:.U32):(res:Bool.Bool);
+    public extFun lt(num1:.U32, num2:.U32):(res:Bool.Bool);
+    public extFun lte(num1:.U32, num2:.U32):(res:Bool.Bool);
+    public extFun gt(num1:.U32, num2:.U32):(res:Bool.Bool);
+    public extFun gte(num1:.U32, num2:.U32):(res:Bool.Bool);
 
-    external(1) public fun eq(num1:.U32, num2:.U32):(res:Bool.Bool);
-    external(4) public fun lt(num1:.U32, num2:.U32):(res:Bool.Bool);
-    external(5) public fun lte(num1:.U32, num2:.U32):(res:Bool.Bool);
-    external(6) public fun gt(num1:.U32, num2:.U32):(res:Bool.Bool);
-    external(7) public fun gte(num1:.U32, num2:.U32):(res:Bool.Bool);
+    public transactional extFun add(num1:.U32, num2:.U32):(res:.U32);
+    public transactional extFun sub(num1:.U32, num2:.U32):(res:.U32);
+    public transactional extFun div(num1:.U32, num2:.U32):(res:.U32);
+    public transactional extFun mul(num1:.U32, num2:.U32):(res:.U32);
 
-    external(8) public risky<Errors.Numeric> fun add(num1:.U32, num2:.U32):(res:.U32);
-    external(9) public risky<Errors.Numeric> fun sub(num1:.U32, num2:.U32):(res:.U32);
-    external(10) public risky<Errors.Numeric> fun div(num1:.U32, num2:.U32):(res:.U32);
-    external(11) public risky<Errors.Numeric> fun mul(num1:.U32, num2:.U32):(res:.U32);
+    public extFun and(num1:.U32, num2:.U32):(res:.U32);
+    public extFun or(num1:.U32, num2:.U32):(res:.U32);
+    public extFun xor(num1:.U32, num2:.U32):(res:.U32);
+    public extFun not(num1:.U32):(res:.U32);
 
-    external(12) public fun toData(num:.U32):(res:Data.Data4);
+    public extFun toData(num:.U32):(res:Data.Data4);
+    public extFun fromData(data:Data.Data4):(res:.U32);
+
+    public extFun hash(num:.U32):(res:Data.Data20);
+
 }

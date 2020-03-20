@@ -1,36 +1,30 @@
-signed(A) transaction{
+transactional transaction{
    a = lit 5:IntU8.U8;
    b = lit 5:IntU8.U8;
    c = call CompareAndHashOps.EqU8(a,b);
    () = call Helpers.AssertTrue(c);
 };
 
-signed(A) transaction{
+transaction:(log res:Bool.Bool){
+   a = lit 5:IntU8.U8;
+   b = lit 5:IntU8.U8;
+   return call CompareAndHashOps.EqU8(a,b);
+};
+
+transactional transaction{
    a = lit -30:IntI128.I128;
    b = lit -30:IntI128.I128;
    c = call CompareAndHashOps.EqI128(a,b);
    () = call Helpers.AssertTrue(c);
 };
 
-signed(A) transaction{
-   a = lit 5:IntU8.U8;
-   a2 = pack SomeTypes.X[IntU8.U8]#Ctr(a);
-   b = lit 5:IntU8.U8;
-   b2 = pack SomeTypes.X[IntU8.U8]#Ctr(b);
-   c = call CompareAndHashOps.EqObj(a2,b2);
-   () = call Helpers.AssertTrue(c);
+transaction:(log res:Bool.Bool){
+   a = lit -30:IntI128.I128;
+   b = lit -30:IntI128.I128;
+  return call CompareAndHashOps.EqI128(a,b);
 };
 
-signed(A) transaction{
-   a = lit 5:IntU8.U8;
-   a2 = pack SomeTypes.X[IntU8.U8]#Ctr(a);
-   b = lit 30:IntU8.U8;
-   b2 = pack SomeTypes.X[IntU8.U8]#Ctr(b);
-   c = call CompareAndHashOps.EqObj(a2,b2);
-   () = call Helpers.AssertFalse(c);
-};
-
-signed(A) transaction{
+transactional transaction{
    a = lit 5:IntU8.U8;
    ha = call CompareAndHashOps.HashU8(a);
    b = lit 5:IntU8.U8;
@@ -38,7 +32,12 @@ signed(A) transaction{
    () = call Helpers.AssertEqData20(hb,ha);
 };
 
-signed(A) transaction{
+transaction:(log res:Data.Data20){
+   a = lit 5:IntU8.U8;
+   return call CompareAndHashOps.HashU8(a);
+};
+
+transactional transaction{
    a = lit 5:IntU8.U8;
    ha = call CompareAndHashOps.HashU8(a);
    b = lit 4:IntU8.U8;
@@ -46,226 +45,339 @@ signed(A) transaction{
    () = call Helpers.AssertNotEqData20(hb,ha);
 };
 
-signed(A) transaction{
-   a = lit 5:IntU8.U8;
-   a2 = pack SomeTypes.X[IntU8.U8]#Ctr(a);
-   ha = call CompareAndHashOps.HashObj(a2);
-   b = lit 5:IntU8.U8;
-   b2 = pack SomeTypes.X[IntU8.U8]#Ctr(b);
-   hb = call CompareAndHashOps.HashObj(b2);
-   () = call Helpers.AssertEqData20(hb,ha);
-};
 
-signed(A) transaction{
-   a = lit 6:IntU8.U8;
-   a2 = pack SomeTypes.X[IntU8.U8]#Ctr(a);
-   ha = call CompareAndHashOps.HashObj(a2);
-   b = lit 5:IntU8.U8;
-   b2 = pack SomeTypes.X[IntU8.U8]#Ctr(b);
-   hb = call CompareAndHashOps.HashObj(b2);
-   () = call Helpers.AssertNotEqData20(hb,ha);
-};
-
-signed(A) transaction{
+transactional transaction{
    a = lit 6:IntU8.U8;
    ha = call CompareAndHashOps.HashU8(a);
    haa = call CompareAndHashOps.HashData20(ha);
    () = call Helpers.AssertNotEqData20(haa,ha);
 };
 
-signed(A) transaction{
-   a = lit 0x112233445566778899AABBCC:$data;
+transactional transaction{
+   a = lit 0x112233445566778899AABBCC:Data.Data12;
    ha = call CompareAndHashOps.PlainHash(a);
-   b = lit 0x112233445566778899AABBCC:$data;
+   b = lit 0x112233445566778899AABBCC:Data.Data12;
    hb = call CompareAndHashOps.PlainHash(b);
    () = call Helpers.AssertEqData20(hb,ha);
 };
 
-signed(A) transaction{
-   a = lit 0x112233445566778899AABBCC:$data;
+transaction:(log res:Data.Data20){
+   a = lit 0x112233445566778899AABBCC:Data.Data12;
+   return call CompareAndHashOps.PlainHash(a);
+};
+
+transactional transaction{
+   a = lit 0x112233445566778899AABBCC:Data.Data12;
    ha = call CompareAndHashOps.PlainHash(a);
-   b = lit 0xCCBBAA998877665544332211:$data;
+   b = lit 0xCCBBAA998877665544332211:Data.Data12;
    hb = call CompareAndHashOps.PlainHash(b);
    () = call Helpers.AssertNotEqData20(hb,ha);
 };
 
-signed(A) transaction{
+transactional transaction{
    a = lit 1:IntU8.U8;
-   b = lit 0x01:$data;
+   b = lit 0x01:Data.Data1;
    c = call CompareAndHashOps.ToData(a);
    () = call Helpers.AssertEqData1(c,b);
 };
 
-signed(A) transaction{
+transaction:(log res:Data.Data1){
+   a = lit 1:IntU8.U8;
+   return call CompareAndHashOps.ToData(a);
+};
+
+transactional transaction{
    a = lit 17:IntU8.U8;
-   b = lit 0x11:$data;
+   b = lit 0x11:Data.Data1;
    c = call CompareAndHashOps.ToData(a);
    () = call Helpers.AssertEqData1(c,b);
 };
 
-signed(A) transaction{
+transaction:(log res:Data.Data1){
+   a = lit 17:IntU8.U8;
+   return call CompareAndHashOps.ToData(a);
+};
+
+transactional transaction{
    a = lit 1:IntU32.U32;
-   b = lit 0x00000001:$data;
+   b = lit 0x00000001:Data.Data4;
    c = call CompareAndHashOps.ToData2(a);
    () = call Helpers.AssertEqData4(c,b);
 };
 
-signed(A) transaction{
+transaction:(log res:Data.Data4){
+   a = lit 1:IntU32.U32;
+   return call CompareAndHashOps.ToData2(a);
+};
+
+transactional transaction{
    a = lit 4096:IntU32.U32;
-   b = lit 0x00001000:$data;
+   b = lit 0x00001000:Data.Data4;
    c = call CompareAndHashOps.ToData2(a);
    () = call Helpers.AssertEqData4(c,b);
 };
 
-signed(A) transaction{
-   a = lit 0x112233445566778899AABBCC:$data;
-   b = lit 0x1122334455667788:$data;
-   r = lit 0x112233445566778899AABBCC1122334455667788:$data;
-   c = call CompareAndHashOps.Concat(a,b);
-   () = call Helpers.AssertEqData20(c,r);
+transaction:(log res:Data.Data4){
+   a = lit 4096:IntU32.U32;
+   return call CompareAndHashOps.ToData2(a);
 };
 
-
-signed(A) transaction{
+transactional transaction{
    a = lit 5:IntU8.U8;
    b = lit 6:IntU8.U8;
    c = call CompareAndHashOps.Lt(a,b);
    () = call Helpers.AssertTrue(c);
 };
 
-signed(A) transaction{
+transaction:(log res:Bool.Bool){
+   a = lit 5:IntU8.U8;
+   b = lit 6:IntU8.U8;
+   return call CompareAndHashOps.Lt(a,b);
+};
+
+transactional transaction{
    a = lit 6:IntU8.U8;
    b = lit 5:IntU8.U8;
    c = call CompareAndHashOps.Lt(a,b);
    () = call Helpers.AssertFalse(c);
 };
 
-signed(A) transaction{
+transaction:(log res:Bool.Bool){
+   a = lit 6:IntU8.U8;
+   b = lit 5:IntU8.U8;
+   return call CompareAndHashOps.Lt(a,b);
+};
+
+transactional transaction{
    a = lit 5:IntU8.U8;
    b = lit 5:IntU8.U8;
    c = call CompareAndHashOps.Lt(a,b);
    () = call Helpers.AssertFalse(c);
 };
 
-signed(A) transaction{
+transaction:(log res:Bool.Bool){
+   a = lit 5:IntU8.U8;
+   b = lit 5:IntU8.U8;
+   return call CompareAndHashOps.Lt(a,b);
+};
+
+transactional transaction{
    a = lit -1:IntI128.I128;
    b = lit 1:IntI128.I128;
    c = call CompareAndHashOps.Lt2(a,b);
    () = call Helpers.AssertTrue(c);
 };
 
-signed(A) transaction{
+transaction:(log res:Bool.Bool){
+   a = lit -1:IntI128.I128;
+   b = lit 1:IntI128.I128;
+   return call CompareAndHashOps.Lt2(a,b);
+};
+
+transactional transaction{
    a = lit 1:IntI128.I128;
    b = lit -1:IntI128.I128;
    c = call CompareAndHashOps.Lt2(a,b);
    () = call Helpers.AssertFalse(c);
 };
 
+transaction:(log res:Bool.Bool){
+   a = lit 1:IntI128.I128;
+   b = lit -1:IntI128.I128;
+   return call CompareAndHashOps.Lt2(a,b);
+};
 
-signed(A) transaction{
+transactional transaction{
    a = lit 5:IntU8.U8;
    b = lit 6:IntU8.U8;
    c = call CompareAndHashOps.Gt(a,b);
    () = call Helpers.AssertFalse(c);
 };
 
-signed(A) transaction{
+transaction:(log res:Bool.Bool){
+   a = lit 5:IntU8.U8;
+   b = lit 6:IntU8.U8;
+   return call CompareAndHashOps.Gt(a,b);
+};
+
+transactional transaction{
    a = lit 6:IntU8.U8;
    b = lit 5:IntU8.U8;
    c = call CompareAndHashOps.Gt(a,b);
    () = call Helpers.AssertTrue(c);
 };
 
+transaction:(log res:Bool.Bool){
+   a = lit 6:IntU8.U8;
+   b = lit 5:IntU8.U8;
+   return call CompareAndHashOps.Gt(a,b);
+};
 
-signed(A) transaction{
+transactional transaction{
    a = lit 5:IntU8.U8;
    b = lit 5:IntU8.U8;
    c = call CompareAndHashOps.Gt(a,b);
    () = call Helpers.AssertFalse(c);
 };
 
-signed(A) transaction{
+transaction:(log res:Bool.Bool){
+   a = lit 5:IntU8.U8;
+   b = lit 5:IntU8.U8;
+   return call CompareAndHashOps.Gt(a,b);
+};
+
+transactional transaction{
    a = lit -1:IntI128.I128;
    b = lit 1:IntI128.I128;
    c = call CompareAndHashOps.Gt2(a,b);
    () = call Helpers.AssertFalse(c);
 };
 
-signed(A) transaction{
+transaction:(log res:Bool.Bool){
+   a = lit -1:IntI128.I128;
+   b = lit 1:IntI128.I128;
+   return call CompareAndHashOps.Gt2(a,b);
+};
+
+transactional transaction{
    a = lit 1:IntI128.I128;
    b = lit -1:IntI128.I128;
    c = call CompareAndHashOps.Gt2(a,b);
    () = call Helpers.AssertTrue(c);
 };
 
-signed(A) transaction{
+transaction:(log res:Bool.Bool){
+   a = lit 1:IntI128.I128;
+   b = lit -1:IntI128.I128;
+   return call CompareAndHashOps.Gt2(a,b);
+};
+
+transactional transaction{
    a = lit 5:IntU8.U8;
    b = lit 6:IntU8.U8;
    c = call CompareAndHashOps.Lte(a,b);
    () = call Helpers.AssertTrue(c);
 };
 
-signed(A) transaction{
+transaction:(log res:Bool.Bool){
+   a = lit 5:IntU8.U8;
+   b = lit 6:IntU8.U8;
+   return call CompareAndHashOps.Lte(a,b);
+};
+
+transactional transaction{
    a = lit 6:IntU8.U8;
    b = lit 5:IntU8.U8;
    c = call CompareAndHashOps.Lte(a,b);
    () = call Helpers.AssertFalse(c);
 };
 
-signed(A) transaction{
+transaction:(log res:Bool.Bool){
+   a = lit 6:IntU8.U8;
+   b = lit 5:IntU8.U8;
+   return call CompareAndHashOps.Lte(a,b);
+};
+
+transactional transaction{
    a = lit 5:IntU8.U8;
    b = lit 5:IntU8.U8;
    c = call CompareAndHashOps.Lte(a,b);
    () = call Helpers.AssertTrue(c);
 };
 
-signed(A) transaction{
+transaction:(log res:Bool.Bool){
+   a = lit 5:IntU8.U8;
+   b = lit 5:IntU8.U8;
+   return call CompareAndHashOps.Lte(a,b);
+};
+
+transactional transaction{
    a = lit -1:IntI128.I128;
    b = lit 1:IntI128.I128;
    c = call CompareAndHashOps.Lte2(a,b);
    () = call Helpers.AssertTrue(c);
 };
 
-signed(A) transaction{
+transaction:(log res:Bool.Bool){
+   a = lit -1:IntI128.I128;
+   b = lit 1:IntI128.I128;
+   return call CompareAndHashOps.Lte2(a,b);
+};
+
+transactional transaction{
    a = lit 1:IntI128.I128;
    b = lit -1:IntI128.I128;
    c = call CompareAndHashOps.Lte2(a,b);
    () = call Helpers.AssertFalse(c);
 };
 
+transaction:(log res:Bool.Bool){
+   a = lit 1:IntI128.I128;
+   b = lit -1:IntI128.I128;
+   return call CompareAndHashOps.Lte2(a,b);
+};
 
-signed(A) transaction{
+transactional transaction{
    a = lit 5:IntU8.U8;
    b = lit 6:IntU8.U8;
    c = call CompareAndHashOps.Gte(a,b);
    () = call Helpers.AssertFalse(c);
 };
 
-signed(A) transaction{
+transaction:(log res:Bool.Bool){
+   a = lit 5:IntU8.U8;
+   b = lit 6:IntU8.U8;
+   return call CompareAndHashOps.Gte(a,b);
+};
+
+transactional transaction{
    a = lit 6:IntU8.U8;
    b = lit 5:IntU8.U8;
    c = call CompareAndHashOps.Gte(a,b);
    () = call Helpers.AssertTrue(c);
 };
 
+transaction:(log res:Bool.Bool){
+   a = lit 6:IntU8.U8;
+   b = lit 5:IntU8.U8;
+   return call CompareAndHashOps.Gte(a,b);
+};
 
-signed(A) transaction{
+transactional transaction{
    a = lit 5:IntU8.U8;
    b = lit 5:IntU8.U8;
    c = call CompareAndHashOps.Gte(a,b);
    () = call Helpers.AssertTrue(c);
 };
 
-signed(A) transaction{
+transaction:(log res:Bool.Bool){
+   a = lit 5:IntU8.U8;
+   b = lit 5:IntU8.U8;
+   return call CompareAndHashOps.Gte(a,b);
+};
+
+transactional transaction{
    a = lit -1:IntI128.I128;
    b = lit 1:IntI128.I128;
    c = call CompareAndHashOps.Gte2(a,b);
    () = call Helpers.AssertFalse(c);
 };
 
-signed(A) transaction{
+transaction:(log res:Bool.Bool){
+   a = lit -1:IntI128.I128;
+   b = lit 1:IntI128.I128;
+   return call CompareAndHashOps.Gte2(a,b);
+};
+
+transactional transaction{
    a = lit 1:IntI128.I128;
    b = lit -1:IntI128.I128;
    c = call CompareAndHashOps.Gte2(a,b);
    () = call Helpers.AssertTrue(c);
+};
+
+transaction:(log res:Bool.Bool){
+   a = lit 1:IntI128.I128;
+   b = lit -1:IntI128.I128;
+   return call CompareAndHashOps.Gte2(a,b);
 };

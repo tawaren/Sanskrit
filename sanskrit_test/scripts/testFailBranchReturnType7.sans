@@ -5,7 +5,7 @@ module TestFailBranchReturnType7 {
         B;
     };
 
-    private fun Test[A,<Drop> B](consume a:A, consume b:B, consume e:.Enum):(a3:A,b3:B){
+    private fun Test[<Value, Unbound> A,<Drop, Value, Unbound>  B](consume a:A, consume b:B, consume e:.Enum):(a3:A,b3:B){
         (a3,b3) = switch e:.Enum {
             Z() => {
                  a2 = a;

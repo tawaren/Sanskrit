@@ -1,3 +1,3 @@
-signed(a) transaction{
-    a = lit 1:IntU8.U8;
+transaction:(log a:IntU8.U8){
+    return lit 1:IntU8.U8;
 };

@@ -1,19 +1,19 @@
 module CapCheckTypes {
-    type <Drop, Create> PhantomDrop[phantom A]{ Ctr(); };
+    public type <Value, Unbound, Drop> PhantomDrop[phantom A]{ Ctr(); };
 
-    type <Embed, Create, Drop> HasCopy[<Copy> A] { Ctr(); };
-    type <Embed, Create, Drop> HasDrop[<Drop> A] { Ctr(); };
-    type <Embed, Create, Drop> HasPersist[<Persist> A] { Ctr(); };
+    public type <Value, Unbound, Drop> HasCopy[<Copy> A] { Ctr(); };
+    public type <Value, Unbound, Drop> HasDrop[<Drop> A] { Ctr(); };
+    public type <Value, Unbound, Drop> HasPersist[<Persist> A] { Ctr(); };
 
-    type <Copy, Embed, Create> IsCopy { Ctr(); };
-    type <Drop, Embed, Create> IsDrop { Ctr(); };
-    type <Persist, Embed, Create> IsPersist { Ctr(); };
+    public type <Copy> IsCopy { Ctr(); };
+    public type <Drop> IsDrop { Ctr(); };
+    public type <Persist> IsPersist { Ctr(); };
 
-    type <Embed, Persist, Drop, Consume, Inspect, Create> AllRecExceptCopy{ Ctr(); };
-    type <Embed, Persist, Copy, Consume, Inspect, Create> AllRecExceptDrop{ Ctr(); };
-    type <Embed, Copy, Drop, Consume, Inspect, Create> AllRecExceptPersist{ Ctr(); };
+    public type <Value, Unbound, Persist, Drop> AllRecExceptCopy{ Ctr(); };
+    public type <Value, Unbound, Persist, Copy> AllRecExceptDrop{ Ctr(); };
+    public type <Value, Unbound, Copy, Drop> AllRecExceptPersist{ Ctr(); };
 
-    type <Copy, Create> MayCopy[<Embed> A]{ Ctr(A); };
-    type <Drop, Create> MayDrop[<Embed> A]{ Ctr(A); };
-    type <Persist, Create> MayPersist[<Embed> A]{ Ctr(A); };
+    public type <Value, Unbound, Copy> MayCopy[A]{ Ctr(A); };
+    public type <Value, Unbound, Drop> MayDrop[A]{ Ctr(A); };
+    public type <Value, Unbound, Persist> MayPersist[A]{ Ctr(A); };
 }

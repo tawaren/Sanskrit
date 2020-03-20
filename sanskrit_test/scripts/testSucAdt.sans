@@ -1,15 +1,15 @@
 module TestSucAdt {
-    type <Embed> Phantom;
+    type Phantom;
 
-    type <Copy, Drop, Persist, Embed, Consume, Inspect> Wrapper[<Embed> X] {
+    public(consume) type <Copy, Drop, Persist, Value, Unbound>  Wrapper[X] {
         Ctr(X);
     };
 
-    type <Embed> Wrapper2[<Embed> X] {
+    type Wrapper2[X] {
         Ctr(X);
     };
 
-    type <Embed> Enum {
+    type Enum {
         A;
         B;
         C;
@@ -17,18 +17,18 @@ module TestSucAdt {
         E;
     };
 
-    type <Embed, Consume, Inspect, Create> Option[<Embed> T] {
+    public(consume,create,inspect) type <Value, Unbound, Drop>  Option[T] {
         Some(T);
         None;
     };
 
-    type <Embed> Alternative[<Embed> A,<Embed> B] {
+    type Alternative[A,B] {
         A(A);
         B(B);
     };
 
 
-    type <Copy, Drop, Persist, Embed> Test[<Embed> A, <Embed> B] {
+    type <Copy, Drop, Persist> Test[A, B] {
            Ctr1(Alt.Alt2[A,B]);
            Ctr2(Tuple.Tuple2[A,B]);
            Ctr3(A);
@@ -37,15 +37,15 @@ module TestSucAdt {
            Ctr6(Alt.Alt2[Tuple.Tuple2[B,.Wrapper[A]],Tuple.Tuple2[A,.Wrapper[B]]]);
     };
 
-    type <Embed> Struct {
+    type Struct {
         Ctr(.Wrapper[.Enum],.Enum, .Option[.Phantom], .Alternative[.Enum,.Phantom], .Test[.Enum,.Phantom]);
     };
 
-    type <Embed> HasRecs[<Copy, Drop, Persist> T];
+    type HasRecs[<Copy, Drop, Persist> T];
 
-    type <Embed, Copy, Drop, Persist> WithRec;
+    type <Copy, Drop, Persist> WithRec;
 
-    type <Embed> HasRecTest{
+    type HasRecTest{
            Ctr(.HasRecs[.Test[.WithRec,.WithRec]]);
     };
 }

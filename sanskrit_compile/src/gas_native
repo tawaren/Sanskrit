@@ -1,0 +1,148 @@
+    /*
+    fn lit_width(typ:&Crc<ResolvedType>) -> u64{
+        match **typ {
+            ResolvedType::Lit { size, ..}  => size as u64,
+            _ => unreachable!()
+        }
+    }
+
+    fn is_lit(typ:&Crc<ResolvedType>) -> bool{
+        match **typ {
+            ResolvedType::Lit { ..}  => false,
+            _ => unreachable!()
+        }
+    }
+
+    fn traversing_statistics<S:Store>(typ:&Crc<ResolvedType>, context:&Context<S>, node_fix:u64,  leaf_static:u64, leaf_per_byte:u64, prim_fact:u64) -> Result<u64> {
+        Ok(match **typ {
+            ResolvedType::Data { ref module, offset, ref applies, ..} => {
+                //Get the cache
+                let adt_cache = context.store.get_data_type(&**module, offset)?;
+                //Get the adt
+                let adt = adt_cache.retrieve();
+                match adt.body {
+                    DataImpl::Adt { ref constructors,  .. } => {
+                        //get its context with the applies as substitutions
+                        let new_context = adt_cache.substituted_context(applies.iter().map(|apl|apl.typ.clone()).collect(),&context.store)?;
+                        let mut max = 0u64;
+                        for ctr in constructors {
+                            let mut sum = leaf_static;
+                            for f in &ctr.fields {
+                                let typ = f.fetch(&new_context)?;
+                                sum += traversing_statistics(&typ,&new_context,node_fix,leaf_static, leaf_per_byte,prim_fact)?;
+                            }
+                            max = max.max(sum);
+                        }
+                        max
+                    },
+                    DataImpl::ExternalLit(_,size)
+                    | DataImpl::Lit(size) => leaf_static + (size as u64)*leaf_per_byte,
+                    DataImpl::ExternalAdt(_) => unimplemented!()
+                }
+            },
+            _ => unreachable!()
+        })
+    }
+
+
+    //The following values are from a benchmark but with a constant mu to giv niver numbers, old ar in comment
+        //the factor is 0.2
+
+    pub fn and(typ:&[Crc<ResolvedType>]) -> u64 {
+        if is_lit(&typ[0])  {
+            let width = lit_width(&typ[0]);
+            width/8 + 19//(width*2) + (4*width)/64 + 95
+        } else {
+            13
+        }
+    }
+
+    pub fn or(typ:&[Crc<ResolvedType>]) -> u64 {
+        if is_lit(&typ[0])  {
+            let width = lit_width(&typ[0]);
+            width/8 + 19//(width*2) + (4*width)/64 + 95
+        } else {
+            13
+        }
+    }
+
+    pub fn xor(typ:&[Crc<ResolvedType>]) -> u64 {
+        if is_lit(&typ[0])  {
+            let width = lit_width(&typ[0]);
+            width/8 + 19//(width*2) + (4*width)/64 + 95
+        } else {
+            13
+        }
+    }
+
+    pub fn not(typ:&[Crc<ResolvedType>]) -> u64 {
+        if is_lit(&typ[0])  {
+            //the width * 11/80 is rounded to width/8
+            let width = lit_width(&typ[0]);
+            width/8 + 17//(width/2) + (12*width)/64 + 85
+        } else {
+            13
+        }
+    }
+
+    pub fn convert() -> u64 {
+        11
+    }
+
+    pub fn add() -> u64 {
+        12
+    }
+
+    pub fn sub() -> u64 {
+        12
+    }
+
+    pub fn mul() -> u64 {
+       13
+    }
+
+    pub fn div() -> u64 {
+        17 /*reality: 65 for u/i8, 70 for u/i16, 75 for u/i32, 80 for u/i64, 85 for u/i128*/
+    }
+
+    pub fn eq<S:Store>(typ:&[Crc<ResolvedType>], context:&Context<S>) -> Result<u64> {
+        Ok(12 + (traversing_statistics(&typ[0], context, 34, 240, 5, 0)?/200) as u64)
+    }
+
+    pub fn hash<S:Store>(typ:&[Crc<ResolvedType>], context:&Context<S>) -> Result<u64> {
+        Ok(60 + (traversing_statistics(&typ[0], context, 11, 16, 1, 1)?/4) as u64)
+    }
+
+    pub fn hash_plain(typ:&[Crc<ResolvedType>]) -> u64 {
+        60 + lit_width(&typ[0])/5
+    }
+
+    pub fn join_hash() -> u64 {
+       70
+    }
+
+    pub fn cmp() -> u64 {
+        13
+    }
+
+    pub fn to_data(_typ:&[Crc<ResolvedType>]) -> u64 {
+        18
+    }
+
+    pub fn concat(typ:&[Crc<ResolvedType>]) -> u64 {
+        20 + lit_width(&typ[2])/50
+    }
+
+    pub fn get_bit() -> u64 {
+        13
+    }
+
+    pub fn set_bit(typ:&[Crc<ResolvedType>]) -> u64 {
+        22 + lit_width(&typ[0])/50
+    }
+    */
+
+
+    /*pub fn module_index() -> u64 {
+        13
+    }*/

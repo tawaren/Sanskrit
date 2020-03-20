@@ -1,10 +1,10 @@
 module TestFailSwitchDoubleReturn {
-   type Option[<Embed> T] {
+   type Option[T] {
        Some(T);
        None;
    };
 
-   fun TestFunApply[<Embed, Drop, Copy> A](consume a:.Option[A], a2:A):(c:A, d:A) {
+   fun TestFunApply[<Drop, Copy, Value, Unbound> A](consume a:.Option[A], a2:A):(c:A, d:A) {
        (c,d) = switch a:.Option[A] {
           Some(a) => {
             b = copy a;

@@ -1,3 +1,4 @@
-signed(A) transaction{
+transaction{
    a = pack SomeTypes.NoArg[Bool.Bool[IntU8.U8]]#Ctr();
+   return;
 };

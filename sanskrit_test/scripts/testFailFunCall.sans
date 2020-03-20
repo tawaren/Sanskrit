@@ -1,11 +1,11 @@
 module TestFailFunCall {
 
-    private fun Test[A](consume a:A):(a:A){
+    private fun Test[<Value, Unbound> A](consume a:A):(a:A){
         b = a;
         return b;
     };
 
-     private fun TestCall[A](a:A):(a:A){
+     private fun TestCall[<Value, Unbound> A](a:A):(a:A){
         b = call .Test[A]();
         return b;
      };

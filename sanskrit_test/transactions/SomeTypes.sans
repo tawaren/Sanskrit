@@ -1,115 +1,76 @@
 module SomeTypes {
 
-   type <Consume, Inspect, Create, Copy, Drop, Embed, Persist> Empty{
+   public type <Copy,Drop,Persist,Primitive,Value,Unbound> Empty{
         Ctr();
    };
 
-   type <Consume, Inspect, Create, Copy, Drop, Embed, Persist> NeedsCopy[<Copy> A]{
-           Ctr();
+   public type <Copy,Drop,Persist,Primitive,Value,Unbound> NeedsCopy[<Copy> A]{
+        Ctr();
    };
 
-   type <Consume, Inspect, Create, Copy, Drop, Embed, Persist> NoArg[A]{
+   public type <Copy,Drop,Persist,Primitive,Value,Unbound> NoArg[A]{
         Ctr();
     };
 
-    type <Consume, Inspect, Create, Copy, Drop, Embed, Persist> FixU16{
+    public type <Copy,Drop,Persist,Primitive,Value,Unbound> FixU16{
         Ctr(IntU16.U16);
     };
 
-    type <Consume, Inspect, Create, Copy, Drop, Embed, Persist> X[<Embed> A]{
+    public type <Copy,Drop,Persist,Primitive,Value,Unbound> X[A]{
         Ctr(A);
     };
 
-    type <Consume, Inspect, Create, Copy, Drop, Embed, Persist> Y[<Embed> A]{
+    public type <Copy,Drop,Persist,Primitive,Value,Unbound> Y[A]{
         Ctr(A);
     };
 
-    type <Consume, Inspect, Create, Copy, Drop, Embed, Persist> Z[<Embed> A, phantom B]{
+    public type <Copy,Drop,Persist,Primitive,Value,Unbound> Z[A, phantom B]{
         Ctr(A);
     };
 
-    type <Consume, Inspect, Create, Copy, Drop, Embed, Persist> Dual[<Embed> A]{
+    public type <Copy,Drop,Persist,Primitive,Value,Unbound> Dual[A]{
         Ctr1(A);
         Ctr2(A);
     };
 
-    type <Consume, Inspect, Create, Copy, Drop, Embed, Persist> DuoType[<Embed> A]{
+    public type <Copy,Drop,Persist,Primitive,Value,Unbound> DuoType[A]{
         Ctr(A,A);
     };
 
-    type <Inspect, Create, Copy, Drop, Embed, Persist> NoConsume[<Embed> A]{
+    public(inspect,create) type <Copy,Drop,Persist,Value,Unbound> NoConsume[A]{
         Ctr(A);
     };
 
-    type <Create, Copy, Drop, Embed, Persist> NoInspect[<Embed> A]{
+    public(consume,create) type <Copy,Drop,Persist,Value,Unbound> NoInspect[A]{
         Ctr(A);
     };
 
-    type <Consume, Inspect, Copy, Drop, Embed, Persist> NoCreate[<Embed> A]{
+    public(consume,inspect) type <Copy,Drop,Persist,Value,Unbound> NoCreate[A]{
             Ctr(A);
     };
 
-    type <Consume, Inspect, Create, Drop, Embed, Persist> NoCopy[<Embed> A]{
+    public type <Drop,Persist,Value,Unbound> NoCopy[A]{
         Ctr(A);
     };
 
-    type <Consume, Inspect, Create, Copy, Embed, Persist> NoDrop[<Embed> A]{
+    public type <Copy,Persist,Value,Unbound> NoDrop[A]{
         Ctr(A);
     };
 
-    type <Consume, Inspect, Create, Copy, Drop, Persist> NoEmbed[<Embed> A]{
+    public type <Copy,Drop,Value,Unbound>  NoPersist[A]{
         Ctr(A);
     };
 
-    type <Consume, Inspect, Create, Copy, Drop, Embed> NoPersist[<Embed> A]{
+    public type <Copy,Drop,Persist,Value,Unbound> NoPrimitive[A]{
         Ctr(A);
     };
 
-    public fun GenIndexed[<Embed> A](consume a:A):(d:System.Entry[A]) {
-         c = call Ids.moduleId();
-         d = pack System.Entry[A]#Ctr(c,a);
-         return d;
-    };
-
-    public fun GenIndexedAt[<Embed> A](b:Ids.PrivateId, consume a:A):(r:Ids.PublicId, d:System.Entry[A]) {
-         c = copy b;
-         r = call Ids.privateToPublic(b);
-         d = pack System.Entry[A]#Ctr(c,a);
-         return (r,d);
-    };
-
-    type <Persist, Consume, Inspect, Create, Copy, Drop, Embed> NoIndexed[<Embed> A]{
-        Ctr(Ids.PrivateId,A);
-    };
-
-    public fun GenNoIndex[<Embed> A](consume a:A):(d:.NoIndexed[A]) {
-        c = call Ids.moduleId();
-        d = pack .NoIndexed[A]#Ctr(c,a);
-        return d;
-    };
-
-    type <Create, Drop> PhantomArg[phantom A]{
+    public(create) type <Drop> PhantomArg[phantom A]{
         Ctr();
     };
 
-    public fun DeEntryNoDrop[<Embed> A](consume in:System.Entry[.NoDrop[A]]):(i:Ids.PrivateId,d:.NoDrop[A]) {
-        (i,d) = call System.UnpackEntry[.NoDrop[A]](in);
-        return(i,d);
-    };
-
-    public fun BorrowEntryNoDrop[<Embed> A](in:System.Entry[.NoDrop[A]]):(borrowed(in) i:Ids.PrivateId,borrowed(in) d:.NoDrop[A]) {
-        (i,d) = call System.BorrowEntry[.NoDrop[A]](in);
-        return(i,d);
-    };
-
-    public fun BorrowEntryNoCopy[<Embed> A](in:System.Entry[.NoCopy[A]]):(borrowed(in) i:Ids.PrivateId,borrowed(in) d:.NoCopy[A]) {
-        (i,d) = call System.BorrowEntry[.NoCopy[A]](in);
-        return(i,d);
-    };
-
-    public fun BorrowEntryX[<Embed> A](in:System.Entry[.X[A]]):(borrowed(in) i:Ids.PrivateId, borrowed(in) d:.X[A]) {
-        (i,d) = call System.BorrowEntry[.X[A]](in);
-        return(i,d);
+    public fun DeEntryNoDrop[<Unbound, Value, Persist> A](consume in:System.Entry[.NoDrop[A]]):(i:Ids.PrivateId,d:.NoDrop[A]) {
+        return call System.UnpackEntry[.NoDrop[A]](in);
     };
 
 }

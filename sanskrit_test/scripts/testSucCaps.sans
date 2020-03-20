@@ -1,21 +1,21 @@
 module TestSucCaps {
-    type <Embed> HasCopy[<Copy> A] { Ctr(); };
-    type <Embed> HasDrop[<Drop> A] { Ctr(); };
-    type <Embed> HasPersist[<Persist> A] { Ctr(); };
+    type HasCopy[<Copy> A] { Ctr(); };
+    type HasDrop[<Drop> A] { Ctr(); };
+    type HasPersist[<Persist> A] { Ctr(); };
 
-    type <Copy, Embed> IsCopy { Ctr(); };
-    type <Drop, Embed> IsDrop { Ctr(); };
-    type <Persist, Embed> IsPersist { Ctr(); };
+    type <Copy> IsCopy { Ctr(); };
+    type <Drop> IsDrop { Ctr(); };
+    type <Persist> IsPersist { Ctr(); };
 
-    type <Copy> MayCopy[<Embed> A]{
+    type <Copy> MayCopy[A]{
         Ctr(A);
     };
 
-    type <Drop> MayDrop[<Embed> A]{
+    type <Drop> MayDrop[A]{
         Ctr(A);
     };
 
-    type <Persist> MayPersist[<Embed> A]{
+    type <Persist> MayPersist[A]{
         Ctr(A);
     };
 

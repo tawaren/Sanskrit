@@ -1,7 +1,0 @@
-module TestFailBorrowBorrowed {
-    private fun Test[<Drop> A](a:A):(){
-       b = &a;
-       c = &a;
-       return;
-    };
-}

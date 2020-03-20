@@ -13,8 +13,9 @@ use std::path::Path;
 
 pub struct SledStore {
     modules:Tree,
-    adts:Tree,
     funs:Tree,
+    adt_descs:Tree,
+    fun_descs:Tree,
     elems:Tree,
 }
 
@@ -22,23 +23,27 @@ impl SledStore {
     //creates a multi thread enabled store
     pub fn new(folder:&Path)-> Self{
         let module_p = folder.join("module").with_extension("db");
-        let adt_p = folder.join("adt").with_extension("db");
         let fun_p = folder.join("fun").with_extension("db");
+
+        let adt_desc_p = folder.join("adt_desc").with_extension("db");
+        let fun_desc_p = folder.join("fun_desc").with_extension("db");
         let elem_p = folder.join("elem").with_extension("db");
 
 
         SledStore {
             modules: Tree::start_default(module_p).unwrap(),
-            adts: Tree::start_default(adt_p).unwrap(),
             funs: Tree::start_default(fun_p).unwrap(),
+            adt_descs: Tree::start_default(adt_desc_p).unwrap(),
+            fun_descs: Tree::start_default(fun_desc_p).unwrap(),
             elems: Tree::start_default(elem_p).unwrap(),
         }
     }
 
     pub fn flush(&self) {
         self.modules.flush().unwrap();
-        self.adts.flush().unwrap();
         self.funs.flush().unwrap();
+        self.adt_descs.flush().unwrap();
+        self.fun_descs.flush().unwrap();
         self.elems.flush().unwrap();
     }
 }
@@ -50,10 +55,11 @@ impl Store for SledStore {
         }
 
         match class {
-            StorageClass::AdtDesc => process(&self.adts,key),
-            StorageClass::FunDesc => process(&self.funs,key),
+            StorageClass::AdtDesc => process(&self.adt_descs, key),
+            StorageClass::FunDesc => process(&self.fun_descs, key),
             StorageClass::Module => process(&self.modules,key),
-            StorageClass::Elem => process(&self.elems,key),
+            StorageClass::Transaction => process(&self.funs, key),
+            StorageClass::EntryValue => process(&self.elems, key),
         }
     }
 
@@ -66,10 +72,11 @@ impl Store for SledStore {
         }
 
         match class {
-            StorageClass::AdtDesc => process(&self.adts,key),
-            StorageClass::FunDesc => process(&self.funs,key),
+            StorageClass::AdtDesc => process(&self.adt_descs, key),
+            StorageClass::FunDesc => process(&self.fun_descs, key),
             StorageClass::Module => process(&self.modules,key),
-            StorageClass::Elem => process(&self.elems,key),
+            StorageClass::Transaction => process(&self.funs, key),
+            StorageClass::EntryValue => process(&self.elems, key),
         }
     }
 
@@ -85,10 +92,11 @@ impl Store for SledStore {
         }
 
         match class {
-            StorageClass::AdtDesc => process(&self.adts,key,f),
-            StorageClass::FunDesc => process(&self.funs,key,f),
+            StorageClass::AdtDesc => process(&self.adt_descs, key, f),
+            StorageClass::FunDesc => process(&self.fun_descs, key, f),
             StorageClass::Module => process(&self.modules,key,f),
-            StorageClass::Elem => process(&self.elems,key,f),
+            StorageClass::Transaction => process(&self.funs, key, f),
+            StorageClass::EntryValue => process(&self.elems, key, f),
         }
     }
 
@@ -103,10 +111,11 @@ impl Store for SledStore {
         }
 
         match class {
-            StorageClass::AdtDesc => process(&self.adts,key,data),
-            StorageClass::FunDesc => process(&self.funs,key,data),
+            StorageClass::AdtDesc => process(&self.adt_descs, key, data),
+            StorageClass::FunDesc => process(&self.fun_descs, key, data),
             StorageClass::Module => process(&self.modules,key,data),
-            StorageClass::Elem => process(&self.elems,key, data),
+            StorageClass::Transaction => process(&self.funs, key, data),
+            StorageClass::EntryValue => process(&self.elems, key, data),
         }
     }
 
@@ -121,15 +130,16 @@ impl Store for SledStore {
         }
 
         match class {
-            StorageClass::AdtDesc => process(&self.adts,key,data),
-            StorageClass::FunDesc => process(&self.funs,key,data),
+            StorageClass::AdtDesc => process(&self.adt_descs, key, data),
+            StorageClass::FunDesc => process(&self.fun_descs, key, data),
             StorageClass::Module => process(&self.modules,key,data),
-            StorageClass::Elem => process(&self.elems,key, data),
+            StorageClass::Transaction => process(&self.funs, key, data),
+            StorageClass::EntryValue => process(&self.elems, key, data),
         }
     }
 
 
-
+    /*
     fn list(&self, class: StorageClass) -> Vec<(Hash, Vec<u8>)> {
         fn process(map:&Tree) -> Vec<(Hash, Vec<u8>)> {
             map.iter().map(|r|{
@@ -140,10 +150,12 @@ impl Store for SledStore {
         }
 
         match class {
-            StorageClass::AdtDesc => process(&self.adts),
-            StorageClass::FunDesc => process(&self.funs),
+            StorageClass::AdtDesc => process(&self.adt_descs),
+            StorageClass::FunDesc => process(&self.fun_descs),
             StorageClass::Module => process(&self.modules),
+            StorageClass::Function => process(&self.funs),
             StorageClass::Elem => process(&self.elems),
         }
     }
+    */
 }

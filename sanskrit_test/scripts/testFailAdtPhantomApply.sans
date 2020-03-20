@@ -1,5 +1,5 @@
 module TestFailAdtPhantomApply {
-    type <Embed> Inner[A] {
+    type Inner[A] {
         Inner;
     };
 

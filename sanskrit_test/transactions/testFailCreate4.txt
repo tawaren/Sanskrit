@@ -1,5 +1,0 @@
-signed(A) transaction{
-     a = lit 1:IntU8.U8;
-     b = &a;
-     c = pack SomeTypes.NoCreate[IntU8.U8]#Ctr(b);
-};

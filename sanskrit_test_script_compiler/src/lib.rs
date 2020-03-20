@@ -23,9 +23,6 @@ extern crate rand;
 pub mod environment;
 pub mod generate;
 pub mod model;
-pub mod native;
 pub mod script;
-pub mod transaction;
 
-lalrpop_mod!(pub module_parser);
-lalrpop_mod!(pub transaction_parser);
+lalrpop_mod!(pub parser);

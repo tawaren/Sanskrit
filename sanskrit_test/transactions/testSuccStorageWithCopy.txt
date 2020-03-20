@@ -1,34 +1,35 @@
-signed(A) transaction{
-   a = lit 1:IntU8.U8;
+transaction:(store s:System.Entry[SomeTypes.NoDrop[IntU8.U8]]){
+   a = lit 3:IntU8.U8;
    b = pack SomeTypes.NoDrop[IntU8.U8]#Ctr(a);
-   d = call IndexOps.ModIndex();
-   (r, s) = call SomeTypes.GenIndexedAt[SomeTypes.NoDrop[IntU8.U8]](d,b);
-   store s;
+   key = lit 0x00:Data.Data1;
+   id = call IndexOps.GenIndex1(key);
+   return pack System.Entry[SomeTypes.NoDrop[IntU8.U8]]#Ctr(id,b);
 };
 
-signed(A) transaction{
-   a = call IndexOps.ModIndex();
-   r = call SomeFunctions.GenRef(a);
-   b = &load r;
+transaction(borrow(IndexOps(0x00)) b:System.Entry[SomeTypes.NoDrop[IntU8.U8]]){
+   return;
 };
 
-
-signed(A) transaction{
-   a = call IndexOps.ModIndex();
-   r = call SomeFunctions.GenRef(a);
-   b = load r;
-   c = load r;
-   (d0, i0) = call SomeTypes.DeEntryNoDrop[IntU8.U8](b);
-   (d1, i1) = call SomeTypes.DeEntryNoDrop[IntU8.U8](c);
-   d2 = unpack i0:SomeTypes.NoDrop#Ctr;
-   d3 = unpack i1:SomeTypes.NoDrop#Ctr;
+transaction(copy(IndexOps(0x00)) b:System.Entry[SomeTypes.NoDrop[IntU8.U8]]){
+   (id,value) = call SomeTypes.DeEntryNoDrop[IntU8.U8](b);
+   v = unpack value:SomeTypes.NoDrop[IntU8.U8];
+   return;
 };
 
-signed(A) transaction{
-   a = call IndexOps.ModIndex();
-   r = call SomeFunctions.GenRef(a);
-   b = load r;
-   c = &load r;
-   (d0, i0) = call SomeTypes.DeEntryNoDrop[IntU8.U8](b);
-   d1 = unpack i0:SomeTypes.NoDrop#Ctr;
+transaction(consume(IndexOps(0x00)) b:System.Entry[SomeTypes.NoDrop[IntU8.U8]]):(store s:System.Entry[SomeTypes.NoDrop[IntU8.U8]]){
+   return b;
+};
+
+transaction(borrow(IndexOps(0x00)) b:System.Entry[SomeTypes.NoDrop[IntU8.U8]]){
+   return;
+};
+
+transaction(copy(IndexOps(0x00)) b:System.Entry[SomeTypes.NoDrop[IntU8.U8]]){
+   (id,value) = call SomeTypes.DeEntryNoDrop[IntU8.U8](b);
+   v = unpack value:SomeTypes.NoDrop[IntU8.U8];
+   return;
+};
+
+transaction(borrow(IndexOps(0x00)) b:System.Entry[SomeTypes.NoDrop[IntU8.U8]]):(log s:%System.Entry[SomeTypes.NoDrop[IntU8.U8]]){
+    return project b:%System.Entry[SomeTypes.NoDrop[IntU8.U8]];
 };

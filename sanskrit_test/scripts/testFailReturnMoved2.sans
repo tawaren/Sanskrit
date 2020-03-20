@@ -1,10 +1,10 @@
 module TestFailReturnMoved2 {
 
-    type <Drop, Embed> X[<Embed> A]{
+    type <Drop, Unbound> X[A]{
         Ctr(A);
     };
 
-    private fun Test[<Embed, Drop> A](consume a:A):(b:.X[A]){
+    private fun Test[<Drop, Value, Unbound> A](consume a:A):(b:.X[A]){
        b = pack .X[A]#Ctr(a);
        discard b;
        return b;
