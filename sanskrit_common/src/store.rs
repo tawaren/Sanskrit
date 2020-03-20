@@ -5,6 +5,11 @@ use alloc::vec::Vec;
 use model::Hash;
 use hashing::*;
 
+pub struct ChangeReport {
+    pub entries_difference: isize,
+    pub bytes_difference: isize,
+}
+
 //Trait representing a store
 //Allows it to be flexible from Temporary in Memeory, over stateless in Memeory to persistent
 pub trait Store {
@@ -14,13 +19,14 @@ pub trait Store {
     fn delete(&self, class:StorageClass, key: &Hash) -> Result<()>;
     //Gets a value out and uses P as Parser
     fn get<P,F:FnOnce(&[u8]) -> P>(&self, class:StorageClass, key: &Hash, f:F) -> Result<P>;
-    //Stores a value in the store (reqiures it is empty)
+    //Stores a value in the store (reqiures that it is empty)
     fn set(&self, class:StorageClass, key:Hash, data:Vec<u8>) -> Result<()> ;
-    //Stores a value in the store replacing the existing
-    fn replace(&self, class:StorageClass, key:Hash, data:Vec<u8>) -> Result<()> ;
-    //Lists all elems from that category
-    //just for debug and test, not suitable for rest as it copies the whole store to memory
-    //fn list(&self, class:StorageClass) -> Vec<(Hash, Vec<u8>)>;
+    // reports the pending elements
+    fn report(&self, class:StorageClass) -> ChangeReport;
+    //commits accumulated changes
+    fn commit(&self, class:StorageClass);
+    //reverts accumulated changes;
+    fn rollback(&self, class:StorageClass);
 
     //helper
     fn parsed_get<'a, P:Parsable<'a>, A: ParserAllocator>(&self, class:StorageClass, key: &Hash, max_dept:usize, alloc:&'a A) -> Result<P>{
@@ -31,15 +37,16 @@ pub trait Store {
         self.set(class,key, Serializer::serialize_fully(data,max_dept)?)
     }
 
-    fn serialized_replace<S:Serializable,>(&self, class:StorageClass, key:Hash, max_dept:usize, data:&S) -> Result<()>{
-        self.replace(class,key, Serializer::serialize_fully(data,max_dept)?)
-    }
 }
 
 //enum pointing to different sections in the store
 #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone, Debug)]
 pub enum StorageClass{
-    AdtDesc, FunDesc, Module, Elem
+    Module,
+    Transaction,
+    Descriptor,
+    EntryHash,  // hash(type||value)
+    EntryValue //Value will only be needed by state providers
 }
 
 //Helper to calc the key for a storage slot

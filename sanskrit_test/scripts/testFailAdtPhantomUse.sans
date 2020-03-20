@@ -1,5 +1,5 @@
 module TestFailAdtPhantomUse {
-    type Wrapper[phantom <Embed> A] {
+    type Wrapper[phantom A] {
         Ctr(A);
     };
 }

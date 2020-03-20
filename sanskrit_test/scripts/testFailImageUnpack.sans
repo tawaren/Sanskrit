@@ -1,5 +1,5 @@
 module TestFailImageUnpack {
-    private fun Test[<Embed> A](consume a:%TestSucAdt.Wrapper[A]):(b:A){
+    private fun Test[<Value, Unbound> A](consume a:%TestSucAdt.Wrapper[A]):(b:A){
        b = unpack a:%TestSucAdt.Wrapper[A];
        return b;
     };

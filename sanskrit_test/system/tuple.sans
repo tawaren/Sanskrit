@@ -1,0 +1,5 @@
+module Tuple {
+    public(create,consume) type <Copy,Drop,Persist,Value, Unbound>  Tuple2[T,Y]{
+             Ctr(T,Y);
+    };
+}

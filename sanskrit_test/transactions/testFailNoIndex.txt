@@ -1,5 +1,4 @@
-signed(A) transaction{
+transaction:(store b:SomeTypes.X[IntU8.U8]){
    a = lit 1:IntU8.U8;
-   b = call SomeTypes.GenNoIndex[IntU8.U8](a);
-   store b;
+   return pack SomeTypes.X[IntU8.U8]#Ctr(a);
 };

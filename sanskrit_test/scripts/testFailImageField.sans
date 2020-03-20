@@ -1,5 +1,5 @@
 module TestFailImageField {
-    private fun Test[<Embed> A](consume a:%TestSucAdt.Wrapper[A]):(b:A){
+    private fun Test[<Value, Unbound> A](consume a:%TestSucAdt.Wrapper[A]):(b:A){
        b = field[0] a:%TestSucAdt.Wrapper[A];
        return b;
     };

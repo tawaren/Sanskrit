@@ -1,10 +1,10 @@
 module TestFailSwitchReturnDrop {
-   type Option[<Embed> T] {
+   type Option[T] {
        Some(T);
        None;
    };
 
-   fun TestFunApply[<Embed, Drop, Copy> A](consume a:.Option[A], a2:A):(c:A) {
+   fun TestFunApply[<Drop, Copy, Value, Unbound> A](consume a:.Option[A], a2:A):(c:A) {
        c = switch a:.Option[A] {
           Some(a) => {
             return a;

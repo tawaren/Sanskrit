@@ -1,5 +1,5 @@
 module TestFailFunDoubleReturn {
-   fun TestFunApply[A](consume a:A):(a:A, b:A) {
+   fun TestFunApply[<Value, Unbound> A](consume a:A):(a:A, b:A) {
        b = a;
        return (b,b);
    };

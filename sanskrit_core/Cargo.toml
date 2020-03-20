@@ -7,6 +7,9 @@ authors = ["tawaren <markus.knecht85@gmail.com>"]
 default = ["std"]
 std = []
 
+[dependencies]
+hashbrown = "0.6.3"
+
 [dependencies.sanskrit_common]
 path = "../sanskrit_common"
 version = "0.1.0"

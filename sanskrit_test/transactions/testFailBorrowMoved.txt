@@ -1,6 +1,0 @@
-signed(A) transaction{
-   a = lit 1:IntU8.U8;
-   b = a;
-   c = &a;
-};
-

@@ -1,0 +1,22 @@
+module TestFailReadSwitch4 {
+
+    public(consume, inspect) type <Drop> X[A] {
+        X(A);
+        Y(A);
+    };
+
+
+    private fun Test[<Value, Unbound, Drop> A](a:.X[A], consume c:A):(b:A){
+       b = inspect a:.X[A] {
+            X(d) => {
+                discard a;
+                return c;
+            };
+            Y(d) => {
+                discard a;
+                return c;
+            };
+       };
+       return b;
+    };
+}

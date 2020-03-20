@@ -1,10 +1,10 @@
 module TestSucCreateClosedAdts {
 
-        type <Embed>  Wrapper[<Embed> X] {
+        type <Value, Unbound> Wrapper[X] {
             Ctr(X);
         };
 
-        type <Embed> Enum {
+        type <Value, Unbound> Enum {
             A;
             B;
             C;
@@ -12,76 +12,66 @@ module TestSucCreateClosedAdts {
             E;
         };
 
-        type Option[<Embed> T] {
+        type <Value, Unbound> Option[T] {
             Some(T);
             None;
         };
 
-        type Alternative[<Embed> A,<Embed> B] {
+        type <Value, Unbound> Alternative[A,B] {
             A(A);
             B(B);
         };
 
         public fun CreateEnumA():(res: .Enum) {
-            e = pack .Enum#A();
-            return e;
+            return pack .Enum#A();
         };
 
         public fun CreateEnumB():(res: .Enum) {
-            e = pack .Enum#B();
-            return e;
+            return pack .Enum#B();
         };
 
-        public fun CreateWrapper[<Embed> T](consume t:T):(res: .Wrapper[T]) {
-            w = pack .Wrapper[T]#Ctr(t);
-            return w;
+        public fun CreateWrapper[<Unbound> T](consume t:T):(res: .Wrapper[T]) {
+            return pack .Wrapper[T]#Ctr(t);
         };
 
-        public fun CreateImageWrapper[<Embed> T](consume t:%T):(res: %.Wrapper[T]) {
-            w = pack %.Wrapper[T]#Ctr(t);
-            return w;
+        public fun CreateImageWrapper[T](consume t:%T):(res: %.Wrapper[T]) {
+            return pack %.Wrapper[T]#Ctr(t);
         };
 
-        public fun CreateWrapperImage[<Embed> T](consume t:%T):(res: .Wrapper[%T]) {
-            w = pack .Wrapper[%T]#Ctr(t);
-            return w;
+        public fun CreateWrapperImage[T](consume t:%T):(res: .Wrapper[%T]) {
+            return pack .Wrapper[%T]#Ctr(t);
         };
 
-        public fun CreateNone[<Embed> T]():(res: .Option[T]) {
-            none = pack .Option[T]#None();
-            return none;
+
+        public fun CreateNone[<Value, Unbound> T]():(res: .Option[T]) {
+            return pack .Option[T]#None();
         };
 
-        public fun CreateSome[<Embed> T](consume t:T):(res: .Option[T]) {
-            some = pack .Option[T]#Some(t);
-            return some;
+        public fun CreateSome[<Value, Unbound> T](consume t:T):(res: .Option[T]) {
+            return pack .Option[T]#Some(t);
         };
 
-        public fun CreateAltA[<Embed> A,<Embed> B](consume a:A):(res: .Alternative[A,B]) {
-            a = pack .Alternative[A,B]#A(a);
-            return a;
+        public fun CreateAltA[<Value, Unbound> A,<Value, Unbound> B](consume a:A):(res: .Alternative[A,B]) {
+            return pack .Alternative[A,B]#A(a);
         };
 
-        public fun CreateAltB[<Embed> A,<Embed> B](consume b:B):(res: .Alternative[A,B]) {
-            b = pack .Alternative[A,B]#B(b);
-            return b;
+        public fun CreateAltB[<Value, Unbound> A,<Value, Unbound> B](consume b:B):(res: .Alternative[A,B]) {
+            return pack .Alternative[A,B]#B(b);
         };
 
         private fun DropEnum(consume enum:.Enum):() {
-            () = switch enum : .Enum {
+            return switch enum : .Enum {
                 A => {return;};
                 B => {return;};
                 C => {return;};
                 D => {return;};
                 E => {return;};
             };
-            return;
         };
 
         private fun DropWrapper(consume wrap:.Wrapper[.Enum]):() {
             enum = unpack wrap : .Wrapper[.Enum];
-            () = call .DropEnum(enum);
-            return;
+            return call .DropEnum(enum);
         };
 
         fun CreateStuffConsume():() {
@@ -98,40 +88,34 @@ module TestSucCreateClosedAdts {
            () = switch none :  .Option[.Wrapper[.Enum]] {
                 None => {return;};
                 Some(wrap) => {
-                     () = call .DropWrapper(wrap);
-                     return;
+                     return call .DropWrapper(wrap);
                 };
            };
 
            () = switch some :  .Option[.Wrapper[.Enum]] {
                None => {return;};
                Some(wrap) => {
-                    () = call .DropWrapper(wrap);
-                    return;
+                    return call .DropWrapper(wrap);
                };
            };
 
            () = switch a : .Alternative[.Enum,.Wrapper[.Enum]] {
                 A(enum) => {
-                   () = call .DropEnum(enum);
-                   return;
+                   return call .DropEnum(enum);
                 };
                 B(wrap) => {
-                     () = call .DropWrapper(wrap);
-                     return;
+                     return call .DropWrapper(wrap);
                 };
            };
 
-           () = switch b : .Alternative[.Enum,.Wrapper[.Enum]] {
+           return switch b : .Alternative[.Enum,.Wrapper[.Enum]] {
                 A(enum) => {
-                   () = call .DropEnum(enum);
-                   return;
+                   return call .DropEnum(enum);
                 };
                 B(wrap) => {
-                     () = call .DropWrapper(wrap);
-                     return;
+                     return call .DropWrapper(wrap);
                 };
            };
-           return;
         };
+
 }

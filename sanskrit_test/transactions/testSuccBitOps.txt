@@ -1,4 +1,4 @@
-signed(A) transaction{
+transactional transaction{
    a = lit 5:IntU8.U8;
    b = lit 3:IntU8.U8;
    c = lit 1:IntU8.U8;
@@ -6,7 +6,13 @@ signed(A) transaction{
    () = call Helpers.AssertEqU8(c,c2);
 };
 
-signed(A) transaction{
+transaction:(log r:IntU8.U8){
+   a = lit 5:IntU8.U8;
+   b = lit 3:IntU8.U8;
+   return call BitOps.And(a,b);
+};
+
+transactional transaction{
    a = lit 0x00FF00FF00FF00FF:Data.Data8;
    b = lit 0x0000FFFF0000FFFF:Data.Data8;
    c = lit 0x000000FF000000FF:Data.Data8;
@@ -14,7 +20,13 @@ signed(A) transaction{
    () = call Helpers.AssertEqData8(c,c2);
 };
 
-signed(A) transaction{
+transaction:(log r:Data.Data8){
+   a = lit 0x00FF00FF00FF00FF:Data.Data8;
+   b = lit 0x0000FFFF0000FFFF:Data.Data8;
+   return call BitOps.And2(a,b);
+};
+
+transactional transaction{
    a = lit 5:IntU8.U8;
    b = lit 3:IntU8.U8;
    c = lit 7:IntU8.U8;
@@ -22,7 +34,13 @@ signed(A) transaction{
    () = call Helpers.AssertEqU8(c,c2);
 };
 
-signed(A) transaction{
+transaction:(log r:IntU8.U8){
+   a = lit 5:IntU8.U8;
+   b = lit 3:IntU8.U8;
+   return call BitOps.Or(a,b);
+};
+
+transactional transaction{
    a = lit 0x00FF00FF00FF00FF:Data.Data8;
    b = lit 0x0000FFFF0000FFFF:Data.Data8;
    c = lit 0x00FFFFFF00FFFFFF:Data.Data8;
@@ -30,7 +48,13 @@ signed(A) transaction{
    () = call Helpers.AssertEqData8(c,c2);
 };
 
-signed(A) transaction{
+transaction:(log r:Data.Data8){
+   a = lit 0x00FF00FF00FF00FF:Data.Data8;
+   b = lit 0x0000FFFF0000FFFF:Data.Data8;
+   return call BitOps.Or2(a,b);
+};
+
+transactional transaction{
    a = lit 5:IntU8.U8;
    b = lit 3:IntU8.U8;
    c = lit 6:IntU8.U8;
@@ -38,7 +62,13 @@ signed(A) transaction{
    () = call Helpers.AssertEqU8(c,c2);
 };
 
-signed(A) transaction{
+transaction:(log r:IntU8.U8){
+   a = lit 5:IntU8.U8;
+   b = lit 3:IntU8.U8;
+   return call BitOps.Xor(a,b);
+};
+
+transactional transaction{
    a = lit 0x00FF00FF00FF00FF:Data.Data8;
    b = lit 0x0000FFFF0000FFFF:Data.Data8;
    c = lit 0x00FFFF0000FFFF00:Data.Data8;
@@ -46,70 +76,32 @@ signed(A) transaction{
    () = call Helpers.AssertEqData8(c,c2);
 };
 
-signed(A) transaction{
+transaction:(log r:Data.Data8){
+   a = lit 0x00FF00FF00FF00FF:Data.Data8;
+   b = lit 0x0000FFFF0000FFFF:Data.Data8;
+   return call BitOps.Xor2(a,b);
+};
+
+transactional transaction{
    a = lit 1:IntU8.U8;
    c = lit 254:IntU8.U8;
    c2 = call BitOps.Not(a);
    () = call Helpers.AssertEqU8(c,c2);
 };
 
-signed(A) transaction{
+transaction:(log r:IntU8.U8){
+   a = lit 1:IntU8.U8;
+   return call BitOps.Not(a);
+};
+
+transactional transaction{
    a = lit 0x00FF00FF00FF00FF:Data.Data8;
    c = lit 0xFF00FF00FF00FF00:Data.Data8;
    c2 = call BitOps.Not2(a);
    () = call Helpers.AssertEqData8(c,c2);
 };
 
-signed(A) transaction{
-   a = lit 0x0000000000000100:Data.Data8;
-   b = lit 8:IntU8.U8;
-   c = call BitOps.GetBit(a,b);
-   () = call Helpers.AssertTrue(c);
-};
-
-signed(A) transaction{
-   a = lit 0x0000000000000000:Data.Data8;
-   b = lit 64:$u16;
-   c = call BitOps.ErrorGetBit(a,b);
-   () = call Helpers.AssertTrue(c);
-};
-
-signed(A) transaction{
-   a = lit 0x1111111111101111:Data.Data8;
-   a2 = lit 0x1111111110111111:Data.Data8;
-   b = lit 16:IntU8.U8;
-   b2 = lit 24:IntU8.U8;
-   c = call BitOps.GetBit(a,b);
-   c2 = call BitOps.GetBit(a2,b2);
-   () = call Helpers.AssertEqBool(c,c2);
-};
-
-signed(A) transaction{
-   a = lit 0x0000000000000000:Data.Data8;
-   b = lit 8:IntU8.U8;
-   c = lit 0x0000000000000100:Data.Data8;
-   c2 = call BitOps.SetBit(a,b);
-   () = call Data.eq8(c,c2);
-};
-
-signed(A) transaction{
-   a = lit 0x0000000000000000:Data.Data8;
-   b = lit 64:$u16;
-   c = call BitOps.ErrorSetBit(a,b);
-   () = call Helpers.AssertTrue(c);
-};
-
-signed(A) transaction{
-   a = lit 0x1111111111111111:Data.Data8;
-   b = lit 16:IntU8.U8;
-   c = lit 0x1111111111101111:Data.Data8;
-   c2 = call BitOps.UnSetBit(a,b);
-   () = call Helpers.AssertEqData8(c,c2);
-};
-
-signed(A) transaction{
-   a = lit 0x1111111111111111:Data.Data8;
-   b = lit 64:IntU16.U16;
-   c = call BitOps.ErrorUnSetBit(a,b);
-   () = call Helpers.AssertTrue(c);
+transaction:(log r:Data.Data8){
+   a = lit 0x00FF00FF00FF00FF:Data.Data8;
+   return call BitOps.Not2(a);
 };

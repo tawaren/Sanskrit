@@ -1,552 +1,538 @@
-use alloc::rc::Rc;
-use utils::Cache;
 use sanskrit_common::errors::*;
-use sanskrit_common::capabilities::*;
-use loader::StorageCache;
+use loader::Loader;
 use sanskrit_common::store::Store;
 use utils::Crc;
 use model::resolved::*;
 use model::*;
 use alloc::vec::Vec;
 use sanskrit_common::model::*;
-use context::*;
+use model::linking::{Component, CallableComponent};
+use alloc::rc::Rc;
+use model::bitsets::{CapSet, BitSet};
 
 //All things that can be cached in an import
-pub struct Cachings {
-    mref_cache:Cache<ModRef, Rc<ModuleLink>>,                   //Cached Modules
-    erref_cache:Cache<ErrorRef, Rc<ResolvedErr>>,               //Cached Errors
-    tref_cache:Cache<TypeRef, Crc<ResolvedType>>,               //Cached Types
-    ctr_cache:Cache<TypeRef, Rc<Vec<Vec<Crc<ResolvedType>>>>>,  //Cached Constructors
-    lit_cache:Cache<TypeRef, u16>,                              //Cached Literal sizes
-    fref_cache:Cache<FuncRef, Rc<ResolvedFunction>>,            //Cached Functions
-    f_sig_cache:Cache<FuncRef, Rc<ResolvedSignature>>,          //Cached Signatures
-    sig_cache:Cache<TypeRef, Rc<ResolvedSignature>>,            //Cached Signatures
-
+pub struct CachedImports {
+    mref_cache:Vec<Crc<ModuleLink>>,                 //Cached Modules
+    tref_cache:Vec<Crc<ResolvedType>>,               //Cached Types
+    pref_cache:Vec<Crc<ResolvedPermission>>,
+    cref_cache:Vec<Crc<ResolvedCallable>>,           //Cached Callables
 }
 
 
-impl Cachings {
+impl CachedImports {
     //Generates a fresh Empty Cache
-    pub fn new(ctx:&InputContext) -> Self {
-        Cachings{
-            mref_cache: Cache::new(ctx.num_modules()),
-            erref_cache: Cache::new(ctx.num_error_imports()),
-            tref_cache: Cache::new(ctx.num_types()),
-            ctr_cache: Cache::new(ctx.num_types()),
-            lit_cache: Cache::new(ctx.num_types()),
-            fref_cache: Cache::new(ctx.num_function_imports()),
-            f_sig_cache: Cache::new(ctx.num_function_imports()),
-            sig_cache: Cache::new(ctx.num_types()),
+    pub fn new(imports:&[Imports]) -> Result<Self> {
+        let mut num_modules = 0;
+        let mut num_types = 0;
+        let mut num_permission = 0;
+        let mut num_callables = 0;
+
+        for imp in imports {
+            match imp {
+                Imports::Module(_) => num_modules+=1,
+                Imports::Generics(gens) => num_types+=gens.len(),
+                Imports::Public(public) => {
+                    num_modules+=public.modules.len();
+                    num_types+=public.types.len();
+                },
+                Imports::Body(body) => {
+                    num_modules+=body.public.modules.len();
+                    num_types+=body.public.types.len();
+                    num_permission+=body.permissions.len();
+                    num_callables+=body.callables.len();
+                },
+            }
         }
+
+        if num_modules > 256 {
+            return error(||"Can not import more than 256 Modules")
+        }
+
+        if num_types > 256 {
+            return error(||"Can not import more than 256 Types")
+        }
+
+        if num_permission > 256 {
+            return error(||"Can not import more than 256 Permisisons")
+        }
+
+        if num_callables > 256 {
+            return error(||"Can not import more than 256 Callables")
+        }
+
+        Ok(CachedImports {
+            mref_cache: Vec::with_capacity(num_modules),
+            tref_cache: Vec::with_capacity(num_types),
+            pref_cache: Vec::with_capacity(num_permission),
+            cref_cache: Vec::with_capacity(num_callables)
+        })
     }
 }
 
-pub struct Context<'a,'b, S:Store + 'b> {
-    pub ctx: InputContext<'a>,          //The Plain Input Context
-    pub subs: Vec<Crc<ResolvedType>>,   //The substitutions to use to resolve generic parameters
-    pub cache: Rc<Cachings>,            //The Caches
-    pub store: &'b StorageCache<'b, S>, //The Store
-    pub checking: bool,
+pub struct Context<'b, S: Store + 'b> {
+    //The resolved imports
+    pub cache: CachedImports,
+    //The Backend Store
+    pub store: &'b Loader<'b, S>,
 }
 
+
 pub fn top_level_subs(generics:&[Generic]) -> Vec<Crc<ResolvedType>> {
+    //Note: We do not account / deduplicate for the generics as these are:
+    //         1: implicit
+    //         2: unique (each is its own and should not be deduplicated)
     generics.iter().enumerate().map(|(i,c)| match *c {
-        Generic::Phantom => Crc::new(ResolvedType::Generic { extended_caps: CapSet::empty(), caps: CapSet::empty(), offset:i as u8, is_phantom:true}),
+        Generic::Phantom => Crc{elem:Rc::new(ResolvedType::Generic { caps: CapSet::empty(), offset:i as u8, is_phantom:true})},
         Generic::Physical(caps) => {
-            let extended_caps = caps.union(CapSet::recursive());
-            Crc::new(ResolvedType::Generic { extended_caps, caps, offset:i as u8, is_phantom:false})
+            Crc{elem:Rc::new(ResolvedType::Generic { caps, offset:i as u8, is_phantom:false})}
         },
     }).collect()
 }
 
-impl<'a,'b, S:Store + 'b> Context<'a,'b, S> {
-    //Generates a top level local Context for an Adt fromminput
-    pub fn from_input_adt(adt:&'a DataComponent, link:Hash, store:&'b StorageCache<'b,S>) -> Result<Self> {
-        Self::from_adt(adt,ModuleLink::This(link),store,true)
-    }
+impl<'b, S:Store + 'b> Context<'b, S> {
 
-    //Generates a top level local Context for an Adt fromminput
-    pub fn from_store_adt(adt:&'a DataComponent, link:Hash, store:&'b StorageCache<'b,S>) -> Result<Self> {
-        Self::from_adt(adt,ModuleLink::This(link),store,false)
-    }
-
-    fn from_adt(adt:&'a DataComponent, link:ModuleLink, store:&'b StorageCache<'b,S>, checking:bool) -> Result<Self> {
-        //Get the input context for the Adt
-        let ctx = InputContext::from_data(adt, link);
-        //check that the size is ok (should be given)
-        assert!(adt.generics.len() <= u8::max_value() as usize);
-
+    //Generates a top level local Context for a Component from input
+    pub fn from_module_component<T:Component>(comp:&T, module:&Crc<ModuleLink>, use_body:bool, store:&'b Loader<'b,S>) -> Result<Self> {
+        assert!(comp.get_generics().len() <= u8::max_value() as usize);
+        let top = top_level_subs(comp.get_generics());
+        let public = comp.get_public_import();
+        if use_body {
+            match comp.get_body_import() {
+                None => { }
+                Some(body) => {
+                    //Generate a local context
+                    return Self::create_and_resolve(&[
+                            Imports::Module(module),
+                            Imports::Generics(&top),
+                            Imports::Public(public),
+                            Imports::Body(body),
+                        ], store)
+                },
+            }
+        }
         //Generate a local context
-        Ok(Context {
-            //The substitutions are just top level generics
-            subs: top_level_subs(&adt.generics),
-            cache: Rc::new(Cachings::new(&ctx)),
-            ctx,
-            store,
-            checking,
-        })
+        return Self::create_and_resolve(&[
+                Imports::Module(module),
+                Imports::Generics(&top),
+                Imports::Public(public),
+            ], store)
     }
 
-    pub fn from_top_func(fun:&'a FunctionComponent, store:&'b StorageCache<'b,S>) -> Result<Self> {
-        Self::from_func(fun,None,store,true)
+    //Generates a top level local Context for a standalone Component from Input
+    pub fn from_top_component<T:Component>(comp:&T, store:&'b Loader<'b,S>) -> Result<Self> {
+        assert_eq!(comp.get_generics().len(), 0);
+        let public = comp.get_public_import();
+        match comp.get_body_import() {
+            None => { }
+            Some(body) => {
+                return Self::create_and_resolve(&[
+                        Imports::Public(public),
+                        Imports::Body(body)
+                    ], store)
+            },
+        }
+        return Self::create_and_resolve(&[Imports::Public(public)], store)
     }
 
-    pub fn from_input_func(fun:&'a FunctionComponent, link:Hash, store:&'b StorageCache<'b,S>) -> Result<Self> {
-        Self::from_func(fun,Some(ModuleLink::This(link)),store,true)
+
+    //Gets and resolves a Module from the local context
+    pub fn get_mod(&self, mref:ModRef) -> Result<Crc<ModuleLink>> {
+        unpack_or_error(self.cache.mref_cache.get(mref.0 as usize).cloned(),||"Requested module not imported")
     }
 
-    pub fn from_store_func(fun:&'a FunctionComponent, link:Hash, store:&'b StorageCache<'b,S>) -> Result<Self> {
-        Self::from_func(fun,Some(ModuleLink::This(link)),store,false)
+    pub fn get_type(&self, tref:TypeRef) -> Result<Crc<ResolvedType>> {
+        unpack_or_error(self.cache.tref_cache.get(tref.0 as usize).cloned(),||"Requested type not imported")
     }
 
-    fn from_func(fun:&'a FunctionComponent, link:Option<ModuleLink>, store:&'b StorageCache<'b,S>, checking:bool) -> Result<Self> {
-        //Get the input context for the Adt
-        let ctx = InputContext::from_function(fun,link);
-        //check that the size is ok (should be given)
-        assert!(fun.shared.generics.len() <= u8::max_value() as usize);
-
-        //Generate a local context
-        Ok(Context {
-            //The substitutions are just top level generics
-            subs:top_level_subs(&fun.shared.generics),
-            cache: Rc::new(Cachings::new(&ctx)),
-            ctx,
-            store,
-            checking,
-        })
+    pub fn get_callable(&self, cref:CallRef) -> Result<Crc<ResolvedCallable>> {
+        unpack_or_error(self.cache.cref_cache.get(cref.0 as usize).cloned(),||"Requested callable not imported")
     }
-
-    pub fn from_input_sig(sig:&'a SigComponent, link:Hash, store:&'b StorageCache<'b,S>) -> Result<Self> {
-        Self::from_sig(sig,ModuleLink::This(link),store,true)
-    }
-
-    pub fn from_store_sig(sig:&'a SigComponent, link:Hash, store:&'b StorageCache<'b,S>) -> Result<Self> {
-        Self::from_sig(sig,ModuleLink::This(link),store,false)
-    }
-
-    fn from_sig(sig:&'a SigComponent, link:ModuleLink, store:&'b StorageCache<'b,S>, checking:bool) -> Result<Self> {
-        //Get the input context for the Adt
-        let ctx = InputContext::from_sig(sig,link);
-        //check that the size is ok (should be given)
-        assert!(sig.shared.generics.len() <= u8::max_value() as usize);
-
-        //Generate a local context
-        Ok(Context {
-            //The substitutions are just top level generics
-            subs:top_level_subs(&sig.shared.generics),
-            cache: Rc::new(Cachings::new(&ctx)),
-            ctx,
-            store,
-            checking,
-        })
-    }
-
 
     //Gets and resolves a type from the local context
-    pub fn get_type(&self, tref:TypeRef) -> Result<Crc<ResolvedType>> {
-        //only do this once and then cache it (detects cycles as well)
-        self.cache.tref_cache.cached(tref,||{
-            //get the input type from the Input Context
-            match self.ctx.get_type(tref.0) {
-                //Its a general
-                Some(Type::Real(base_type, applies)) => {
-                   //build the type
-                    match base_type {
-                        BaseType::Data(DataLink {module, offset}) => {
-                            //Fetch the link
-                            let module_link =  self.get_mod(*module)?;
-                            //Load the Adt
-                            let adt_cache = self.store.get_data_type(&*module_link, *offset)?;
-                            // get the adt
-                            let adt = adt_cache.retrieve();
-                            //prepare the applies vector
-                            let result:Vec<Crc<ResolvedType>> = applies.iter().map(|appl|self.get_type(*appl)).collect::<Result<_>>()?;
-                            //check that the type is legit
-                            if self.checking { self.check_generic_constraints(&adt.generics,&result)?; }
-                            //Resolve the type
-                            Ok(self.resolve_data_type(adt, module_link, *offset, &result))
-                        },
-                        BaseType::Sig(SigLink{module, offset}) => {
-                            //Fetch the link
-                            let module_link =  self.get_mod(*module)?;
-                            //Load the Sig
-                            let sig_cache = self.store.get_sig(&*module_link,*offset)?;
-                            // get the adt
-                            let sig = sig_cache.retrieve();
-                            //prepare the applies vector
-                            let result:Vec<Crc<ResolvedType>> = applies.iter().map(|appl|self.get_type(*appl)).collect::<Result<_>>()?;
-                            //check that the type is legit
-                            if self.checking {
-                                self.check_generic_constraints(&sig.shared.generics,&result)?;
-                                self.check_sig_generic_constraints(&sig.local_generics,&result)?;
-                            }
-                            Ok(self.resolve_sig_type(sig, module_link, *offset, &result))
-                        }
-                    }
-                },
-                //its an image type
-                Some(Type::Image(inner)) => Ok(Crc::new(ResolvedType::Image { typ: self.get_type(*inner)? })),
-                //its a generic, do a substitution
-                Some(Type::Generic(gref)) => match self.subs.get(gref.0 as usize) {
-                    None => type_does_not_exist_error(),
-                    Some(res) => Ok(res.clone()),
-                },
-                //ups no such type
-                None => type_does_not_exist_error()
-            }
-        })
+    pub fn get_perm(&self, pref:PermRef) -> Result<Crc<ResolvedPermission>> {
+        unpack_or_error(self.cache.pref_cache.get(pref.0 as usize).cloned(),||"Requested permission not imported")
     }
 
     //Gets and resolves a Module from the local context
-    pub fn get_mod(&self, mref:ModRef) -> Result<Rc<ModuleLink>> {
-        //only do this once and then cache it (detects cycles as well)
-        self.cache.mref_cache.cached(mref, ||{
-            //Get the Input Module link
-            Ok(Rc::new(*match self.ctx.get_module(mref.0) {
-                Some(module) => module,
-                None => return module_does_not_exist_error(),
-            }))
-        })
+    pub fn list_mods(&self) -> &[Crc<ModuleLink>] {
+        &self.cache.mref_cache
     }
 
-    //Gets and resolves an Error from the local context
-    pub fn get_err(&self, erref:ErrorRef) -> Result<Rc<ResolvedErr>> {
-        //only do this once and then cache it (detects cycles as well)
-        self.cache.erref_cache.cached(erref, ||{
-            //Get the Input error
-            Ok(Rc::new(match self.ctx.get_error_import(erref.0) {
-                //Construct the resolved type
-                Some(err) => ResolvedErr{
-                    offset: err.link.offset,
-                    module: self.get_mod(err.link.module)?, //Get the Module
+    pub fn list_types(&self) -> &[Crc<ResolvedType>] {
+        &self.cache.tref_cache
+    }
+
+    pub fn list_callables(&self) -> &[Crc<ResolvedCallable>] {
+        &self.cache.cref_cache
+    }
+
+    //Gets and resolves a type from the local context
+    pub fn list_perms(&self) -> &[Crc<ResolvedPermission>] {
+        &self.cache.pref_cache
+    }
+
+    pub fn create_and_resolve(imports:&[Imports], store:&'b Loader<'b,S>) -> Result<Self> {
+        let mut context = Context {
+            cache: CachedImports::new(&imports)?,
+            store,
+        };
+        context.resolve_all(imports)?;
+        Ok(context)
+    }
+
+    fn resolve_all(&mut self, imports:&[Imports]) -> Result<()> {
+        for import in imports {
+            match *import {
+                Imports::Module(ref module) => self.resolve_module_plain((*module).clone())?,
+                Imports::Generics(gens) => self.resolve_generics(gens)?,
+                Imports::Public(ref public) => {
+                    self.resolve_modules(&public.modules)?;
+                    self.resolve_types(&public.types)?;
                 },
-                None => return error_does_not_exist_error(),
-            }))
-        })
+                Imports::Body(ref body) => {
+                    self.resolve_modules(&body.public.modules)?;
+                    self.resolve_types(&body.public.types)?;
+                    self.resolve_callables(&body.callables)?;
+                    self.resolve_perms(&body.permissions)?;
+                },
+            }
+        }
+        Ok(())
     }
 
-    //Gets and resolves an Function from the local context
-    pub fn get_func(&self, fref:FuncRef) -> Result<Rc<ResolvedFunction>> {
-        //only do this once and then cache it (detects cycles as well)
-        self.cache.fref_cache.cached(fref, ||{
-            //Get the Input Function
-            let fun_imp = match self.ctx.get_function_import(fref.0) {
-                //todo: more precise error
-                None => return item_not_found(),
-                Some(f) => f,
+    fn resolve_module_plain(&mut self, res:Crc<ModuleLink>) -> Result<()> {
+        //Make sure the module is loaded and accounted even if not used
+        match *res {
+            ModuleLink::Remote(hash) => {self.store.get_module(hash)?;},
+            ModuleLink::This(_) => {},
+        }
+        self.cache.mref_cache.push(res);
+        Ok(())
+    }
+
+    fn resolve_generics(&mut self, generics:&[Crc<ResolvedType>]) -> Result<()>  {
+        for gens in generics {
+            self.cache.tref_cache.push(gens.clone());
+        }
+        Ok(())
+    }
+
+    fn resolve_modules(&mut self, imps:&[ModuleLink]) -> Result<()>  {
+        for imp in imps {
+            self.resolve_module_plain(self.store.dedup_module_link(imp.clone()))?;
+        }
+        Ok(())
+    }
+
+    fn resolve_types(&mut self, imps:&[TypeImport]) -> Result<()> {
+        for imp in imps {
+            let res = match imp {
+                TypeImport::Data{ link:DataLink {module, offset}, applies} => self.resolve_data_type(*module, *offset, &applies),
+                //Its a general
+                TypeImport::Sig{link:SigLink{module, offset}, applies} => self.resolve_sig_type(*module, *offset, applies),
+                //its an image type
+                TypeImport::Projection{typ} => self.resolve_projection_type(*typ),
+                //A special virtual type
+                TypeImport::Virtual(hash) => Ok(self.store.dedup_type(ResolvedType::Virtual(*hash))),
+            }?;
+            self.cache.tref_cache.push(res);
+        }
+        Ok(())
+    }
+
+    fn resolve_callables(&mut self, imps:&[CallableImport]) -> Result<()> {
+        for imp in imps {
+            let res = match imp {
+                CallableImport::Function { link: FuncLink{module, offset}, ref applies,.. } => self.resolve_function_callable(*module,*offset, applies),
+                CallableImport::Implement { link: ImplLink{module, offset}, ref applies,.. } => self.resolve_implement_callable(*module,*offset, applies),
+            }?;
+            self.cache.cref_cache.push(res);
+        }
+        Ok(())
+    }
+
+    fn resolve_perms(&mut self, imps:&[PermissionImport]) -> Result<()> {
+        for imp in imps {
+            let res = match imp {
+                PermissionImport::Type(perm,tref) => {
+                    let typ = self.get_type(*tref)?;
+                    match **typ.get_target() {
+                        ResolvedType::Data { .. } => self.store.dedup_permission(ResolvedPermission::TypeData{
+                            perm: *perm,
+                            ctrs:self.resolve_ctr_from_type(&typ)?,
+                            typ
+                        }),
+                        ResolvedType::Sig { .. } => self.store.dedup_permission(ResolvedPermission::TypeSig{
+                            perm: *perm,
+                            signature:self.resolve_signature_from_type(&typ)?,
+                            typ
+                        }),
+                        ResolvedType::Lit { .. } =>  self.store.dedup_permission(ResolvedPermission::TypeLit{
+                            perm: *perm,
+                            size:self.resolve_size_from_type(&typ)?,
+                            typ
+                        }),
+                        _ => return error(||"Provided type does not support Permissions")
+                    }
+                },
+                PermissionImport::Callable(perm, cref) => {
+                    let fun = self.get_callable(*cref)?;
+                    self.store.dedup_permission(ResolvedPermission::FunSig{
+                        perm: *perm,
+                        signature:self.resolve_signature_from_callable(&fun)?,
+                        fun
+                    })
+                }
             };
-
-            //Fetch the link
-            let module_link =  self.get_mod(fun_imp.link.module)?;
-            //Fetch the Cache Entry
-            let fun_cache = self.store.get_func(&*module_link,fun_imp.link.offset)?;
-            //Retrieve the function from the cache
-            let fun= fun_cache.retrieve();
-            // prepare the applies vector
-            let result:Vec<Crc<ResolvedType>> = fun_imp.applies.iter().map(|appl|self.get_type(*appl)).collect::<Result<_>>()?;
-            //check the amount of generics is ok
-            if self.checking { self.check_generic_constraints(&fun.shared.generics,&result)?; }
-
-            Ok(Rc::new(ResolvedFunction{
-                offset: fun_imp.link.offset,
-                module: module_link, //Get the Module
-                //Resolve the applied types
-                applies:result,
-            }))
-        })
-    }
-    
-    
-
-    //Gets a signature for a sig
-    pub fn get_type_sig(&self, sref:TypeRef, store:&StorageCache<S>) -> Result<Rc<ResolvedSignature>> {
-        //only do this once and then cache it (detects cycles as well)
-        self.cache.sig_cache.cached(sref, ||{
-            //Get the Input Function
-            Ok(Rc::new(match *self.get_type(sref)? {
-                ResolvedType::Generic { .. }
-                | ResolvedType::Image { .. }
-                | ResolvedType::Lit { .. }
-                | ResolvedType::Data { .. } => return only_sig_types_have_fun_sigs_error(),
-                ResolvedType::Sig { ref module, offset, ref applies, ..} => {
-                    //Get the cache
-                    let sig_cache = store.get_sig(&**module,offset)?;
-                    //get the function
-                    let sig = sig_cache.retrieve();
-                    //Get its context
-                    let context = sig_cache.substituted_context(applies.iter().map(|ra|ra.typ.clone()).collect(), store)?;
-                    //Build the signature
-                    ResolvedSignature {
-                        //Map the params to the resolved type
-                        params: sig.shared.params.iter().map(|c|{
-                            let typ = context.get_type(c.typ)?;
-                            Ok(ResolvedParam{ typ, consumes: c.consumes })
-                        }).collect::<Result<_>>()?,
-                        //Map the returns to the resolved type
-                        returns: sig.shared.returns.iter().map(|r|{
-                            let typ = context.get_type(r.typ)?;
-                            Ok(ResolvedReturn{ typ, borrows: r.borrows.clone() })
-                        }).collect::<Result<_>>()?,
-                        //Map the risks to the resolved risks
-                        risks: sig.shared.risk.iter().map(|err|context.get_err(*err)).collect::<Result<_>>()?,
-                    }
-                }
-
-            }))
-        })
-    }
-    
-    //Get the ResolvedImplement
-    pub fn get_func_impl(&self, fref:FuncRef, offset:u8, store:&StorageCache<S>) -> Result<Rc<ResolvedImpl>> {
-        let r_fun = self.get_func(fref)?;
-        //Get the cache
-        let func_cache = store.get_func(&*r_fun.module,r_fun.offset)?;
-        //get the function
-        let fun = func_cache.retrieve();
-        //check that impl exists
-        if offset as usize >= fun.implements.len() {
-            return impl_does_not_exist_error()
-        }
-        //get the impl
-        let imp = &fun.implements[offset as usize];
-        //Get its context
-        let context = func_cache.substituted_context(r_fun.applies.clone(), store)?;
-        //Get the sig type -- validator has checked that it matches
-        let sig_type = context.get_type(imp.typ)?;
-        //resolve the captures
-        let capture_types = imp.captures.iter().map(|pos| match context.get_type(fun.shared.params[*pos as usize].typ){
-            //wrap the types into Captures that now their position
-            Ok(typ) => Ok(Rc::new(ResolvedCapture{ typ, pos:*pos })),
-            Err(err) => Err(err)
-        }).collect::<Result<_>>()?;
-        //create it
-        Ok(Rc::new(ResolvedImpl {
-            sig_type,
-            capture_types
-        }))
-    }
-
-    //Gets and resolves a Function signature from the local context
-    pub fn get_func_sig(&self, fref:FuncRef, store:&StorageCache<S>) -> Result<Rc<ResolvedSignature>> {
-        //only do this once and then cache it (detects cycles as well)
-        self.cache.f_sig_cache.cached(fref, ||{
-            //Get the Input Function
-            let r_fun = self.get_func(fref)?;
-            //Get the cache
-            let func_cache = store.get_func(&*r_fun.module,r_fun.offset)?;
-            //get the function
-            let fun = func_cache.retrieve();
-            //Get its context
-            let context = func_cache.substituted_context(r_fun.applies.clone(), store)?;
-            //Build the signature
-            Ok(Rc::new(ResolvedSignature {
-                //Map the params to the resolved type
-                params: fun.shared.params.iter().map(|c|{
-                    let typ = context.get_type(c.typ)?;
-                    Ok(ResolvedParam{ typ, consumes: c.consumes })
-                }).collect::<Result<_>>()?,
-                //Map the returns to the resolved type
-                returns: fun.shared.returns.iter().map(|r|{
-                    let typ = context.get_type(r.typ)?;
-                    Ok(ResolvedReturn{ typ, borrows: r.borrows.clone() })
-                }).collect::<Result<_>>()?,
-                //Map the risks to the resolved risks
-                risks: fun.shared.risk.iter().map(|err|context.get_err(*err)).collect::<Result<_>>()?,
-            }))
-        })
-    }
-
-    //Gets and resolves an Adt Constructor from the local context
-    pub fn get_ctrs(&self, tref:TypeRef, store:&StorageCache<S>) -> Result<Rc<Vec<Vec<Crc<ResolvedType>>>>> {
-        //helper so that the image case can share this code
-        fn get_ctrs<S:Store>(typ:&Crc<ResolvedType>, store:&StorageCache<S>) -> Result<Vec<Vec<Crc<ResolvedType>>>> {
-            Ok(match **typ {
-                ResolvedType::Generic { .. } => return generics_dont_have_ctrs_error(),
-                ResolvedType::Sig { .. } => return sigs_dont_have_ctrs_error(),
-                ResolvedType::Lit { .. } => return no_ctr_available(), //todo: better error
-                //If an image then its ctr is the ctr of the inner but with image fields
-                ResolvedType::Image { ref typ} => {
-                    //get the inners Ctr
-                    let inner = get_ctrs(typ,store)?;
-                    //wrap the fields in Images
-                    inner.into_iter().map(|ctr|ctr.into_iter().map(|field|Crc::new(ResolvedType::Image {typ:field})).collect()).collect()
-                }
-                //If an import we have to import it
-
-                ResolvedType::Data { ref module , offset, ref applies, .. } => {
-                    //Get the cache
-                    let adt_cache = store.get_data_type(&**module, offset)?;
-                    //Get the adt
-                    let adt = adt_cache.retrieve();
-
-                    match adt.body {
-                        //todo: really unreachable i do not think so
-                        DataImpl::Lit(_) | DataImpl::ExternalLit(_,_) | DataImpl::ExternalAdt(_) => unreachable!(),
-                        DataImpl::Adt { ref constructors} => {
-                            //get its context with the applies as substitutions
-                            let context = adt_cache.substituted_context(applies.iter().map(|apl|apl.typ.clone()).collect(),store)?;
-                            //build the ctrs by retriving their fields
-                            constructors.iter().map(|c|{
-                                c.fields.iter().map(|t|context.get_type(*t)).collect::<Result<_>>()
-                            }).collect::<Result<_>>()?
-                        }
-                    }
-                }
-            })
-        }
-        //only do this once and then cache it (detects cycles as well)
-        self.cache.ctr_cache.cached(tref, ||{
-            //Get the Input Type and extract ctrs
-            Ok(Rc::new(get_ctrs(&self.get_type(tref)?, store)?))
-        })
-    }
-
-    //Gets and resolves an Adt Constructor from the local context
-    pub fn get_lit_size(&self, tref:TypeRef, store:&StorageCache<S>) -> Result<u16> {
-        fn get_lit<S:Store>(typ:&Crc<ResolvedType>, store:&StorageCache<S>) -> Result<u16> {
-            //Get the Input Type and extract lits
-            Ok(match **typ {
-                ResolvedType::Generic { .. } => return literal_data_error(), //todo: better error
-                ResolvedType::Sig { .. } => return literal_data_error(), //todo: better error
-                ResolvedType::Data { .. } => return literal_data_error(), //todo: better error
-                //If an image then its ctr is the ctr of the inner but with image fields
-                ResolvedType::Image { ref typ} => get_lit(typ,store)?,
-                //If an lit we have to import it
-                ResolvedType::Lit { ref module , offset, ref applies, .. } => {
-                    //Get the cache
-                    let adt_cache = store.get_data_type(&**module, offset)?;
-                    //Get the adt
-                    let adt = adt_cache.retrieve();
-
-                    match adt.body {
-                        //todo: really unreachable i do not think so
-                        DataImpl::Adt{..} | DataImpl::ExternalAdt(_) => unreachable!(),
-                        DataImpl::Lit(size) |DataImpl::ExternalLit(_,size) => size
-                    }
-                }
-            })
-        }
-
-        //only do this once and then cache it (detects cycles as well)
-        self.cache.lit_cache.cached(tref, ||{
-            //Get the Input Type and extract size
-            Ok(get_lit(&self.get_type(tref)?, store)?)
-        })
-    }
-
-    fn check_generic_constraints(&self, generics:&[Generic], applies:&[Crc<ResolvedType>]) -> Result<()>{
-        // check that the number of applies is correct
-        if generics.len() != applies.len() {
-            return num_applied_generics_error();
-        }
-
-        for (generic,typ) in  generics.iter().zip(applies.iter()) {
-            //update caps
-            if let Generic::Physical(l_caps) = *generic{
-                //A Phantom generic can only be applied to a non-phantom generic
-                if let ResolvedType::Generic { is_phantom:true,  .. }  = **typ {
-                    return can_not_apply_phantom_to_physical_error()
-                }
-                //when a Physical is applied the applier must have all the required capabilities
-                if !l_caps.is_subset_of(typ.get_caps()){
-                    return type_apply_constraint_violation()
-                }
-            }
+            self.cache.pref_cache.push(res);
         }
         Ok(())
     }
 
-    fn check_sig_generic_constraints(&self, is_local:&[u8], applies:&[Crc<ResolvedType>]) -> Result<()>{
-        //check that the locals are local
-        for local in is_local{
-            if *local as usize >= applies.len() {
-                return item_not_found();
-            }
-            if !applies[*local as usize].is_local() {
-                return can_not_apply_non_local_error()
-            }
+    fn resolve_data_type(&self, module:ModRef, offset:u8, applies:&[TypeRef]) -> Result<Crc<ResolvedType>>{
+        //Fetch the link
+        let module_link =  self.get_mod(module)?;
+        //Load the Adt
+        let adt_cache = self.store.get_component::<DataComponent>(&module_link, offset)?;
+        // get the adt
+        let adt = adt_cache.retrieve();
+        //prepare the applies vector
+        let result:Vec<Crc<ResolvedType>> = applies.iter().map(|appl|self.get_type(*appl)).collect::<Result<_>>()?;
+        //check that the number of generics match
+        //Note we do this here so nobody can cause extra iterations in are_phantom & apply_types
+        if adt.generics.len() != applies.len() {
+            return error(||"Applied types mismatch required generics")
         }
-        Ok(())
-    }
-
-    fn resolve_data_type(&self, adt:&DataComponent, module:Rc<ModuleLink>, offset:u8, applies:&[Crc<ResolvedType>]) -> Crc<ResolvedType>{
+        //Resolve the type
         // calc the caps after application & check constraints
         //prepare the applies vector
         let are_phantom = adt.generics.iter().map(|generic|match *generic {
             Generic::Phantom => true,
             Generic::Physical(_) => false,
         });
-        let (extended_caps,caps,result) = apply_types(adt.provided_caps,are_phantom,applies);
+        let (generic_caps,caps) = apply_types(adt.provided_caps,are_phantom,&result);
+
         //Construct the Type
         match adt.body {
-            DataImpl::Adt { .. }
-            | DataImpl::ExternalAdt(_) => {
-                Crc::new(ResolvedType::Data {
+            DataImpl::Internal { ..} => {
+                Ok(self.store.dedup_type(ResolvedType::Data {
                     caps,
-                    extended_caps,
-                    base_caps:adt.provided_caps,
-                    module,
+                    generic_caps,
+                    module:module_link,
                     offset,
                     applies:result,
-                })
+                }))
             },
-            DataImpl::ExternalLit(_, size)
-            | DataImpl::Lit(size) => {
-                Crc::new(ResolvedType::Lit {
+            DataImpl::External(size) => {
+                Ok(self.store.dedup_type(ResolvedType::Lit {
                     caps,
-                    extended_caps,
-                    base_caps:adt.provided_caps,
-                    module,
+                    generic_caps,
+                    module:module_link,
                     offset,
                     size,
                     applies:result,
-                })
+                }))
             },
         }
     }
 
-    fn resolve_sig_type(&self, sig:&SigComponent, module:Rc<ModuleLink>, offset:u8,  applies:&[Crc<ResolvedType>]) -> Crc<ResolvedType>{
-        // calc the caps after application & check constraints
+    fn resolve_sig_type(&self, module:ModRef, offset:u8,  applies:&[TypeRef]) -> Result<Crc<ResolvedType>>{
+        //build the type
+        //Fetch the link
+        let module_link = self.get_mod(module)?;
+        //Load the Sig
+        let sig_cache = self.store.get_component::<SigComponent>(&module_link,offset)?;
+        // get the function
+        let sig = sig_cache.retrieve();
+        //prepare the applies vector
+        let result:Vec<Crc<ResolvedType>> = applies.iter().map(|appl|self.get_type(*appl)).collect::<Result<_>>()?;
+        //check that the number of generics match
+        //Note we do this here so nobody can cause extra iterations in are_phantom & apply_types
+        if sig.shared.generics.len() != applies.len() {
+            return error(||"Applied types mismatch required generics")
+        }
+        // calc the caps after application
         //prepare the applies vector
         let are_phantom = sig.shared.generics.iter().map(|generic|match *generic {
             Generic::Phantom => true,
             Generic::Physical(_) => false,
         });
-        let (extended_caps,caps,result) = apply_types(sig.provided_caps,are_phantom,applies);
+        //apply the types
+        let (generic_caps,caps) = apply_types(sig.provided_caps,are_phantom,&result);
+
         //Construct the Type
-        Crc::new(ResolvedType::Sig {
+        Ok(self.store.dedup_type(ResolvedType::Sig {
             caps,
-            extended_caps,
-            base_caps:sig.provided_caps,
-            module,
+            generic_caps,
+            module:module_link,
             offset,
-            applies:result,
-        })
+            applies:result
+        }))
+    }
+
+    fn project(&self, inner:&Crc<ResolvedType>) -> Crc<ResolvedType>{
+        //Resolve the type
+        match **inner {
+            ResolvedType::Projection { .. } => inner.clone(),
+            _ => self.store.dedup_type(ResolvedType::Projection { un_projected:inner.clone() })
+        }
+    }
+
+    fn resolve_projection_type(&self, inner:TypeRef) -> Result<Crc<ResolvedType>>{
+        //get the inner type
+        Ok(self.project(&self.get_type(inner)?))
+    }
+
+    fn resolve_function_callable(&self, module:ModRef, offset:u8,  applies:&[TypeRef]) -> Result<Crc<ResolvedCallable>>{
+        //Fetch the link
+        let module_link =  self.get_mod(module)?;
+        // prepare the applies vector
+        let result:Vec<Crc<ResolvedType>> = applies.iter().map(|appl|self.get_type(*appl)).collect::<Result<_>>()?;
+
+        Ok(self.store.dedup_callable(ResolvedCallable::Function {
+            offset,
+            module: module_link, //Get the Module
+            //Resolve the applied types
+            applies:result
+        }))
+    }
+
+    fn resolve_implement_callable(&self, module:ModRef, offset:u8,  applies:&[TypeRef]) -> Result<Crc<ResolvedCallable>>{
+        //Fetch the link
+        let module_link =  self.get_mod(module)?;
+        // prepare the applies vector
+        let result:Vec<Crc<ResolvedType>> = applies.iter().map(|appl|self.get_type(*appl)).collect::<Result<_>>()?;
+
+        Ok(self.store.dedup_callable(ResolvedCallable::Implement {
+            offset,
+            module: module_link, //Get the Module
+            //Resolve the applied types
+            applies:result
+        }))
+    }
+
+
+    fn resolve_signature_from_component<C:CallableComponent>(&self, module:&Crc<ModuleLink>, offset:u8, applies:&[Crc<ResolvedType>]) -> Result<Crc<ResolvedSignature>> {
+        //Load the Comp
+        let comp_cache = self.store.get_component::<C>(module, offset)?;
+        // get the Comp
+        let comp = comp_cache.retrieve();
+        //get its context with the applies as substitutions
+        let context = comp_cache.substituted_context(&applies,&self.store)?;
+        // account for the process
+        self.store.accounting.process_bytes(comp.get_signature_byte_size()?)?;
+        //Create the sig
+        Ok(self.store.dedup_signature(ResolvedSignature {
+            //Map the params to the resolved type
+            params: comp.get_params().iter().map(|c|{
+                let typ = context.get_type(c.typ)?;
+                Ok(ResolvedParam{ typ, consumes: c.consumes })
+            }).collect::<Result<_>>()?,
+            //Map the returns to the resolved type
+            returns: comp.get_returns().iter().map(|rt|{
+                context.get_type(*rt)
+            }).collect::<Result<_>>()?,
+            transactional: comp.is_transactional()
+        }))
+    }
+
+    fn resolve_signature_from_callable(&self, fun:&Crc<ResolvedCallable>) -> Result<Crc<ResolvedSignature>> {
+        match **fun {
+            ResolvedCallable::Function {  ref module, offset, ref applies, .. } => {
+                //create the sig
+                self.resolve_signature_from_component::<FunctionComponent>(module, offset, applies)
+            },
+            ResolvedCallable::Implement {  ref module, offset, ref applies, .. } => {
+                //create the sig
+                self.resolve_signature_from_component::<SigComponent>(module, offset, applies)
+            }
+        }
+    }
+
+    fn resolve_signature_from_type(&self, typ:&Crc<ResolvedType>) -> Result<Crc<ResolvedSignature>> {
+        match **typ {
+            ResolvedType::Sig { ref module, offset, ref applies, .. }  => {
+                //create the sig
+                self.resolve_signature_from_component::<SigComponent>(module, offset, applies)
+            },
+
+            ResolvedType::Generic { .. }
+            | ResolvedType::Projection { .. }
+            | ResolvedType::Lit { .. }
+            | ResolvedType::Data { .. }
+            | ResolvedType::Virtual(_) => error(||"Only sig types and its projection have signatures ")
+        }
+    }
+
+
+    fn resolve_size_from_type(&self, typ:&Crc<ResolvedType>) -> Result<u16> {
+        match **typ {
+            ResolvedType::Lit { size, .. } => Ok(size),
+            ResolvedType::Projection { ref un_projected, .. } => match **un_projected {
+                ResolvedType::Lit { size, .. } => Ok(size),
+                _ => error(||"Only literals and its projection have sizes")
+            },
+            _ => error(||"Only literals and its projection have sizes")
+        }
+    }
+
+    fn resolve_ctr_from_type(&self, typ:&Crc<ResolvedType>) -> Result<Crc<Vec<Vec<Crc<ResolvedType>>>>> {
+        match **typ {
+            ResolvedType::Data { ref module, offset, ref applies, .. }  => {
+                //Load the Adt
+                let adt_cache = self.store.get_component::<DataComponent>(module, offset)?;
+                // get the adt
+                let adt = adt_cache.retrieve();
+                //get its context with the applies as substitutions
+                let context = adt_cache.substituted_context(&applies,&self.store)?;
+                // account for the process
+                self.store.accounting.process_bytes(adt.get_signature_byte_size()?)?;
+                //Create the Ctr
+                match adt.body {
+                    DataImpl::Internal { ref constructors } => {
+                        Ok(self.store.dedup_ctr(constructors.iter().map(|c|{
+                            c.fields.iter().map(|t|context.get_type(*t)).collect::<Result<_>>()
+                        }).collect::<Result<_>>()?))
+                    }
+                    DataImpl::External(_) => error(||"Extrnal data does not have ctrs")
+                }
+            },
+            ResolvedType::Projection { ref un_projected, .. } => {
+                assert!(if let ResolvedType::Projection{..} = **un_projected {false} else {true});
+                //recurses only once (assert checks assumption)
+                let ctrs = self.resolve_ctr_from_type(un_projected)?;
+                Ok(self.store.dedup_ctr(ctrs.iter().map(|cases| cases.iter().map(|field|{
+                    self.project(field)
+                }).collect()).collect()))
+            },
+
+            ResolvedType::Generic { .. }
+            | ResolvedType::Lit { .. }
+            | ResolvedType::Sig { .. }
+            | ResolvedType::Virtual(_) => error(||"Only data and its projection have ctrs ")
+        }
+    }
+}
+
+fn unpack_or_error<T,F:FnOnce()-> &'static str>(opt:Option<T>, msg:F) -> Result<T>{
+    match opt {
+        None => error(msg),
+        Some(t) => Ok(t),
     }
 }
 
 
-pub fn apply_types(base_caps:CapSet, are_phantom:impl Iterator<Item=bool>, applies:&[Crc<ResolvedType>]) -> (CapSet,CapSet, Vec<ResolvedApply>) {
-    //prepare the applies vector
-    let mut result = Vec::with_capacity(applies.len());
+pub fn apply_types(base_caps:CapSet, are_phantom:impl Iterator<Item=bool>, applies:&[Crc<ResolvedType>]) -> (CapSet,CapSet) {
     //initial caps
-    let mut extended_caps = base_caps;
+    let mut generic_caps = base_caps;
     let mut caps = base_caps;
     for (is_phantom,typ) in  are_phantom.zip(applies.iter()) {
         //update caps
         if !is_phantom{
             //combine caps
-            extended_caps = extended_caps.intersect(typ.get_extended_caps());
+            generic_caps = generic_caps.intersect(typ.get_generic_caps());
             caps = caps.intersect(typ.get_caps());
-            //push the result
-            result.push(ResolvedApply{ is_phantom: false, typ:typ.clone() })
-        } else {
-            //push the result
-            result.push(ResolvedApply{ is_phantom: true, typ:typ.clone() })
         }
     }
-    //finalize caps
-    extended_caps = extended_caps.union(base_caps.intersect(CapSet::non_recursive()));
-    caps = caps.union(base_caps.intersect(CapSet::non_recursive()));
-    (extended_caps,caps,result)
+    (generic_caps,caps)
 }

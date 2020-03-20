@@ -1,11 +1,14 @@
 module TestSucOpenAdt {
-    type <Create, Consume, Inspect, Embed, Drop, Copy> Phantom;
+    public(create,consume) type <Drop, Copy> Phantom;
 
-    type <Create, Consume, Inspect, Embed, Drop, Copy> Wrapper[<Embed> X] {
+    public(create,consume,inspect) type <Drop, Copy, Primitive, Persist, Value, Unbound> Prim;
+
+
+    public(create,consume) type <Drop, Copy, Value, Unbound> Wrapper[X] {
         Ctr(X);
     };
 
-    type <Create, Consume, Inspect, Embed, Drop, Copy> Enum {
+    public(create,consume) type <Drop, Copy, Value, Unbound>  Enum {
         A;
         B;
         C;
@@ -13,12 +16,12 @@ module TestSucOpenAdt {
         E;
     };
 
-    type <Create, Consume, Inspect, Embed, Drop, Copy> Option[<Embed> T] {
+    public(create,consume,inspect) type <Drop, Copy, Value, Unbound>  Option[T] {
         Some(T);
         None;
     };
 
-    type <Create, Consume, Inspect, Embed, Drop, Copy> Alternative[<Embed> A,<Embed> B] {
+    public(create,consume) type <Drop, Copy, Value, Unbound> Alternative[A,B] {
         A(A);
         B(B);
     };

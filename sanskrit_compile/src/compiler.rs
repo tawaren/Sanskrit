@@ -1,10 +1,8 @@
 //! The compiler does two things:
-//!     1: it generates descriptors (function & adt) which then can be uncalled at runtime
+//!     1: it generates transaction descriptors which then can be called at runtime
 //!     2: it does some optimisations to function code, mainly removing unnecessary information and opcodes
 //!
-//! The results are stored and then can be invoked from the script interpreter at runtime.
-//! If a function is invoked in that way it is executed over another interpreter
-//! (See runtime for the two interpreters)
+//! The results are stored and then can be invoked from runtime.
 //!
 
 use sanskrit_interpreter::model::*;
@@ -12,208 +10,201 @@ use sanskrit_common::store::*;
 use sanskrit_common::model::*;
 use sanskrit_core::model::Exp as SExp;
 use sanskrit_core::model::*;
-use sanskrit_core::loader::StorageCache;
+use sanskrit_core::loader::Loader;
 use sanskrit_core::resolver::Context;
-use sanskrit_common::capabilities::CapSet;
 use sanskrit_core::model::linking::Ref;
+use sanskrit_core::model::bitsets::*;
 use compacting::Compactor;
 use sanskrit_common::errors::*;
 use sanskrit_core::model::resolved::ResolvedType;
-use sanskrit_core::model::resolved::ResolvedApply;
-use sanskrit_common::encoding::NoCustomAlloc;
-use sanskrit_common::arena::*;
+use sanskrit_common::encoding::{NoCustomAlloc, Serializer, Parser};
 use sanskrit_interpreter::externals::CompilationExternals;
-
-pub trait ComponentProcessor {
-    fn process_adt(&mut self, offset:u8, a_desc:&AdtDescriptor) -> Result<()>;
-    fn process_fun(&mut self, offset:u8, f_desc:&FunctionDescriptor) -> Result<()>;
-}
+use sanskrit_core::utils::Crc;
+use sanskrit_core::accounting::Accounting;
+use sanskrit_common::arena::{HeapArena, Heap};
+use limiter::Limiter;
 
 //Entry point that compiles all types and public functions of a module
-pub fn compile<S:Store, P:ComponentProcessor, E:CompilationExternals>(module_hash:&Hash, store:&S, proc:&mut P) -> Result<()>{
-    //load the module
-    let module:Module = store.parsed_get(StorageClass::Module,module_hash, usize::max_value(),&NoCustomAlloc())?;
-    let resolver = StorageCache::new_complete(store);
+pub fn compile_transaction<'b, 'h, S:Store, E:CompilationExternals>(transaction_hash:&Hash, store:&S, accounting:&Accounting, limiter:&Limiter, alloc:&'b HeapArena<'h>) -> Result<TransactionDescriptor<'b>>{
 
-    let heap = Heap::new(10000,4.0);
-    let mut alloc = heap.new_arena(10000);
-    //generate descriptors for all adts
-    for (offset,adt) in  module.data.iter().enumerate() {
-        match adt.body {
-            DataImpl::Adt { .. } => {
-                //Prepare the context
-                let context = Context::from_store_adt(adt, *module_hash, &resolver)?;
-                //call the generator
-                let adt = generate_adt_descriptor(adt,*module_hash, offset as u8, &context, &alloc)?;
-                proc.process_adt(offset as u8,&adt)?;
-                alloc = alloc.reuse();
-            },
-            DataImpl::Lit(_)
-            | DataImpl::ExternalAdt(_)
-            | DataImpl::ExternalLit(_, _) => {},
-        }
-    }
+    //load the module
+    let fun:FunctionComponent = store.parsed_get(StorageClass::Transaction, transaction_hash, usize::max_value(), &NoCustomAlloc())?;
+    let resolver = Loader::new_complete(store, &accounting);
 
     //generate descriptors for all internal functions
-    for (offset,fun) in  module.functions.iter().enumerate() {
-        if fun.visibility != Visibility::Private {
-            match fun.body {
-                FunctionImpl::External(_) => {},
-                FunctionImpl::Internal { ref code, .. } => {
-                    //Prepare the context
-                    let context = Context::from_store_func(fun, *module_hash, &resolver)?;
-                    //call the generator
-                    let fun = &generate_function_descriptor::<S,E>(fun,code, module_hash, offset as u8, &context, &alloc)?;
-                    proc.process_fun(offset as u8,fun)?;
-                    alloc = alloc.reuse()
-                },
-            }
+    if fun.scope != Accessibility::Global {
+        return error(||"Transactions must have the public call permission")
+    } else {
+        match fun.body {
+            CallableImpl::External => error(||"External functions can not be used as transactions"),
+            CallableImpl::Internal { ref code, .. } => {
+                //Prepare the context
+                let context = Context::from_top_component(&fun, &resolver)?;
+                //call the generator
+                generate_transaction_descriptor::<S,E>(&fun, code, &context, &alloc, limiter)
+            },
         }
     }
-    Ok(())
-}
-
-//generates a adt descriptor
-fn generate_adt_descriptor<'b, 'h, S:Store>(adt:&DataComponent, module:Hash, offset:u8, ctx:&Context<S>, alloc:&'b HeapArena<'h>) -> Result<AdtDescriptor<'b>> {
-    //Collect infos about the generics
-    let generics = alloc.iter_alloc_slice(adt.generics.iter().map(|g|match *g {
-        Generic::Phantom => TypeTypeParam(true,CapSet::empty()),
-        Generic::Physical(caps) => TypeTypeParam(false, caps),
-    }))?;
-
-    //todo: the generate_adt_descriptor will vanish so implementening Lit & External would be a waste of time
-    match adt.body {
-        DataImpl::Adt { ref constructors,  .. } => {
-            //collect the constructors and build type builders for their fields
-            let mut ctrs = alloc.slice_builder(constructors.len())?;
-            for ctr in constructors {
-                //collect builders for each field
-                let mut fields =  alloc.slice_builder(ctr.fields.len())?;
-                for field in &ctr.fields {
-                    //build the builder
-                    fields.push( resolved_type_to_builder(&*field.fetch(ctx)?, alloc)?);
-                }
-                ctrs.push(fields.finish());
-            }
-
-            //pack it all together in an adt descriptor
-            Ok(AdtDescriptor {
-                generics,
-                constructors: ctrs.finish(),
-                base_caps: adt.provided_caps,
-                id: AdtId{module,offset}
-            })
-        },
-        DataImpl::Lit(_) | DataImpl::ExternalLit(_,_) | DataImpl::ExternalAdt(_) => unimplemented!(),
-    }
-
 
 }
+
+const NO_MODULE: Hash = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+
 
 //generates a function descriptor
-fn generate_function_descriptor<'b,'h, S:Store,E:CompilationExternals>(fun:&FunctionComponent, code:&SExp, module:&Hash, offset:u8, ctx:&Context<S>, alloc:&'b HeapArena<'h>) -> Result<FunctionDescriptor<'b>> {
-    //collect the generics including protection information
-    let generics = alloc.iter_alloc_slice(fun.shared.generics.iter().enumerate().map(|(i,g)|{
-        //get phantoms and caps
-        let (is_phantom,caps) = match *g {
-            Generic::Phantom => (true,CapSet::empty()),
-            Generic::Physical(caps) => (false,caps),
-        };
-        //get protection info
-        let is_protected = match fun.visibility {
-            Visibility::Private => false,
-            Visibility::Protected(ref guards) => guards.contains(&GenRef(i as u8)),
-            Visibility::Public => false,
-        };
-        //pack the generic info
-        FunTypeParam{is_protected, is_phantom, caps}
-    }))?;
-
+fn generate_transaction_descriptor<'b,'h, S:Store,E:CompilationExternals>(fun:&FunctionComponent, code:&SExp, ctx:&Context<S>, alloc:&'b HeapArena<'h>, limiter:&Limiter) -> Result<TransactionDescriptor<'b>> {
+    
     //collect the params type builder
     let mut params = alloc.slice_builder(fun.shared.params.len())?;
     for p in &fun.shared.params{
-        //build the builder
-        let builder = alloc.alloc(resolved_type_to_builder(&*p.typ.fetch(ctx)?, alloc)?);
-        params.push(Param(p.consumes, builder));
+        let typ = p.typ.fetch(ctx)?;
+        //build the type & desc
+        let r_typ = alloc.alloc(resolved_to_runtime_type(&*typ, alloc)?);
+        let desc = alloc.alloc(resolved_to_value_descriptor::<S,E>(&*typ, ctx, alloc)?);
+        params.push(TxTParam{
+            primitive: typ.get_caps().contains(Capability::Primitive),
+            copy:typ.get_caps().contains(Capability::Copy),
+            drop:typ.get_caps().contains(Capability::Drop),
+            consumes:p.consumes,
+            typ:r_typ,
+            desc
+        });
     }
     let params = params.finish();
-
 
     //collect the returns type builder
     let mut returns =  alloc.slice_builder(fun.shared.returns.len())?;
     for r in &fun.shared.returns{
-        //build the builder
-        let ret = alloc.alloc(resolved_type_to_builder(&*r.typ.fetch(ctx)?, alloc)?);
-        returns.push(Return(ret, alloc.copy_alloc_slice(&r.borrows)?));
+        let typ = r.fetch(ctx)?;
+
+        //build the typ
+        let r_typ = alloc.alloc(resolved_to_runtime_type(&*typ, alloc)?);
+        let desc = alloc.alloc(resolved_to_value_descriptor::<S,E>(&*typ, ctx, alloc)?);
+        let drop =
+        returns.push(TxTReturn{
+            primitive: typ.get_caps().contains(Capability::Primitive),
+            copy: typ.get_caps().contains(Capability::Copy),
+            drop: typ.get_caps().contains(Capability::Drop),
+            typ:r_typ,
+            desc
+        });
     }
     let returns = returns.finish();
 
-    //Prepare the compactor to optimize the body
-    let mut compactor = Compactor::new(alloc);
-    //start the compaction process
-    let (pos,args,ressources) = compactor.emit_func::<S,E>(fun, code, module,offset,ctx)?;
-    assert_eq!(args as usize, returns.len());
-    assert_eq!(pos, 0);
+    let module = ctx.store.dedup_module_link(ModuleLink::This(NO_MODULE));
+    //do the compaction process
+    let (functions,ressources) = Compactor::compact::<S,E>(fun, code,  &ctx.store, alloc, limiter)?;
 
-    //get all the compiled functions
-    let functions = compactor.extract_functions()?;
     if functions.len() > u16::max_value() as usize {
-        return size_limit_exceeded_error();
+        return error(||"Number of functions out of range")
     }
 
-    if ressources.max_gas > u32::max_value() as u64 {return size_limit_exceeded_error()}
-    if ressources.max_manifest_stack > u16::max_value() as u32 {return size_limit_exceeded_error()}
-    if ressources.max_frames > u16::max_value() as u32 {return size_limit_exceeded_error()}
 
-    //pack it all together in a function descriptor
-    Ok(FunctionDescriptor {
+    if ressources.max_gas > u32::max_value() as u64 {return error(||"Consumed Gas out of range")}
+    if ressources.max_manifest_stack > u16::max_value() as u32 {return error(||"Required stack size out of range")}
+    if ressources.max_frames > u16::max_value() as u32 {return error(||"Required number of frames out of range")}
+
+    let desc = TransactionDescriptor {
         gas_cost: ressources.max_gas as u32,
         max_stack: ressources.max_manifest_stack as u16,
+        max_mem: ressources.max_mem as u16,
         max_frames: ressources.max_frames as u16,
-        generics,
         params,
         returns,
         functions
-    })
+    };
 
-
+    //pack it all together in a function descriptor
+    Ok(desc)
 }
 
 
-
-//todo: find better pos
-//Helper to generate a type builder from a type
-pub fn resolved_type_to_builder<'b,'h>(typ:&ResolvedType, alloc:&'b HeapArena<'h>) -> Result<TypeBuilder<'b>> {
+pub fn resolved_to_runtime_type<'b,'h>(typ:&ResolvedType, alloc:&'b HeapArena<'h>) -> Result<RuntimeType<'b>> {
     //build an adt type
-    fn build_type<'b, 'h>(caps:CapSet, kind:TypeKind, applies:&[ResolvedApply], alloc:&'b HeapArena<'h>) -> Result<TypeBuilder<'b>> {
+    fn build_type<'b, 'h>(module:Hash, offset:u8, applies:&[Crc<ResolvedType>], alloc:&'b HeapArena<'h>) -> Result<RuntimeType<'b>> {
         //builders for thy applies
         let mut builders = alloc.slice_builder(applies.len())?;
-        for ResolvedApply{is_phantom,typ} in applies {
+        for typ in applies {
             //recursively process each apply
-            let r_typ = resolved_type_to_builder(&*typ, alloc)?;
+            let r_typ = resolved_to_runtime_type(&*typ, alloc)?;
             //record it
-            builders.push((*is_phantom,alloc.alloc(r_typ)));
+            builders.push(alloc.alloc(r_typ));
         }
-        //put it together
-        let builder = TypeBuilder::Dynamic(caps,kind, builders.finish());
-        Ok(builder)
+        Ok(RuntimeType::Custom {
+            module,
+            offset,
+            applies: builders.finish()
+        })
     }
-
-    //todo: can we shortcut externals to their Id??
+    
     Ok(match *typ {
-        //generics ned to fetch the type at runtime
-        ResolvedType::Generic { offset, .. } => TypeBuilder::Ref(TypeInputRef(offset)),
-        ResolvedType::Image { ref typ } => {
-            let inner = resolved_type_to_builder(&**typ, alloc)?;
-            TypeBuilder::Image(alloc.alloc(inner))
+        //transactions have no generics
+        ResolvedType::Generic { .. } => unreachable!() ,
+        //transactions can not take or return sigs
+        //it is unreachable as transaction params and returns are limited to top types or primitives
+        // Sig itself is neither & top wrappers require persist which sig has not
+        // If in the future a top type witch does allow a inner Sig is introduced this needs implementation (which is impossible without changing the runtime completely)
+        ResolvedType::Sig {..} => unreachable!(),
+        ResolvedType::Projection { ref un_projected, .. } => {
+            let inner = resolved_to_runtime_type(&**un_projected, alloc)?;
+            RuntimeType::Projection {
+                typ:alloc.alloc(inner)
+            }
         },
-        //todo: implement or unallowed error
-        // what todo??
-        ResolvedType::Sig {..} => unimplemented!(),
-        //Import & Literal can use the build_type
-
-        ResolvedType::Lit { base_caps, ref module, offset, ref applies, .. }
-        | ResolvedType::Data { base_caps, ref module, offset, ref applies, .. } => build_type(base_caps, TypeKind::Custom { module:module.to_hash(), offset }, applies, alloc)?,
+        ResolvedType::Virtual(hash) => RuntimeType::Virtual { id:hash },
+        ResolvedType::Lit { ref module, offset, ref applies, .. }
+        | ResolvedType::Data { ref module, offset, ref applies, .. } => build_type(module.to_hash(), offset, applies, alloc)?,
     })
 }
 
+
+
+pub fn resolved_to_value_descriptor<'b,'h, S:Store, E:CompilationExternals>(typ:&ResolvedType, ctx:&Context<S>, alloc:&'b HeapArena<'h>) -> Result<ValueSchema<'b>> {
+    //build an adt type
+    fn build_adt_checker<'b, 'h, S:Store, E:CompilationExternals>(module:Crc<ModuleLink>, offset:u8, applies:&[Crc<ResolvedType>],  ctx:&Context<S>, alloc:&'b HeapArena<'h>) -> Result<ValueSchema<'b>> {
+         //Get the cache
+        let adt_cache = ctx.store.get_component::<DataComponent>(&module, offset)?;
+        //Get the adt
+        let adt = adt_cache.retrieve();
+
+        Ok(match adt.body {
+            DataImpl::External(size) => E::get_literal_checker(&*module, offset, size, alloc)?,
+            DataImpl::Internal { ref constructors} => {
+                //get its context with the applies as substitutions
+                let context = adt_cache.substituted_context(&applies,ctx.store)?;
+                //handle special case
+                if constructors.len() == 1 && constructors[0].fields.len() == 1 {
+                    //Wrapper Optimization
+                    let f_typ = constructors[0].fields[0].fetch(&context)?;
+                    resolved_to_value_descriptor::<S,E>(&f_typ, &context, alloc)?
+                } else {
+                    //normal case
+                    let mut casees = alloc.slice_builder(constructors.len())?;
+                    //build the ctrs by retriving their fields
+                    for case in constructors {
+                        let mut fields = alloc.slice_builder(case.fields.len())?;
+                        for field in &case.fields {
+                            let field_typ = field.fetch(&context)?;
+                            fields.push(alloc.alloc(resolved_to_value_descriptor::<S,E>(&field_typ, &context, alloc)?))
+                        }
+                        casees.push(fields.finish());
+                    }
+                    ValueSchema::Adt(casees.finish())
+                }
+            }
+        })
+    }
+
+    Ok(match *typ {
+        //transactions have no generics
+        ResolvedType::Generic {  .. } => unreachable!(),
+        //Virtuals never have instances of them
+        ResolvedType::Virtual(_) => unreachable!(),
+        //sigs are never primitives
+        ResolvedType::Sig {..} => unreachable!(),
+        //images have the same repr as the inner
+        ResolvedType::Projection { ref un_projected, .. } => resolved_to_value_descriptor::<S,E>(&**un_projected, ctx, alloc)?,
+        ResolvedType::Lit { ref module, offset, ref applies, .. }
+        | ResolvedType::Data { ref module, offset, ref applies, .. } => build_adt_checker::<S,E>(module.clone(), offset, applies, ctx, alloc)?,
+    })
+}

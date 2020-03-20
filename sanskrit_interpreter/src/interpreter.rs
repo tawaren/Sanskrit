@@ -1,155 +1,84 @@
 use sanskrit_common::model::*;
 use sanskrit_common::errors::*;
 use model::*;
+use sanskrit_common::encoding::VirtualSize;
 
-use byteorder::{ByteOrder};
-use num_traits::ToPrimitive;
 use sanskrit_common::hashing::*;
 use sanskrit_common::arena::*;
+use byteorder::{ByteOrder};
 use sanskrit_common::encoding::EncodingByteOrder;
-
 
 //enum to indicate if a block had a result or an error as return
 #[derive(Copy, Clone, Debug)]
 pub enum Continuation<'code> {
     Next,
-    Throw(Error),
     Cont(&'code Exp<'code>, usize),
-    Try(&'code Exp<'code>, &'code [(Error, Ptr<'code,Exp<'code>>)], usize)
-
+    TryCont(&'code Exp<'code>, &'code Exp<'code>, &'code Exp<'code>, usize),
+    Rollback,
 }
 
 #[derive(Copy, Clone, Debug)]
 pub enum Frame<'code> {
-    Exp{exp:&'code Exp<'code>, pos:usize, stack_height:usize},
-    Catch{catches:&'code [(Error, Ptr<'code,Exp<'code>>)], stack_height:usize},
-    Throw(Error),
+    Continuation{
+        exp:&'code Exp<'code>,
+        pos:usize,
+        stack_height:usize
+    },
+    Try {
+        succ:&'code Exp<'code>,
+        fail:&'code Exp<'code>,
+        stack_height:usize,
+        prev:Option<usize>
+    }
 }
 
 //the context in which the code is interpreted / executed
-pub struct ExecutionContext<'script,'code, 'interpreter, 'execution, 'heap> {
-    functions: &'code [Ptr<'code,Exp<'code>>],                          // all the code
+pub struct ExecutionContext<'transaction, 'code, 'interpreter, 'execution, 'heap> {
+    functions: &'code [Ptr<'code,Exp<'code>>],                                                      // all the code
     frames: &'execution mut HeapStack<'interpreter,Frame<'code>>,
-    stack: &'execution mut HeapStack<'interpreter,Ptr<'script ,Object<'script>>>,       //The current stack
-    alloc: &'script VirtualHeapArena<'heap>,
-    temporary_values: &'interpreter HeapArena<'heap>,                   // helper to spare allocations
-
+    stack: &'execution mut HeapStack<'interpreter, Entry<'transaction> >,                       //The current stack
+    alloc: &'transaction VirtualHeapArena<'heap>,
+    return_stack: &'execution mut HeapStack<'interpreter, Entry<'transaction> >,
+    try_ptr:Option<usize>,
 }
 
 //creates a new literal
-//todo: reimplement if needed
-pub fn create_lit_object<'script, 'heap>(data:&[u8], typ:LitDesc, alloc:&'script VirtualHeapArena<'heap>) -> Result<Ptr<'script,Object<'script>>> {
+pub fn create_lit_object<'transaction, 'heap>(data:&[u8], typ:LitDesc, alloc:&'transaction VirtualHeapArena<'heap>) -> Result<Entry<'transaction>> {
     //find out which literal to create
-    alloc.alloc(match typ {
-        LitDesc::Id | LitDesc::Data => Object::Data(alloc.copy_alloc_slice(data)?),
-        LitDesc::I8 => Object::I8(data[0] as i8),
-        LitDesc::U8 => Object::U8(data[0]),
-        LitDesc::I16 => Object::I16(EncodingByteOrder::read_i16(data)),
-        LitDesc::U16 => Object::U16(EncodingByteOrder::read_u16(data)),
-        LitDesc::I32 => Object::I32(EncodingByteOrder::read_i32(data)),
-        LitDesc::U32 => Object::U32(EncodingByteOrder::read_u32(data)),
-        LitDesc::I64 => Object::I64(EncodingByteOrder::read_i64(data)),
-        LitDesc::U64 => Object::U64(EncodingByteOrder::read_u64(data)),
-        LitDesc::I128 => Object::I128(EncodingByteOrder::read_i128(data)),
-        LitDesc::U128 => Object::U128(EncodingByteOrder::read_u128(data)),
+    Ok(match typ {
+        LitDesc::Id | LitDesc::Data => Entry { data: alloc.copy_alloc_slice(data)? },
+        LitDesc::I8 => Entry { i8:data[0] as i8 },
+        LitDesc::U8 => Entry { u8:data[0]},
+        LitDesc::I16 => Entry {i16:EncodingByteOrder::read_i16(data)},
+        LitDesc::U16 => Entry {u16:EncodingByteOrder::read_u16(data)},
+        LitDesc::I32 => Entry {i32:EncodingByteOrder::read_i32(data)},
+        LitDesc::U32 => Entry {u32:EncodingByteOrder::read_u32(data)},
+        LitDesc::I64 => Entry {i64:EncodingByteOrder::read_i64(data)},
+        LitDesc::U64 => Entry {u64:EncodingByteOrder::read_u64(data)},
+        LitDesc::I128 => Entry {i128:EncodingByteOrder::read_i128(data)},
+        LitDesc::U128 => Entry {u128:EncodingByteOrder::read_u128(data)},
     })
 }
-/*
-//Helper to hash objects structurally
-//2 Bytes encode length of Data or Num of fields
-fn object_hash(obj:&Object, context: &mut Hasher) {
-    //cost: relative to: Object size
-    match *obj {
-        Object::I8(data) => {
-            let mut input = [0; 3];
-            EncodingByteOrder::write_u16(&mut input[0..], 1);
-            input[2] = data as u8;
-            context.update(&input);
-        },
-        Object::U8(data) => {
-            let mut input = [0; 3];
-            EncodingByteOrder::write_u16(&mut input[0..], 1);
-            input[2] = data;
-            context.update(&input);
-        },
-        Object::I16(data) => {
-            let mut input = [0; 4];
-            EncodingByteOrder::write_u16(&mut input[0..], 2);
-            EncodingByteOrder::write_i16(&mut input[2..], data);
-            context.update(&input);
-        },
-        Object::U16(data) => {
-            let mut input = [0; 4];
-            EncodingByteOrder::write_u16(&mut input[0..], 2);
-            EncodingByteOrder::write_u16(&mut input[2..], data);
-            context.update(&input);
-        },
-        Object::I32(data) => {
-            let mut input = [0; 6];
-            EncodingByteOrder::write_u16(&mut input[0..], 4);
-            EncodingByteOrder::write_i32(&mut input[2..], data);
-            context.update(&input);
-        },
-        Object::U32(data) => {
-            let mut input = [0; 6];
-            EncodingByteOrder::write_u16(&mut input[0..], 4);
-            EncodingByteOrder::write_u32(&mut input[2..], data);
-            context.update(&input);
-        },
-        Object::I64(data) => {
-            let mut input = [0; 10];
-            EncodingByteOrder::write_u16(&mut input[0..], 8);
-            EncodingByteOrder::write_i64(&mut input[2..], data);
-            context.update(&input);
-        },
-        Object::U64(data) => {
-            let mut input = [0; 10];
-            EncodingByteOrder::write_u16(&mut input[0..], 8);
-            EncodingByteOrder::write_u64(&mut input[2..], data);
-            context.update(&input);
-        },
-        Object::I128(data) => {
-            let mut input = [0; 18];
-            EncodingByteOrder::write_u16(&mut input[0..], 16);
-            EncodingByteOrder::write_i128(&mut input[2..], data);
-            context.update(&input);
-        },
-        Object::U128(data) => {
-            let mut input = [0; 18];
-            EncodingByteOrder::write_u16(&mut input[0..], 16);
-            EncodingByteOrder::write_u128(&mut input[2..], data);
-            context.update(&input);
-        },
-        Object::Data(data) => {
-            let mut prefix = [0; 2];
-            EncodingByteOrder::write_u16(&mut prefix, data.len() as u16);
-            context.update(&prefix);
-            context.update(&data);
-        },
-        Object::Adt(tag, nested) => {
-            let mut prefix = [0; 3];
-            EncodingByteOrder::write_u16(&mut prefix, nested.len() as u16);
-            prefix[2] = tag;
-            context.update(&prefix);
-            for d in nested.iter() {
-                object_hash(d, context)
-            }
-        },
-    };
-}*/
 
-impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code,'interpreter, 'execution,'heap> {
+impl<'transaction,'code,'interpreter,'execution,'heap> ExecutionContext<'transaction,'code,'interpreter, 'execution,'heap> {
     //Creates a new Empty context
-    pub fn interpret(functions: &'code [Ptr<'code,Exp<'code>>], stack:&'execution mut HeapStack<'interpreter,Ptr<'script, Object<'script>>>, frames:&'execution mut HeapStack<'interpreter,Frame<'code>>, alloc:&'script VirtualHeapArena<'heap>, temporary_values:&'interpreter HeapArena<'heap>) -> Result<()>{
+    pub fn interpret(
+        functions: &'code [Ptr<'code,Exp<'code>>],
+        stack:&'execution mut HeapStack<'interpreter,Entry<'transaction>>,
+        frames:&'execution mut HeapStack<'interpreter,Frame<'code>>,
+        return_stack:&'execution mut HeapStack<'interpreter,Entry<'transaction>>,
+        alloc:&'transaction VirtualHeapArena<'heap>
+    ) -> Result<()>{
         //Define some reused types and capabilities
         let context = ExecutionContext {
             functions,
             frames,
             stack,
             alloc,
-            temporary_values
+            return_stack,
+            try_ptr:None,
         };
-        context.execute_function(0)
+        context.execute_function((functions.len()-1) as u16)
     }
 
     //TExecutes a function in the current context
@@ -157,7 +86,12 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
         //Cost: constant
         //assert params are on Stack for now
         let code = &self.functions[fun_idx as usize];
-        self.frames.push(Frame::Exp {
+
+        if self.frames.len() == 3 {
+            panic!("{:?}", self.frames);
+        }
+
+        self.frames.push(Frame::Continuation {
             exp: &code,
             pos: 0,
             stack_height: 0
@@ -166,7 +100,7 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
         if self.execute_exp()? {
             Ok(())
         } else {
-            interpreter_error()
+            error(||"Program threw an error")
         }
     }
 
@@ -174,144 +108,163 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
     fn execute_exp(&mut self) -> Result<bool> {
         'outer: loop {
             match self.frames.pop() {
-                None => return Ok(true),
-                Some(Frame::Catch {..}) => { },
-                Some(Frame::Exp { exp, pos, stack_height }) => {
-                    //Find out if the expression returns a result or a failure
-                    match *exp {
-                        //If a return process the blocks opcode
-                        Exp::Ret(ref op_seq, vals) => {
-                            //Cost: relative to vals.len() |opCode will measure seperately| -- sub stack push will be accounted on push
-                            //process each opcode
-                            let mut pos = pos;
-                            while op_seq.len() > pos {
-                                pos+=1;
-                                match self.execute_op_code(&op_seq[pos-1])? {
-                                    Continuation::Next => {},
-                                    Continuation::Cont(n_exp,n_stack_hight) => {
-                                        self.frames.push(Frame::Exp { exp, pos, stack_height })?;
-                                        self.frames.push(Frame::Exp { exp:n_exp, pos:0, stack_height:n_stack_hight })?;
-                                        continue 'outer;
-                                    }
+                Some(Frame::Continuation { mut exp, mut pos, mut stack_height }) => {
+                    'direct: loop {
+                        //let Frame { exp, pos, stack_height } = cur;
+                        //Cost: relative to vals.len() |opCode will measure seperately| -- sub stack push will be accounted on push
+                        //process each opcode
+                        while exp.0.len() > pos {
+                            pos+=1;
+                            let tail = exp.0.len() == pos;
 
-                                    Continuation::Try(n_exp,catches,n_stack_hight) => {
-                                        self.frames.push(Frame::Exp { exp, pos, stack_height })?;
-                                        self.frames.push(Frame::Catch { catches, stack_height:n_stack_hight })?;
-                                        self.frames.push(Frame::Exp { exp:n_exp, pos:0, stack_height:n_stack_hight })?;
-                                        continue 'outer;
+                            match self.execute_op_code(&exp.0[pos-1], tail)? {
+                                Continuation::Next => {},
+                                Continuation::Cont(n_exp,n_stack_hight) => {
+                                    //Re-push the current Frame if we still need it later omn
+                                    if !tail {
+                                        self.frames.push(Frame::Continuation { exp, pos, stack_height })?;
+                                        //we need only to revert to new stack height as the pushed frame will revert the rest
+                                        stack_height = n_stack_hight;
                                     }
-                                    Continuation::Throw(error) => {
-                                        self.frames.push(Frame::Throw(error))?;
-                                        continue 'outer;
-                                    },
+                                    //Replace the current Frame with the new one
+                                    exp = n_exp;
+                                    pos = 0;
+                                    //Process the new Frame
+                                    continue 'direct;
+                                },
+                                Continuation::TryCont(n_exp, succ, fail,n_stack_hight) => {
+                                    //Re-push the current Frame if we still need it later omn
+                                    if !tail {
+                                        self.frames.push(Frame::Continuation { exp, pos, stack_height })?;
+                                        //we need only to revert to new stack height as the pushed frame will revert the rest
+                                        stack_height = n_stack_hight;
+                                    }
+                                    //Push a try Frame
+                                    self.frames.push(Frame::Try { succ, fail, stack_height:n_stack_hight,  prev:self.try_ptr})?;
+                                    self.try_ptr = Some(self.frames.len());
+                                    //Replace the current Frame with the new one
+                                    exp = n_exp;
+                                    pos = 0;
+                                    //Process the new Frame
+                                    continue 'direct;
+                                },
+                                Continuation::Rollback => {
+                                    //Check if we shall abort or rollback
+                                    match self.try_ptr {
+                                        None => return Ok(false),
+                                        Some(try_ptr) => {
+                                            //reset frames
+                                            self.frames.rewind_to(try_ptr)?;
+                                            if let Some(Frame::Try { fail, stack_height, prev, .. }) = self.frames.pop() {
+                                                //reset the stack
+                                                self.stack.rewind_to(stack_height)?;
+                                                //push the failure as continuation
+                                                self.frames.push(Frame::Continuation { exp:fail, pos:0, stack_height })?;
+                                                //recover the previous try pointer
+                                                self.try_ptr = prev;
+                                            } else {
+                                                unreachable!()
+                                            }
+                                        },
+                                    }
                                 }
                             }
+                        }
 
-                            let tmp = self.temporary_values.temp_arena();
-                            //capture each return
-                            let workbench = tmp.iter_result_alloc_slice( vals.iter().map(|ValueRef(idx)|self.get(*idx)))?;
-                            //reset the stack
-                            self.stack.rewind_to(stack_height)?;
+                        //reset the stack
+                        self.stack.rewind_to(stack_height)?;
 
-                            //push the captured elems (empties workbench)
-                            for w in workbench.iter() {
-                                self.stack.push(*w)?;
-                            }
-                        },
+                        //push the returned elems (empties return_stack)
+                        self.stack.transfer_from(self.return_stack)?;
 
-                        //If a throw check that it is declared
-                        Exp::Throw(error) => self.frames.push(Frame::Throw(error))?
+                        break;
                     }
                 },
-                Some(Frame::Throw(error))  => {
-                    loop {
-                        match self.frames.pop() {
-                            None => return Ok(false),
-                            Some(Frame::Catch {catches, stack_height}) => {
-                                match self.catch(catches,error,stack_height)? {
-                                    Continuation::Next => {},
-                                    //if it is an error propagate it
-                                    Continuation::Cont(n_exp,n_stack_height) => {
-                                        self.frames.push(Frame::Exp { exp:n_exp, pos:0, stack_height:n_stack_height })?;
-                                        continue 'outer;
-                                    }
-
-                                    Continuation::Try(n_exp,catches,n_stack_height) => {
-                                        self.frames.push(Frame::Catch { catches, stack_height:n_stack_height })?;
-                                        self.frames.push(Frame::Exp { exp:n_exp, pos:0, stack_height:n_stack_height })?;
-                                        continue 'outer;
-                                    },
-
-                                    Continuation::Throw(error) => {
-                                        self.frames.push(Frame::Throw(error))?;
-                                        continue 'outer;
-                                    },
-                                }
-                            },
-                            Some(_) => {}
-                        }
-                    }
+                Some(Frame::Try { succ, stack_height, prev, .. }) => {
+                    self.frames.push(Frame::Continuation { exp:succ, pos:0, stack_height })?;
+                    self.try_ptr = prev;
                 }
+                None => return Ok(true)
             }
         }
     }
 
     //The heavy lifter that type checks op code
-    fn execute_op_code(&mut self, code: &'code OpCode) -> Result<Continuation<'code>> {
+    fn execute_op_code(&mut self, code: &'code OpCode, tail:bool) -> Result<Continuation<'code>> {
         //Branch on the opcode type and check it
         match *code {
-            OpCode::Lit(data) => self.lit(&data),
-            OpCode::SpecialLit(ref data, desc) => self.special_lit(data,desc),
+            OpCode::Void => self.void(tail),
+            OpCode::Data(data) => self.lit(&data, tail),
+            OpCode::SpecialLit(ref data, desc) => self.special_lit(data,desc, tail),
             OpCode::Let(ref bind) => self.let_(bind),
-            OpCode::Unpack(value) => self.unpack(value),
-            OpCode::Get(value, field) => self.get_field(value, field),
+            OpCode::Unpack(value) => self.unpack(value, tail),
+            OpCode::Get(value, field) => self.get_field(value, field, tail),
             OpCode::Switch(value, ref cases) => self.switch(value, cases),
-            OpCode::Pack(tag, values) => self.pack(tag, &values),
+            OpCode::Pack(tag, values) => self.pack(tag, &values, tail),
+            OpCode::CreateSig(func,values) => self.create_sig(func, &values, tail),
+            OpCode::InvokeSig(func_val, values)  => self.invoke_sig(*func_val, &values),
             OpCode::Invoke(func, values) => self.invoke(func, &values),
-            OpCode::Try(ref try, ref catches) => self.try(try, catches),
-            OpCode::And(op1,op2) => self.and(op1,op2),
-            OpCode::Or(op1,op2) => self.or(op1,op2),
-            OpCode::Xor(op1,op2) => self.xor(op1,op2),
-            OpCode::Not(op) => self.not(op),
-            OpCode::Id(op) => self.copy(op),
-            OpCode::ToU(n_size, op) => self.convert_to_u(n_size, op),
-            OpCode::ToI(n_size, op) => self.convert_to_i(n_size, op),
-            OpCode::Add(op1,op2) => self.add(op1,op2),
-            OpCode::Sub(op1,op2) => self.sub(op1,op2),
-            OpCode::Mul(op1,op2) => self.mul(op1,op2),
-            OpCode::Div(op1,op2) => self.div(op1,op2),
-            OpCode::Eq(op1,op2) => self.eq(op1,op2),
-            //OpCode::Hash(op) => self.struct_hash(op),
-            OpCode::Hash(op) => self.plain_hash(op),
-            OpCode::ToData(op) => self.convert_to_data(op),
-            //OpCode::Concat(op1,op2) => self.concat(op1,op2),
-            OpCode::Lt(op1,op2) => self.lt(op1,op2),
-            OpCode::Gt(op1,op2) => self.gt(op1,op2),
-            OpCode::Lte(op1,op2) => self.lte(op1,op2),
-            OpCode::Gte(op1,op2) => self.gte(op1,op2),
-            //OpCode::SetBit(op1,op2, op3) => self.set_bit(op1,op2, op3),
-            //OpCode::GetBit(op1,op2) => self.get_bit(op1,op2),
-            OpCode::Derive(op1,op2) => self.join_hash(op1, op2, HashingDomain::Derive),
+            OpCode::Try(ref code,ref succ, ref fail) => self.try(code, succ, fail),
+            OpCode::Rollback => Ok(Continuation::Rollback),
+            OpCode::Return(ref vals) => self._return(vals, tail),
+            OpCode::And(kind, op1,op2) => self.and(kind,op1,op2, tail),
+            OpCode::Or(kind, op1,op2) => self.or(kind, op1,op2, tail),
+            OpCode::Xor(kind, op1,op2) => self.xor(kind, op1,op2, tail),
+            OpCode::Not(kind, op) => self.not(kind, op, tail),
+            OpCode::Id(op) => self.copy(op, tail),
+            OpCode::Add(kind, op1,op2) => self.add(kind, op1,op2, tail),
+            OpCode::Sub(kind, op1,op2) => self.sub(kind, op1,op2, tail),
+            OpCode::Mul(kind, op1,op2) => self.mul(kind, op1,op2, tail),
+            OpCode::Div(kind, op1,op2) => self.div(kind, op1,op2, tail),
+            OpCode::Eq(kind, op1,op2) => self.eq(kind, op1,op2, tail),
+            OpCode::Hash(kind, op) => self.plain_hash(kind, op, tail),
+            OpCode::ToData(kind, op) => self.convert_to_data(kind,op, tail),
+            OpCode::FromData(kind, op) => self.convert_from_data(kind,op, tail),
+            OpCode::Lt(kind, op1,op2) => self.lt(kind, op1,op2, tail),
+            OpCode::Gt(kind, op1,op2) => self.gt(kind, op1,op2, tail),
+            OpCode::Lte(kind, op1,op2) => self.lte(kind, op1,op2, tail),
+            OpCode::Gte(kind, op1,op2) => self.gte(kind, op1,op2, tail),
+            OpCode::Derive(op1,op2) => self.join_hash(op1, op2, HashingDomain::Derive, tail),
         }
     }
 
-    //creates a literal
-    fn lit(&mut self, data: &[u8]) -> Result<Continuation<'code>> {
-        //Cost: relative to: data.0.len(), + 1 push
-        //create the literal
-        let obj = self.alloc.alloc(Object::Data(self.alloc.copy_alloc_slice(data)?))?;
+
+    //helper to get the correct stack (return or normal)
+    fn get_stack(&mut self, tail:bool) -> &mut HeapStack<'interpreter, Entry<'transaction> > {
+        if tail {
+            self.return_stack
+        } else {
+            self.stack
+        }
+    }
+
+    fn void(&mut self, tail:bool) -> Result<Continuation<'code>> {
         //push it onto the stack
-        self.stack.push(obj)?;
+        let stack = self.get_stack(tail);
+        //we can push whatever we want
+        stack.push(Entry {u8:0})?;
         Ok(Continuation::Next)
     }
 
     //creates a literal
-    fn special_lit(&mut self, data: &[u8], typ: LitDesc) -> Result<Continuation<'code>> {
+    fn lit(&mut self, data: &[u8], tail:bool) -> Result<Continuation<'code>> {
+        //Cost: relative to: data.0.len(), + 1 push
+        //create the literal
+        let data = self.alloc.copy_alloc_slice(data)?;
+        //push it onto the stack
+        let stack = self.get_stack(tail);
+        stack.push(Entry {data})?;
+        Ok(Continuation::Next)
+    }
+
+    //creates a literal
+    fn special_lit(&mut self, data: &[u8], typ: LitDesc, tail:bool) -> Result<Continuation<'code>> {
         //Cost: relative to: data.0.len(), + 1 push
         //create the literal
         let obj = create_lit_object(data, typ, self.alloc)?;
         //push it onto the stack
-        self.stack.push(obj)?;
+        let stack = self.get_stack(tail);
+        stack.push(obj)?;
         Ok(Continuation::Next)
     }
 
@@ -326,92 +279,108 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
     }
 
     //helper to get stack elems
-    fn get(&self, idx: u16) -> Result<Ptr<'script,Object<'script>>> {
+    fn get(&self, idx: usize) -> Result<Entry<'transaction>> {
         //calc the pos
-        let pos = self.stack.len() - idx as usize - 1;
+        let pos = self.stack.len() - idx - 1;
         //get the elem
         Ok(*self.stack.get(pos)?)
     }
 
     //unpacks an adt
-    fn unpack(&mut self, ValueRef(idx): ValueRef) -> Result<Continuation<'code>> {
+    fn unpack(&mut self, ValueRef(idx): ValueRef, tail:bool) -> Result<Continuation<'code>> {
         //Cost: relative to: elems.len()
         //get the input
-        let elem = self.get(idx)?;
+        let Adt(_, fields) = unsafe { self.get(idx as usize)?.adt };
         //must be an adt (static guarantee)
-        if let Object::Adt(_, elems) = *elem {
-            //push each field
-            for e in elems.iter() {
-                self.stack.push(*e)?;
-            }
-            Ok(Continuation::Next)
-        } else { unreachable!() }
+        //push each field
+        let stack = self.get_stack(tail);
+        for e in fields.iter() {
+            stack.push(*e)?;
+        }
+        Ok(Continuation::Next)
     }
 
     //gets a single field from an adt
-    fn get_field(&mut self, ValueRef(idx): ValueRef, field:u8) -> Result<Continuation<'code>> {
+    fn get_field(&mut self, ValueRef(idx): ValueRef, field:u8, tail:bool) -> Result<Continuation<'code>> {
         //Cost: constant
         //get the input
-        let elem = self.get(idx)?;
+        let Adt(_, fields) = unsafe { self.get(idx as usize)?.adt };
         //must be an adt (static guarantee)
-        if let Object::Adt(_, elems) = &*elem {
-            //push the correct field
-            self.stack.push(elems[field as usize])?;
-            Ok(Continuation::Next)
-        } else { unreachable!() }
+        //push the correct field
+        let stack = self.get_stack(tail);
+        stack.push( fields[field as usize])?;
+        Ok(Continuation::Next)
     }
 
     //branch based on constructor
     fn switch(&mut self, ValueRef(idx): ValueRef, cases: &'code [Ptr<'code,Exp<'code>>]) -> Result<Continuation<'code>> {
         //Cost: relative to: elems.len()
         //get the input
-        let elem = self.get(idx)?;
+        let Adt(tag, fields) = unsafe { self.get(idx as usize)?.adt };
         //must be an adt (static guarantee)
-        if let Object::Adt(tag, elems) = *elem {
-            //capture the height
-            let stack_height = self.stack.len();
-            //push the fields
-            for e in elems.iter() {
-                self.stack.push(e.clone())?;
-            }
-            //execute the right branch
-            Ok(Continuation::Cont(&cases[tag as usize], stack_height))
-        } else { unreachable!() }
+        //capture the height
+        let stack_height = self.stack.len();
+        //push the fields
+        for e in fields.iter() {
+            self.stack.push(*e)?;
+        }
+
+        //execute the right branch
+        Ok(Continuation::Cont(&cases[tag as usize], stack_height))
     }
 
     //packs an adt
-    fn pack(&mut self, Tag(tag): Tag, values: &[ValueRef]) -> Result<Continuation<'code>> {
+    fn pack(&mut self, Tag(tag): Tag, values: &[ValueRef], tail:bool) -> Result<Continuation<'code>> {
         //Cost: relative to: values.len()
         //fetch the inputs
         let mut fields = self.alloc.slice_builder(values.len())?;
         for ValueRef(idx) in values {
-            let elem = self.get(*idx)?;
+            let elem = self.get(*idx as usize)?;
             fields.push(elem);
         }
         //produce an adt with the fields as args
-        self.stack.push(self.alloc.alloc(Object::Adt(tag, fields.finish()))?)?;
+        let stack = self.get_stack(tail);
+        stack.push(Entry{adt:Adt(tag, fields.finish())})?;
         Ok(Continuation::Next)
     }
 
-    //create a try block
-    fn try(&mut self, try: &'code Exp<'code>, catches: &'code [(Error, Ptr<'code,Exp<'code>>)]) -> Result<Continuation<'code>> {
-        //fetch the hight
-        let stack_height = self.stack.len();
-        //execute the code
-        Ok(Continuation::Try(try, catches, stack_height))
-    }
-
-    //executes the catch on the way back
-    fn catch(&mut self, catches: &'code [(Error, Ptr<'code,Exp<'code>>)], err:Error, start_height:usize) -> Result<Continuation<'code>>{
-        //Cost: relative to: catches.len()
-        for (e, exp) in catches {
-            //if this branche catches it execute it
-            if *e == err {
-                self.stack.rewind_to(start_height)?;
-                return Ok(Continuation::Cont(exp, start_height));
-            }
+    //packs an adt
+    fn create_sig(&mut self, func:u16, values: &[ValueRef], tail:bool) -> Result<Continuation<'code>> {
+        //Cost: relative to: values.len()
+        //fetch the inputs
+        let mut fields = self.alloc.slice_builder(values.len())?;
+        for ValueRef(idx) in values {
+            let elem = self.get(*idx as usize)?;
+            fields.push(elem);
         }
+        //produce an adt with the fields as args
+        let stack = self.get_stack(tail);
+        stack.push(Entry{func:Func(func, fields.finish())})?;
         Ok(Continuation::Next)
+    }
+
+    //call a sig function
+    fn invoke_sig(&mut self, ValueRef(fun_val): ValueRef, values: &[ValueRef]) -> Result<Continuation<'code>> {
+        //get the target
+        let Func(index, captures) = unsafe {self.get(fun_val as usize)?.func};
+        //must be a function pointer (static guarantee)
+        //Cost: relative to: values.len()
+        //get the code
+        let fun_code: &Exp = &self.functions[index as usize];
+        //fetch the height
+        let stack_height = self.stack.len();
+        //push the captured arguments
+        assert!(values.len()+captures.len() <= u16::max_value() as usize);
+        for elem in captures.iter() {
+            self.stack.push(*elem)?;
+        }
+        //push the provided arguments
+        for (i,ValueRef(idx)) in values.iter().enumerate() {
+            let elem = self.get(*idx as usize+(i+captures.len()))?; //i+captures.len() counteracts the already pushed elements
+            self.stack.push(elem)?;
+        }
+        //Execute the function
+        Ok(Continuation::Cont(fun_code, stack_height))
     }
 
     //call a function
@@ -425,388 +394,310 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
         //push the arguments
         assert!(values.len() <= u16::max_value() as usize);
         for (i,ValueRef(idx)) in values.iter().enumerate() {
-            let elem = self.get(*idx+(i as u16))?; //i counteracts the already pushed elements
+            let elem = self.get(*idx as usize+i)?; //i counteracts the already pushed elements
             self.stack.push(elem)?;
         }
         //Execute the function
         Ok(Continuation::Cont(fun_code, stack_height))
     }
 
-    fn and(&mut self, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef) -> Result<Continuation<'code>> {
-        //cost: relative to: Object size
-        //get the arguments and use & on them
-        self.stack.push(self.alloc.alloc(match (&*self.get(val1)?, &*self.get(val2)?) {
-            (Object::I8(op1), Object::I8(op2)) => Object::I8(op1 & op2),
-            (Object::U8(op1), Object::U8(op2)) => Object::U8(op1 & op2),
-            (Object::I16(op1), Object::I16(op2)) => Object::I16(op1 & op2),
-            (Object::U16(op1), Object::U16(op2)) => Object::U16(op1 & op2),
-            (Object::I32(op1), Object::I32(op2)) => Object::I32(op1 & op2),
-            (Object::U32(op1), Object::U32(op2)) => Object::U32(op1 & op2),
-            (Object::I64(op1), Object::I64(op2)) => Object::I64(op1 & op2),
-            (Object::U64(op1), Object::U64(op2)) => Object::U64(op1 & op2),
-            (Object::I128(op1), Object::I128(op2)) => Object::I128(op1 & op2),
-            (Object::U128(op1), Object::U128(op2)) => Object::U128(op1 & op2),
-            (Object::Data(op1), Object::Data(op2)) => {
-                let mut builder = self.alloc.slice_builder(op1.len()+op2.len())?;
-                for i in 0..op1.len() {
-                    builder.push(op1[i] & op2[i]);
-                }
-                Object::Data(builder.finish())
+    fn try(&mut self,  try:&'code OpCode, succ: &'code Exp, fail: &'code Exp) -> Result<Continuation<'code>> {
+        //fetch the height
+        let stack_height = self.stack.len();
+        //Execute the try code
+        match self.execute_op_code(try, false)? {
+            //it succeeded so continue with the success case
+            Continuation::Next => Ok(Continuation::Cont(succ, stack_height)), //This is nice as it allows to make adds & muls & ... morte efficently even with try
+            //it failed so continue with the failure case
+            Continuation::Rollback => Ok(Continuation::Cont(fail, stack_height)), //This is nice as it allows to make adds & muls & ... morte efficently even with try
+            //it is a nested block so remember the try
+            Continuation::Cont(n_exp,n_stack_height) => {
+                assert_eq!(n_stack_height,stack_height);
+                Ok(Continuation::TryCont(n_exp,succ,fail,stack_height))
             },
-            //adts and the tag (could be a boolean)
-            (Object::Adt(op1, _), Object::Adt(op2, _)) => Object::Adt(op1 & op2, SlicePtr::empty()),
-            _ => unreachable!()
-        })?)?;
-
-        Ok(Continuation::Next)
-    }
-
-    fn or(&mut self, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef) -> Result<Continuation<'code>> {
-        //cost: relative to: Object size
-        //get the arguments and use | on them
-        self.stack.push(self.alloc.alloc(match (&*self.get(val1)?, &*self.get(val2)?) {
-            (Object::I8(op1), Object::I8(op2)) => Object::I8(op1 | op2),
-            (Object::U8(op1), Object::U8(op2)) => Object::U8(op1 | op2),
-            (Object::I16(op1), Object::I16(op2)) => Object::I16(op1 | op2),
-            (Object::U16(op1), Object::U16(op2)) => Object::U16(op1 | op2),
-            (Object::I32(op1), Object::I32(op2)) => Object::I32(op1 | op2),
-            (Object::U32(op1), Object::U32(op2)) => Object::U32(op1 | op2),
-            (Object::I64(op1), Object::I64(op2)) => Object::I64(op1 | op2),
-            (Object::U64(op1), Object::U64(op2)) => Object::U64(op1 | op2),
-            (Object::I128(op1), Object::I128(op2)) => Object::I128(op1 | op2),
-            (Object::U128(op1), Object::U128(op2)) => Object::U128(op1 | op2),
-            (Object::Data(op1), Object::Data(op2)) => {
-                let mut builder = self.alloc.slice_builder(op1.len()+op2.len())?;
-                for i in 0..op1.len() {
-                    builder.push(op1[i] | op2[i]);
-                }
-                Object::Data(builder.finish())
-            },
-            //adts or the tag (could be a boolean)
-            (Object::Adt(op1, _), Object::Adt(op2, _)) => Object::Adt(op1 | op2, SlicePtr::empty()),
-            _ => unreachable!()
-        })?)?;
-
-        Ok(Continuation::Next)
-    }
-
-    fn xor(&mut self, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef) -> Result<Continuation<'code>> {
-        //cost: relative to: Object size
-        //get the arguments and use ^ on them
-        self.stack.push(self.alloc.alloc(match (&*self.get(val1)?, &*self.get(val2)?) {
-            (Object::I8(op1), Object::I8(op2)) => Object::I8(op1 ^ op2),
-            (Object::U8(op1), Object::U8(op2)) => Object::U8(op1 ^ op2),
-            (Object::I16(op1), Object::I16(op2)) => Object::I16(op1 ^ op2),
-            (Object::U16(op1), Object::U16(op2)) => Object::U16(op1 ^ op2),
-            (Object::I32(op1), Object::I32(op2)) => Object::I32(op1 ^ op2),
-            (Object::U32(op1), Object::U32(op2)) => Object::U32(op1 ^ op2),
-            (Object::I64(op1), Object::I64(op2)) => Object::I64(op1 ^ op2),
-            (Object::U64(op1), Object::U64(op2)) => Object::U64(op1 ^ op2),
-            (Object::I128(op1), Object::I128(op2)) => Object::I128(op1 ^ op2),
-            (Object::U128(op1), Object::U128(op2)) => Object::U128(op1 ^ op2),
-            (Object::Data(op1), Object::Data(op2)) => {
-                let mut builder = self.alloc.slice_builder(op1.len()+op2.len())?;
-                for i in 0..op1.len() {
-                    builder.push(op1[i] ^ op2[i]);
-                }
-                Object::Data(builder.finish())
-            },
-            //adts xor the tag (could be a boolean)
-            (Object::Adt(op1, _), Object::Adt(op2, _)) => Object::Adt(op1 ^ op2, SlicePtr::empty()),
-            _ => unreachable!()
-        })?)?;
-
-        Ok(Continuation::Next)
-    }
-
-    fn not(&mut self, ValueRef(val):ValueRef) -> Result<Continuation<'code>> {
-        //cost: relative to: Object size
-        //get the argument and use ! on them
-        self.stack.push(self.alloc.alloc(match &*self.get(val)? {
-            Object::I8(op) => Object::I8(!*op),
-            Object::U8(op) => Object::U8(!*op),
-            Object::I16(op) => Object::I16(!*op),
-            Object::U16(op) => Object::U16(!*op),
-            Object::I32(op) => Object::I32(!*op),
-            Object::U32(op) => Object::U32(!*op),
-            Object::I64(op) => Object::I64(!*op),
-            Object::U64(op) => Object::U64(!*op),
-            Object::I128(op) => Object::I128(!*op),
-            Object::U128(op) => Object::U128(!*op),
-            //Data is noted byte per byte
-            Object::Data(op) => {
-                let mut builder = self.alloc.slice_builder(op.len())?;
-                for o in op.iter() {
-                    builder.push(!*o);
-                }
-                Object::Data(builder.finish())
-            },
-            //adts not the tag (could be a boolean)
-            Object::Adt(op, _) => Object::Adt(!*op, SlicePtr::empty())
-        })?)?;
-
-        Ok(Continuation::Next)
-    }
-
-    fn copy(&mut self, ValueRef(val):ValueRef) -> Result<Continuation<'code>> {
-        //cost: relative to: Object size
-        //get the argument and use ! on them
-        self.stack.push(self.alloc.alloc(match &*self.get(val)? {
-            Object::I8(op) => Object::I8(*op),
-            Object::U8(op) => Object::U8(*op),
-            Object::I16(op) => Object::I16(*op),
-            Object::U16(op) => Object::U16(*op),
-            Object::I32(op) => Object::I32(*op),
-            Object::U32(op) => Object::U32(*op),
-            Object::I64(op) => Object::I64(*op),
-            Object::U64(op) => Object::U64(*op),
-            Object::I128(op) => Object::I128(*op),
-            Object::U128(op) => Object::U128(*op),
-            //Data is noted byte per byte
-            Object::Data(op) => {
-                let mut builder = self.alloc.slice_builder(op.len())?;
-                for o in op.iter() {
-                    builder.push(*o);
-                }
-                Object::Data(builder.finish())
-            },
-            //adts not the tag (could be a boolean)
-            Object::Adt(op, _) => Object::Adt(*op, SlicePtr::empty())
-        })?)?;
-
-        Ok(Continuation::Next)
-    }
-
-
-    //converts the input to a unsigned int with a width on n_size bytes
-    fn convert_to_u(&mut self, n_size: u8, ValueRef(val):ValueRef) -> Result<Continuation<'code>> {
-        fn to_u<'script,T: ToPrimitive>(prim: &T, n_size: u8) -> Option<Object<'script>> {
-            //cost: relative to: Object size
-            //use to a method from another trait to do the conversion
-            match n_size {
-                1 => prim.to_u8().map(Object::U8),
-                2 => prim.to_u16().map(Object::U16),
-                4 => prim.to_u32().map(Object::U32),
-                8 => prim.to_u64().map(Object::U64),
-                16 => prim.to_u128().map(Object::U128),
-                _ => unreachable!()
-            }
+            //Not yet supported. Needs to be supported if we have inlining optimization
+            Continuation::TryCont(_,_,_,_) => error(||"Directly nested tries are nut yet supports")
         }
+    }
 
-        //cost: relative to: Object size
-        let res = match &*self.get(val)? {
-            Object::I8(op) => to_u(&*op, n_size),
-            Object::U8(op) => to_u(&*op, n_size),
-            Object::I16(op) => to_u(&*op, n_size),
-            Object::U16(op) => to_u(&*op, n_size),
-            Object::I32(op) => to_u(&*op, n_size),
-            Object::U32(op) => to_u(&*op, n_size),
-            Object::I64(op) => to_u(&*op, n_size),
-            Object::U64(op) => to_u(&*op, n_size),
-            Object::I128(op) => to_u(&*op, n_size),
-            Object::U128(op) => to_u(&*op, n_size),
-            _ => unreachable!()
+
+    fn and(&mut self, kind:Kind, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef, tail:bool) -> Result<Continuation<'code>> {
+        let op1 = self.get(val1 as usize)?;
+        let op2 = self.get(val2 as usize)?;
+        let res =match kind {
+            Kind::I8 => Entry{i8: unsafe {op1.i8 & op2.i8}},
+            Kind::U8 => Entry{u8: unsafe {op1.u8 & op2.u8}},
+            Kind::I16 => Entry{i16: unsafe {op1.i16 & op2.i16}},
+            Kind::U16 => Entry{u16: unsafe {op1.u16 & op2.u16}},
+            Kind::I32 => Entry{i32: unsafe {op1.i32 & op2.i32}},
+            Kind::U32 => Entry{u32: unsafe {op1.u32 & op2.u32}},
+            Kind::I64 => Entry{i64: unsafe {op1.i64 & op2.i64}},
+            Kind::U64 => Entry{u64: unsafe {op1.u64 & op2.u64}},
+            Kind::I128 => Entry{i128: unsafe {op1.i128 & op2.i128}},
+            Kind::U128 => Entry{u128: unsafe {op1.u128 & op2.u128}},
+            Kind::Data => {
+                let data1 = unsafe {op1.data};
+                let data2 = unsafe {op2.data};
+                let mut builder = self.alloc.slice_builder(data1.len())?;
+                for i in 0..data1.len() {
+                    builder.push(data1[i] & data2[i]);
+                }
+                Entry{ data: builder.finish() }
+            }
         };
-
-        match res {
-            //todo: reimplement when we have the module with the correct error
-            None => unimplemented!(),
-                //Ok(Continuation::Throw(Error::Native(NativeError::NumericError))),
-            Some(r) => {
-                self.stack.push(self.alloc.alloc(r)?)?;
-                Ok(Continuation::Next)
-            }
-        }
-
+        self.get_stack(tail).push(res)?;
+        Ok(Continuation::Next)
     }
 
-    //converts the input to a signed int with a width on n_size bytes
-    fn convert_to_i(&mut self, n_size: u8, ValueRef(val):ValueRef) -> Result<Continuation<'code>> {
-        fn to_i<'script,T: ToPrimitive>(prim: &T, n_size: u8) -> Option<Object<'script>> {
-            //cost: relative to: Object size
-            //use to a method from another trait to do the conversion
-            match n_size {
-                1 => prim.to_i8().map(Object::I8),
-                2 => prim.to_i16().map(Object::I16),
-                4 => prim.to_i32().map(Object::I32),
-                8 => prim.to_i64().map(Object::I64),
-                16 => prim.to_i128().map(Object::I128),
-                _ => unreachable!()
+    fn or(&mut self, kind:Kind, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef, tail:bool) -> Result<Continuation<'code>> {
+        let op1 = self.get(val1 as usize)?;
+        let op2 = self.get(val2 as usize)?;
+        let res =match kind {
+            Kind::I8 => Entry{i8: unsafe {op1.i8 | op2.i8}},
+            Kind::U8 => Entry{u8: unsafe {op1.u8 | op2.u8}},
+            Kind::I16 => Entry{i16: unsafe {op1.i16 | op2.i16}},
+            Kind::U16 => Entry{u16: unsafe {op1.u16 | op2.u16}},
+            Kind::I32 => Entry{i32: unsafe {op1.i32 | op2.i32}},
+            Kind::U32 => Entry{u32: unsafe {op1.u32 | op2.u32}},
+            Kind::I64 => Entry{i64: unsafe {op1.i64 | op2.i64}},
+            Kind::U64 => Entry{u64: unsafe {op1.u64 | op2.u64}},
+            Kind::I128 => Entry{i128: unsafe {op1.i128 | op2.i128}},
+            Kind::U128 => Entry{u128: unsafe {op1.u128 | op2.u128}},
+            Kind::Data => {
+                let data1 = unsafe {op1.data};
+                let data2 = unsafe {op2.data};
+                let mut builder = self.alloc.slice_builder(data1.len())?;
+                for i in 0..data1.len() {
+                    builder.push(data1[i] | data2[i]);
+                }
+                Entry{ data: builder.finish() }
             }
-        }
-        //cost: relative to: Object size
-        let res = match &*self.get(val)? {
-            Object::I8(op) => to_i(&*op, n_size),
-            Object::U8(op) => to_i(&*op, n_size),
-            Object::I16(op) => to_i(&*op, n_size),
-            Object::U16(op) => to_i(&*op, n_size),
-            Object::I32(op) => to_i(&*op, n_size),
-            Object::U32(op) => to_i(&*op, n_size),
-            Object::I64(op) => to_i(&*op, n_size),
-            Object::U64(op) => to_i(&*op, n_size),
-            Object::I128(op) => to_i(&*op, n_size),
-            Object::U128(op) => to_i(&*op, n_size),
-            _ => unreachable!()
         };
+        self.get_stack(tail).push(res)?;
+        Ok(Continuation::Next)
+    }
 
-        match res {
-            //todo: reimplement when we have the module with the correct error
-            None => unimplemented!(),
-            Some(r) => {
-                self.stack.push(self.alloc.alloc(r)?)?;
-                Ok(Continuation::Next)
+    fn xor(&mut self, kind:Kind, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef, tail:bool) -> Result<Continuation<'code>> {
+        let op1 = self.get(val1 as usize)?;
+        let op2 = self.get(val2 as usize)?;
+        let res = match kind {
+            Kind::I8 => Entry{i8: unsafe {op1.i8 ^ op2.i8}},
+            Kind::U8 => Entry{u8: unsafe {op1.u8 ^ op2.u8}},
+            Kind::I16 => Entry{i16: unsafe {op1.i16 ^ op2.i16}},
+            Kind::U16 => Entry{u16: unsafe {op1.u16 ^ op2.u16}},
+            Kind::I32 => Entry{i32: unsafe {op1.i32 ^ op2.i32}},
+            Kind::U32 => Entry{u32: unsafe {op1.u32 ^ op2.u32}},
+            Kind::I64 => Entry{i64: unsafe {op1.i64 ^ op2.i64}},
+            Kind::U64 => Entry{u64: unsafe {op1.u64 ^ op2.u64}},
+            Kind::I128 => Entry{i128: unsafe {op1.i128 ^ op2.i128}},
+            Kind::U128 => Entry{u128: unsafe {op1.u128 ^ op2.u128}},
+            Kind::Data => {
+                let data1 = unsafe {op1.data};
+                let data2 = unsafe {op2.data};
+                let mut builder = self.alloc.slice_builder(data1.len())?;
+                for i in 0..data1.len() {
+                    builder.push(data1[i] ^ data2[i]);
+                }
+                Entry{ data: builder.finish() }
             }
+        };
+        self.get_stack(tail).push(res)?;
+        Ok(Continuation::Next)
+    }
+
+    fn not(&mut self, kind:Kind, ValueRef(val):ValueRef, tail:bool) -> Result<Continuation<'code>> {
+        let op1 = self.get(val as usize)?;
+        let res = match kind {
+            Kind::I8 => Entry{i8: unsafe {!op1.i8}},
+            Kind::U8 => Entry{u8: unsafe {!op1.u8}},
+            Kind::I16 => Entry{i16: unsafe {!op1.i16}},
+            Kind::U16 => Entry{u16: unsafe {!op1.u16}},
+            Kind::I32 => Entry{i32: unsafe {!op1.i32}},
+            Kind::U32 => Entry{u32: unsafe {!op1.u32}},
+            Kind::I64 => Entry{i64: unsafe {!op1.i64}},
+            Kind::U64 => Entry{u64: unsafe {!op1.u64}},
+            Kind::I128 => Entry{i128: unsafe {!op1.i128}},
+            Kind::U128 => Entry{u128: unsafe {!op1.u128}},
+            Kind::Data => {
+                let data1 = unsafe {op1.data};
+                let mut builder = self.alloc.slice_builder(data1.len())?;
+                for i in 0..data1.len() {
+                    builder.push(!data1[i]);
+                }
+                Entry{ data: builder.finish() }
+            }
+        };
+        self.get_stack(tail).push(res)?;
+        Ok(Continuation::Next)
+    }
+
+    fn copy(&mut self, ValueRef(val):ValueRef, tail:bool) -> Result<Continuation<'code>> {
+        //cost: relative to: Object size
+        let elem = self.get(val as usize)?;
+        self.get_stack(tail).push(elem)?;
+        Ok(Continuation::Next)
+    }
+
+    fn _return(&mut self,  vals:&[ValueRef], tail:bool) -> Result<Continuation<'code>> {
+        for (idx,val) in vals.iter().enumerate(){
+            if tail {
+                self.return_stack.push(self.get(val.0 as usize)?)?
+            } else {
+                self.stack.push(self.get(val.0 as usize+idx)?)?;
+            };
         }
+
+        Ok(Continuation::Next)
     }
 
     //does an addition (a checked one, returns None in case of Over/under flow)
-    fn add(&mut self, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef) -> Result<Continuation<'code>> {
-        //cost: relative to: Object size
-        let res = match (&*self.get(val1)?, &*self.get(val2)?) {
-            (Object::I8(op1), Object::I8(op2)) => op1.checked_add(*op2).map(Object::I8),
-            (Object::U8(op1), Object::U8(op2)) => op1.checked_add(*op2).map(Object::U8),
-            (Object::I16(op1), Object::I16(op2)) => op1.checked_add(*op2).map(Object::I16),
-            (Object::U16(op1), Object::U16(op2)) => op1.checked_add(*op2).map(Object::U16),
-            (Object::I32(op1), Object::I32(op2)) => op1.checked_add(*op2).map(Object::I32),
-            (Object::U32(op1), Object::U32(op2)) => op1.checked_add(*op2).map(Object::U32),
-            (Object::I64(op1), Object::I64(op2)) => op1.checked_add(*op2).map(Object::I64),
-            (Object::U64(op1), Object::U64(op2)) => op1.checked_add(*op2).map(Object::U64),
-            (Object::I128(op1), Object::I128(op2)) => op1.checked_add(*op2).map(Object::I128),
-            (Object::U128(op1), Object::U128(op2)) => op1.checked_add(*op2).map(Object::U128),
-            _ => unreachable!()
+    fn add(&mut self, kind:Kind, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef, tail:bool) -> Result<Continuation<'code>> {
+        let op1 = self.get(val1 as usize)?;
+        let op2 = self.get(val2 as usize)?;
+
+        let res = match kind {
+            Kind::I8 => unsafe {op1.i8.checked_add(op2.i8)}.map(|r| Entry{i8: r}),
+            Kind::U8 => unsafe {op1.u8.checked_add(op2.u8)}.map(|r| Entry{u8: r}),
+            Kind::I16 => unsafe {op1.i16.checked_add(op2.i16)}.map(|r| Entry{i16: r}),
+            Kind::U16 => unsafe {op1.u16.checked_add(op2.u16)}.map(|r| Entry{u16: r}),
+            Kind::I32 => unsafe {op1.i32.checked_add(op2.i32)}.map(|r| Entry{i32: r}),
+            Kind::U32 => unsafe {op1.u32.checked_add(op2.u32)}.map(|r| Entry{u32: r}),
+            Kind::I64 => unsafe {op1.i64.checked_add(op2.i64)}.map(|r| Entry{i64: r}),
+            Kind::U64 => unsafe {op1.u64.checked_add(op2.u64)}.map(|r| Entry{u64: r}),
+            Kind::I128 => unsafe {op1.i128.checked_add(op2.i128)}.map(|r| Entry{i128: r}),
+            Kind::U128 => unsafe {op1.u128.checked_add(op2.u128)}.map(|r| Entry{u128: r}),
+            Kind::Data => unreachable!(),
         };
 
         match res {
-            //todo: reimplement when we have the module with the correct error
-            None => unimplemented!(),
+            None => Ok(Continuation::Rollback),
             Some(r) => {
-                //Note: Alloc is approx 20ns
-                self.stack.push(self.alloc.alloc(r)?)?;
+                self.get_stack(tail).push(r)?;
                 Ok(Continuation::Next)
             }
         }
     }
 
     //does a substraction (a checked one, returns None in case of Over/under flow)
-    fn sub(&mut self, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef) -> Result<Continuation<'code>> {
-        //cost: relative to: Object size
-        let res = match (&*self.get(val1)?, &*self.get(val2)?) {
-            (Object::I8(op1), Object::I8(op2)) => op1.checked_sub(*op2).map(Object::I8),
-            (Object::U8(op1), Object::U8(op2)) => op1.checked_sub(*op2).map(Object::U8),
-            (Object::I16(op1), Object::I16(op2)) => op1.checked_sub(*op2).map(Object::I16),
-            (Object::U16(op1), Object::U16(op2)) => op1.checked_sub(*op2).map(Object::U16),
-            (Object::I32(op1), Object::I32(op2)) => op1.checked_sub(*op2).map(Object::I32),
-            (Object::U32(op1), Object::U32(op2)) => op1.checked_sub(*op2).map(Object::U32),
-            (Object::I64(op1), Object::I64(op2)) => op1.checked_sub(*op2).map(Object::I64),
-            (Object::U64(op1), Object::U64(op2)) => op1.checked_sub(*op2).map(Object::U64),
-            (Object::I128(op1), Object::I128(op2)) => op1.checked_sub(*op2).map(Object::I128),
-            (Object::U128(op1), Object::U128(op2)) => op1.checked_sub(*op2).map(Object::U128),
-            _ => unreachable!()
+    fn sub(&mut self, kind:Kind, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef, tail:bool) -> Result<Continuation<'code>> {
+        let op1 = self.get(val1 as usize)?;
+        let op2 = self.get(val2 as usize)?;
+        let res =match kind {
+            Kind::I8 => unsafe {op1.i8.checked_sub(op2.i8)}.map(|r| Entry{i8: r}),
+            Kind::U8 => unsafe {op1.u8.checked_sub(op2.u8)}.map(|r| Entry{u8: r}),
+            Kind::I16 => unsafe {op1.i16.checked_sub(op2.i16)}.map(|r| Entry{i16: r}),
+            Kind::U16 => unsafe {op1.u16.checked_sub(op2.u16)}.map(|r| Entry{u16: r}),
+            Kind::I32 => unsafe {op1.i32.checked_sub(op2.i32)}.map(|r| Entry{i32: r}),
+            Kind::U32 => unsafe {op1.u32.checked_sub(op2.u32)}.map(|r| Entry{u32: r}),
+            Kind::I64 => unsafe {op1.i64.checked_sub(op2.i64)}.map(|r| Entry{i64: r}),
+            Kind::U64 => unsafe {op1.u64.checked_sub(op2.u64)}.map(|r| Entry{u64: r}),
+            Kind::I128 => unsafe {op1.i128.checked_sub(op2.i128)}.map(|r| Entry{i128: r}),
+            Kind::U128 => unsafe {op1.u128.checked_sub(op2.u128)}.map(|r| Entry{u128: r}),
+            Kind::Data => unreachable!(),
         };
 
         match res {
-            //todo: reimplement when we have the module with the correct error
-            None => unimplemented!(),
+            None => Ok(Continuation::Rollback),
             Some(r) => {
-                self.stack.push(self.alloc.alloc(r)?)?;
+                self.get_stack(tail).push(r)?;
                 Ok(Continuation::Next)
             }
         }
     }
 
     //does a multiplication (a checked one, returns None in case of Over/under flow)
-    fn mul(&mut self, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef) -> Result<Continuation<'code>> {
-        //cost: relative to: Object size
-        let res = match (&*self.get(val1)?, &*self.get(val2)?) {
-            (Object::I8(op1), Object::I8(op2)) => op1.checked_mul(*op2).map(Object::I8),
-            (Object::U8(op1), Object::U8(op2)) => op1.checked_mul(*op2).map(Object::U8),
-            (Object::I16(op1), Object::I16(op2)) => op1.checked_mul(*op2).map(Object::I16),
-            (Object::U16(op1), Object::U16(op2)) => op1.checked_mul(*op2).map(Object::U16),
-            (Object::I32(op1), Object::I32(op2)) => op1.checked_mul(*op2).map(Object::I32),
-            (Object::U32(op1), Object::U32(op2)) => op1.checked_mul(*op2).map(Object::U32),
-            (Object::I64(op1), Object::I64(op2)) => op1.checked_mul(*op2).map(Object::I64),
-            (Object::U64(op1), Object::U64(op2)) => op1.checked_mul(*op2).map(Object::U64),
-            (Object::I128(op1), Object::I128(op2)) => op1.checked_mul(*op2).map(Object::I128),
-            (Object::U128(op1), Object::U128(op2)) => op1.checked_mul(*op2).map(Object::U128),
-            _ => unreachable!()
+    fn mul(&mut self, kind:Kind, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef, tail:bool) -> Result<Continuation<'code>> {
+        let op1 = self.get(val1 as usize)?;
+        let op2 = self.get(val2 as usize)?;
+        let res =match kind {
+            Kind::I8 => unsafe {op1.i8.checked_mul(op2.i8)}.map(|r| Entry{i8: r}),
+            Kind::U8 => unsafe {op1.u8.checked_mul(op2.u8)}.map(|r| Entry{u8: r}),
+            Kind::I16 => unsafe {op1.i16.checked_mul(op2.i16)}.map(|r| Entry{i16: r}),
+            Kind::U16 => unsafe {op1.u16.checked_mul(op2.u16)}.map(|r| Entry{u16: r}),
+            Kind::I32 => unsafe {op1.i32.checked_mul(op2.i32)}.map(|r| Entry{i32: r}),
+            Kind::U32 => unsafe {op1.u32.checked_mul(op2.u32)}.map(|r| Entry{u32: r}),
+            Kind::I64 => unsafe {op1.i64.checked_mul(op2.i64)}.map(|r| Entry{i64: r}),
+            Kind::U64 => unsafe {op1.u64.checked_mul(op2.u64)}.map(|r| Entry{u64: r}),
+            Kind::I128 => unsafe {op1.i128.checked_mul(op2.i128)}.map(|r| Entry{i128: r}),
+            Kind::U128 => unsafe {op1.u128.checked_mul(op2.u128)}.map(|r| Entry{u128: r}),
+            Kind::Data => unreachable!(),
         };
 
         match res {
-            //todo: reimplement when we have the module with the correct error
-            None => unimplemented!(),
+            None => Ok(Continuation::Rollback),
             Some(r) => {
-                self.stack.push(self.alloc.alloc(r)?)?;
+                self.get_stack(tail).push(r)?;
                 Ok(Continuation::Next)
             }
         }
     }
 
     //does a division (a checked one, returns None in case of Over/under flow or division by 0)
-    fn div(&mut self, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef) -> Result<Continuation<'code>> {
-        //cost: relative to: Object size
-        let res = match (&*self.get(val1)?, &*self.get(val2)?) {
-            (Object::I8(op1), Object::I8(op2)) => op1.checked_div(*op2).map(Object::I8),
-            (Object::U8(op1), Object::U8(op2)) => op1.checked_div(*op2).map(Object::U8),
-            (Object::I16(op1), Object::I16(op2)) => op1.checked_div(*op2).map(Object::I16),
-            (Object::U16(op1), Object::U16(op2)) => op1.checked_div(*op2).map(Object::U16),
-            (Object::I32(op1), Object::I32(op2)) => op1.checked_div(*op2).map(Object::I32),
-            (Object::U32(op1), Object::U32(op2)) => op1.checked_div(*op2).map(Object::U32),
-            (Object::I64(op1), Object::I64(op2)) => op1.checked_div(*op2).map(Object::I64),
-            (Object::U64(op1), Object::U64(op2)) => op1.checked_div(*op2).map(Object::U64),
-            (Object::I128(op1), Object::I128(op2)) => op1.checked_div(*op2).map(Object::I128),
-            (Object::U128(op1), Object::U128(op2)) => op1.checked_div(*op2).map(Object::U128),
-            _ => unreachable!()
+    fn div(&mut self, kind:Kind, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef, tail:bool) -> Result<Continuation<'code>> {
+        let op1 = self.get(val1 as usize)?;
+        let op2 = self.get(val2 as usize)?;
+        let res =match kind {
+            Kind::I8 => unsafe {op1.i8.checked_div(op2.i8)}.map(|r| Entry{i8: r}),
+            Kind::U8 => unsafe {op1.u8.checked_div(op2.u8)}.map(|r| Entry{u8: r}),
+            Kind::I16 => unsafe {op1.i16.checked_div(op2.i16)}.map(|r| Entry{i16: r}),
+            Kind::U16 => unsafe {op1.u16.checked_div(op2.u16)}.map(|r| Entry{u16: r}),
+            Kind::I32 => unsafe {op1.i32.checked_div(op2.i32)}.map(|r| Entry{i32: r}),
+            Kind::U32 => unsafe {op1.u32.checked_div(op2.u32)}.map(|r| Entry{u32: r}),
+            Kind::I64 => unsafe {op1.i64.checked_div(op2.i64)}.map(|r| Entry{i64: r}),
+            Kind::U64 => unsafe {op1.u64.checked_div(op2.u64)}.map(|r| Entry{u64: r}),
+            Kind::I128 => unsafe {op1.i128.checked_div(op2.i128)}.map(|r| Entry{i128: r}),
+            Kind::U128 => unsafe {op1.u128.checked_div(op2.u128)}.map(|r| Entry{u128: r}),
+            Kind::Data => unreachable!(),
         };
 
         match res {
-            //todo: reimplement when we have the module with the correct error
-            None => unimplemented!(),
+            None => Ok(Continuation::Rollback),
             Some(r) => {
-                self.stack.push(self.alloc.alloc(r)?)?;
+                self.get_stack(tail).push(r)?;
                 Ok(Continuation::Next)
             }
         }
     }
 
     //compares the inputs for equality
-    fn eq(&mut self, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef) -> Result<Continuation<'code>> {
-        //cost: relative to: Object size
-        //Note: cost calc is hard without a custom Eq impl as we do not have appropriate info -- make eq similar to hash
-        self.stack.push(self.alloc.alloc(Object::Adt(if self.get(val1)? == self.get(val2)? { 1 } else { 0 }, SlicePtr::empty()))?)?;
+    fn eq(&mut self, kind:Kind, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef, tail:bool) -> Result<Continuation<'code>> {
+        let op1 = self.get(val1 as usize)?;
+        let op2 = self.get(val2 as usize)?;
+        self.get_stack(tail).push(match kind {
+            Kind::I8 => Entry{ adt: Adt(unsafe {op1.i8 == op2.i8} as u8, SlicePtr::empty())},
+            Kind::U8 => Entry{ adt: Adt(unsafe {op1.u8 == op2.u8} as u8, SlicePtr::empty())},
+            Kind::I16 => Entry{ adt: Adt(unsafe {op1.i16 == op2.i16} as u8, SlicePtr::empty())},
+            Kind::U16 => Entry{ adt: Adt(unsafe {op1.u16 == op2.u16} as u8, SlicePtr::empty())},
+            Kind::I32 => Entry{ adt: Adt(unsafe {op1.i32 == op2.i32} as u8, SlicePtr::empty())},
+            Kind::U32 => Entry{ adt: Adt(unsafe {op1.u32 == op2.u32} as u8, SlicePtr::empty())},
+            Kind::I64 => Entry{ adt: Adt(unsafe {op1.i64 == op2.i64} as u8, SlicePtr::empty())},
+            Kind::U64 => Entry{ adt: Adt(unsafe {op1.u64 == op2.u64} as u8, SlicePtr::empty())},
+            Kind::I128 => Entry{ adt: Adt(unsafe {op1.i128 == op2.i128} as u8, SlicePtr::empty())},
+            Kind::U128 => Entry{ adt: Adt(unsafe {op1.u128 == op2.u128} as u8, SlicePtr::empty())},
+            Kind::Data => Entry{ adt: Adt(unsafe {op1.data == op2.data} as u8, SlicePtr::empty())},
+        })?;
         Ok(Continuation::Next)
     }
 
-    /*
-    //hashes the input recursively
-    fn struct_hash(&mut self, ValueRef(val):ValueRef) -> Result<Continuation<'code>>  {
-        //cost: constant |relative Part in object_hash|
-        let top = self.get(val)?;
-        //Make a 20 byte digest hascher
-        let mut context = HashingDomain::Object.get_domain_hasher();
+    //a non recursive, non-structural variant that just hashes the data input -- it has no collision guarantees
+    // This is never used to generate collision free hashes like unique, singleton, indexes etc...
+    fn plain_hash(&mut self, kind:Kind, ValueRef(val):ValueRef, tail:bool) -> Result<Continuation<'code>> {
+        let op1 = self.get(val as usize)?;
+        //Plain is an exception and allowed to be called with no domain as it is always used as data
+        let mut context = Hasher::new();
         //fill the hash
-        object_hash(&top, &mut context);
+        Self::process_entry_slice(kind,op1, |data| context.update(data));
         //calc the Hash
         let hash_data = context.alloc_finalize(&self.alloc)?;
         //get ownership and return
-        self.stack.push(self.alloc.alloc(Object::Data(hash_data))?)?;
+        self.get_stack(tail).push(Entry{data:hash_data})?;
         Ok(Continuation::Next)
     }
-*/
-    //hashes 2 inputs together
-    fn join_hash(&mut self, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef, domain:HashingDomain) -> Result<Continuation<'code>>  {
-        //Get the first value
-        let val = self.get(val1)?;
-        let data1 = match *val {
-            Object::Data(ref data) => data,
-            _ => unreachable!()
-        };
-        //Get the second value
-        let val = self.get(val2)?;
-        let data2 = match *val {
-            Object::Data(ref data) => data,
-            _ => unreachable!()
-        };
 
+    //hashes 2 inputs together
+    fn join_hash(&mut self, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef, domain:HashingDomain, tail:bool) -> Result<Continuation<'code>>  {
+        let data1 = unsafe {self.get(val1 as usize)?.data};
+        let data2 = unsafe {self.get(val2 as usize)?.data};
         let mut context = domain.get_domain_hasher();
         //fill the hash with first value
         context.update(&data1);
@@ -815,252 +706,175 @@ impl<'script,'code,'interpreter,'execution,'heap> ExecutionContext<'script,'code
         //calc the Hash
         let hash_data = context.alloc_finalize(&self.alloc)?;
         //get ownership and return
-        self.stack.push(self.alloc.alloc(Object::Data(hash_data))?)?;
+        self.get_stack(tail).push(Entry{data:hash_data})?;
         Ok(Continuation::Next)
     }
 
-    //a non recursive, non-structural variant that just hashes the data input -- it has no collision guarantees
-    // This is never used to generate collision free hashes like unique, singleton, indexes etc...
-    fn plain_hash(&mut self, ValueRef(val):ValueRef) -> Result<Continuation<'code>> {
-        let val = self.get(val)?;
-        let data = match *val {
-            Object::Data(ref data) => data,
-            _ => unreachable!()
-        };
-        //Plain is an exception and allowed to be called with no domain as it is always used as data
-        let mut context = Hasher::new();
-        //fill the hash
-        context.update(&data);
-        //calc the Hash
-        let hash_data = context.alloc_finalize(&self.alloc)?;
-        //get ownership and return
-        self.stack.push(self.alloc.alloc(Object::Data(hash_data))?)?;
-        Ok(Continuation::Next)
-    }
-
-    /*
-    //concats the data inputs
-    fn concat(&mut self, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef) -> Result<Continuation<'code>> {
-        //get the args
-        self.stack.push(self.alloc.alloc(match (&*self.get(val1)?, &*self.get(val2)?) {
-            (Object::Data(ref op1), Object::Data(ref op2)) => {
-                //build a new data vector from the inputs
-                Object::Data(self.alloc.merge_alloc_slice(op1,op2)?)
-            },
-            _ => unreachable!()
-        })?)?;
-        Ok(Continuation::Next)
-    }
-    */
     //compares the inputs for less than
-    fn lt(&mut self, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef) -> Result<Continuation<'code>> {
-        //cost: relative to: Object size
-        self.stack.push(self.alloc.alloc(match (&*self.get(val1)?, &*self.get(val2)?) {
-            (Object::I8(op1), Object::I8(op2)) => Object::Adt(if op1 < op2 { 1 } else { 0 }, SlicePtr::empty()),
-            (Object::U8(op1), Object::U8(op2)) => Object::Adt(if op1 < op2 { 1 } else { 0 }, SlicePtr::empty()),
-            (Object::I16(op1), Object::I16(op2)) => Object::Adt(if op1 < op2 { 1 } else { 0 }, SlicePtr::empty()),
-            (Object::U16(op1), Object::U16(op2)) => Object::Adt(if op1 < op2 { 1 } else { 0 }, SlicePtr::empty()),
-            (Object::I32(op1), Object::I32(op2)) => Object::Adt(if op1 < op2 { 1 } else { 0 }, SlicePtr::empty()),
-            (Object::U32(op1), Object::U32(op2)) => Object::Adt(if op1 < op2 { 1 } else { 0 }, SlicePtr::empty()),
-            (Object::I64(op1), Object::I64(op2)) => Object::Adt(if op1 < op2 { 1 } else { 0 }, SlicePtr::empty()),
-            (Object::U64(op1), Object::U64(op2)) => Object::Adt(if op1 < op2 { 1 } else { 0 }, SlicePtr::empty()),
-            (Object::I128(op1), Object::I128(op2)) => Object::Adt(if op1 < op2 { 1 } else { 0 }, SlicePtr::empty()),
-            (Object::U128(op1), Object::U128(op2)) => Object::Adt(if op1 < op2 { 1 } else { 0 }, SlicePtr::empty()),
-            _ => unreachable!()
-        })?)?;
+    fn lt(&mut self, kind:Kind, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef, tail:bool) -> Result<Continuation<'code>> {
+        let op1 = self.get(val1 as usize)?;
+        let op2 = self.get(val2 as usize)?;
+        self.get_stack(tail).push(match kind {
+            Kind::I8 => Entry{adt: Adt(unsafe {op1.i8 < op2.i8} as u8, SlicePtr::empty())},
+            Kind::U8 => Entry{adt: Adt(unsafe {op1.u8 < op2.u8} as u8, SlicePtr::empty())},
+            Kind::I16 => Entry{adt: Adt(unsafe {op1.i16 < op2.i16} as u8, SlicePtr::empty())},
+            Kind::U16 => Entry{adt: Adt(unsafe {op1.u16 < op2.u16} as u8, SlicePtr::empty())},
+            Kind::I32 => Entry{adt: Adt(unsafe {op1.i32 < op2.i32} as u8, SlicePtr::empty())},
+            Kind::U32 => Entry{adt: Adt(unsafe {op1.u32 < op2.u32} as u8, SlicePtr::empty())},
+            Kind::I64 => Entry{adt: Adt(unsafe {op1.i64 < op2.i64} as u8, SlicePtr::empty())},
+            Kind::U64 => Entry{adt: Adt(unsafe {op1.u64 < op2.u64} as u8, SlicePtr::empty())},
+            Kind::I128 => Entry{adt: Adt(unsafe {op1.i128 < op2.i128} as u8, SlicePtr::empty())},
+            Kind::U128 => Entry{adt: Adt(unsafe {op1.u128 < op2.u128} as u8, SlicePtr::empty())},
+            Kind::Data => unreachable!(),
+        })?;
         Ok(Continuation::Next)
     }
 
     //compares the inputs for greater than
-    fn gt(&mut self, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef) -> Result<Continuation<'code>> {
-        //cost: relative to: Object size
-        self.stack.push(self.alloc.alloc(match (&*self.get(val1)?, &*self.get(val2)?) {
-            (Object::I8(op1), Object::I8(op2)) => Object::Adt(if op1 > op2 { 1 } else { 0 }, SlicePtr::empty()),
-            (Object::U8(op1), Object::U8(op2)) => Object::Adt(if op1 > op2 { 1 } else { 0 }, SlicePtr::empty()),
-            (Object::I16(op1), Object::I16(op2)) => Object::Adt(if op1 > op2 { 1 } else { 0 }, SlicePtr::empty()),
-            (Object::U16(op1), Object::U16(op2)) => Object::Adt(if op1 > op2 { 1 } else { 0 }, SlicePtr::empty()),
-            (Object::I32(op1), Object::I32(op2)) => Object::Adt(if op1 > op2 { 1 } else { 0 }, SlicePtr::empty()),
-            (Object::U32(op1), Object::U32(op2)) => Object::Adt(if op1 > op2 { 1 } else { 0 }, SlicePtr::empty()),
-            (Object::I64(op1), Object::I64(op2)) => Object::Adt(if op1 > op2 { 1 } else { 0 }, SlicePtr::empty()),
-            (Object::U64(op1), Object::U64(op2)) => Object::Adt(if op1 > op2 { 1 } else { 0 }, SlicePtr::empty()),
-            (Object::I128(op1), Object::I128(op2)) => Object::Adt(if op1 > op2 { 1 } else { 0 }, SlicePtr::empty()),
-            (Object::U128(op1), Object::U128(op2)) => Object::Adt(if op1 > op2 { 1 } else { 0 }, SlicePtr::empty()),
-            _ => unreachable!()
-        })?)?;
+    fn gt(&mut self, kind:Kind, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef, tail:bool) -> Result<Continuation<'code>> {
+        let op1 = self.get(val1 as usize)?;
+        let op2 = self.get(val2 as usize)?;
+        self.get_stack(tail).push(match kind {
+            Kind::I8 => Entry{adt: Adt(unsafe {op1.i8 > op2.i8} as u8, SlicePtr::empty())},
+            Kind::U8 => Entry{adt: Adt(unsafe {op1.u8 > op2.u8} as u8, SlicePtr::empty())},
+            Kind::I16 => Entry{adt: Adt(unsafe {op1.i16 > op2.i16} as u8, SlicePtr::empty())},
+            Kind::U16 => Entry{adt: Adt(unsafe {op1.u16 > op2.u16} as u8, SlicePtr::empty())},
+            Kind::I32 => Entry{adt: Adt(unsafe {op1.i32 > op2.i32} as u8, SlicePtr::empty())},
+            Kind::U32 => Entry{adt: Adt(unsafe {op1.u32 > op2.u32} as u8, SlicePtr::empty())},
+            Kind::I64 => Entry{adt: Adt(unsafe {op1.i64 > op2.i64} as u8, SlicePtr::empty())},
+            Kind::U64 => Entry{adt: Adt(unsafe {op1.u64 > op2.u64} as u8, SlicePtr::empty())},
+            Kind::I128 => Entry{adt: Adt(unsafe {op1.i128 > op2.i128} as u8, SlicePtr::empty())},
+            Kind::U128 => Entry{adt: Adt(unsafe {op1.u128 > op2.u128} as u8, SlicePtr::empty())},
+            Kind::Data => unreachable!(),
+        })?;
         Ok(Continuation::Next)
     }
 
     //compares the inputs for less than or equal
-    fn lte(&mut self, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef) -> Result<Continuation<'code>> {
-        //cost: relative to: Object size
-        self.stack.push(self.alloc.alloc(match (&*self.get(val1)?, &*self.get(val2)?) {
-            (Object::I8(op1), Object::I8(op2)) => Object::Adt(if op1 <= op2 { 1 } else { 0 }, SlicePtr::empty()),
-            (Object::U8(op1), Object::U8(op2)) => Object::Adt(if op1 <= op2 { 1 } else { 0 }, SlicePtr::empty()),
-            (Object::I16(op1), Object::I16(op2)) => Object::Adt(if op1 <= op2 { 1 } else { 0 }, SlicePtr::empty()),
-            (Object::U16(op1), Object::U16(op2)) => Object::Adt(if op1 <= op2 { 1 } else { 0 }, SlicePtr::empty()),
-            (Object::I32(op1), Object::I32(op2)) => Object::Adt(if op1 <= op2 { 1 } else { 0 }, SlicePtr::empty()),
-            (Object::U32(op1), Object::U32(op2)) => Object::Adt(if op1 <= op2 { 1 } else { 0 }, SlicePtr::empty()),
-            (Object::I64(op1), Object::I64(op2)) => Object::Adt(if op1 <= op2 { 1 } else { 0 }, SlicePtr::empty()),
-            (Object::U64(op1), Object::U64(op2)) => Object::Adt(if op1 <= op2 { 1 } else { 0 }, SlicePtr::empty()),
-            (Object::I128(op1), Object::I128(op2)) => Object::Adt(if op1 <= op2 { 1 } else { 0 }, SlicePtr::empty()),
-            (Object::U128(op1), Object::U128(op2)) => Object::Adt(if op1 <= op2 { 1 } else { 0 }, SlicePtr::empty()),
-            _ => unreachable!()
-        })?)?;
+    fn lte(&mut self, kind:Kind, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef, tail:bool) -> Result<Continuation<'code>> {
+        let op1 = self.get(val1 as usize)?;
+        let op2 = self.get(val2 as usize)?;
+        self.get_stack(tail).push(match kind {
+            Kind::I8 => Entry{adt: Adt(unsafe {op1.i8 <= op2.i8} as u8, SlicePtr::empty())},
+            Kind::U8 => Entry{adt: Adt(unsafe {op1.u8 <= op2.u8} as u8, SlicePtr::empty())},
+            Kind::I16 => Entry{adt: Adt(unsafe {op1.i16 <= op2.i16} as u8, SlicePtr::empty())},
+            Kind::U16 => Entry{adt: Adt(unsafe {op1.u16 <= op2.u16} as u8, SlicePtr::empty())},
+            Kind::I32 => Entry{adt: Adt(unsafe {op1.i32 <= op2.i32} as u8, SlicePtr::empty())},
+            Kind::U32 => Entry{adt: Adt(unsafe {op1.u32 <= op2.u32} as u8, SlicePtr::empty())},
+            Kind::I64 => Entry{adt: Adt(unsafe {op1.i64 <= op2.i64} as u8, SlicePtr::empty())},
+            Kind::U64 => Entry{adt: Adt(unsafe {op1.u64 <= op2.u64} as u8, SlicePtr::empty())},
+            Kind::I128 => Entry{adt: Adt(unsafe {op1.i128 <= op2.i128} as u8, SlicePtr::empty())},
+            Kind::U128 => Entry{adt: Adt(unsafe {op1.u128 <= op2.u128} as u8, SlicePtr::empty())},
+            Kind::Data => unreachable!(),
+        })?;
         Ok(Continuation::Next)
     }
 
     //compares the inputs for greater than or equal
-    fn gte(&mut self, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef) -> Result<Continuation<'code>> {
-        //cost: relative to: Object size
-        self.stack.push(self.alloc.alloc(match (&*self.get(val1)?, &*self.get(val2)?) {
-            (Object::I8(op1), Object::I8(op2)) => Object::Adt(if op1 >= op2 { 1 } else { 0 }, SlicePtr::empty()),
-            (Object::U8(op1), Object::U8(op2)) => Object::Adt(if op1 >= op2 { 1 } else { 0 }, SlicePtr::empty()),
-            (Object::I16(op1), Object::I16(op2)) => Object::Adt(if op1 >= op2 { 1 } else { 0 }, SlicePtr::empty()),
-            (Object::U16(op1), Object::U16(op2)) => Object::Adt(if op1 >= op2 { 1 } else { 0 }, SlicePtr::empty()),
-            (Object::I32(op1), Object::I32(op2)) => Object::Adt(if op1 >= op2 { 1 } else { 0 }, SlicePtr::empty()),
-            (Object::U32(op1), Object::U32(op2)) => Object::Adt(if op1 >= op2 { 1 } else { 0 }, SlicePtr::empty()),
-            (Object::I64(op1), Object::I64(op2)) => Object::Adt(if op1 >= op2 { 1 } else { 0 }, SlicePtr::empty()),
-            (Object::U64(op1), Object::U64(op2)) => Object::Adt(if op1 >= op2 { 1 } else { 0 }, SlicePtr::empty()),
-            (Object::I128(op1), Object::I128(op2)) => Object::Adt(if op1 >= op2 { 1 } else { 0 }, SlicePtr::empty()),
-            (Object::U128(op1), Object::U128(op2)) => Object::Adt(if op1 >= op2 { 1 } else { 0 }, SlicePtr::empty()),
-            _ => unreachable!()
-        })?)?;
+    fn gte(&mut self, kind:Kind, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef, tail:bool) -> Result<Continuation<'code>> {
+        let op1 = self.get(val1 as usize)?;
+        let op2 = self.get(val2 as usize)?;
+        self.get_stack(tail).push(match kind {
+            Kind::I8 => Entry { adt: Adt(unsafe { op1.i8 >= op2.i8 } as u8, SlicePtr::empty())},
+            Kind::U8 => Entry { adt: Adt(unsafe { op1.u8 >= op2.u8 } as u8, SlicePtr::empty())},
+            Kind::I16 => Entry { adt: Adt(unsafe { op1.i16 >= op2.i16 } as u8, SlicePtr::empty())},
+            Kind::U16 => Entry { adt: Adt(unsafe { op1.u16 >= op2.u16 } as u8, SlicePtr::empty())},
+            Kind::I32 => Entry { adt: Adt(unsafe { op1.i32 >= op2.i32 } as u8, SlicePtr::empty())},
+            Kind::U32 => Entry { adt: Adt(unsafe { op1.u32 >= op2.u32 } as u8, SlicePtr::empty())},
+            Kind::I64 => Entry { adt: Adt(unsafe { op1.i64 >= op2.i64 } as u8, SlicePtr::empty())},
+            Kind::U64 => Entry { adt: Adt(unsafe { op1.u64 >= op2.u64 } as u8, SlicePtr::empty())},
+            Kind::I128 => Entry { adt: Adt(unsafe { op1.i128 >= op2.i128 } as u8, SlicePtr::empty())},
+            Kind::U128 => Entry { adt: Adt(unsafe { op1.u128 >= op2.u128 } as u8, SlicePtr::empty())},
+            Kind::Data => unreachable!(),
+        })?;
         Ok(Continuation::Next)
+    }
+
+    fn entry_to_data(&mut self, kind:Kind, op1:Entry<'transaction>) -> Result<SlicePtr<'transaction, u8>> {
+        Self::process_entry_slice(kind,op1, |s| self.alloc.copy_alloc_slice(s))
+    }
+
+    fn process_entry_slice<R:Sized,F:FnOnce(&[u8]) -> R>(kind:Kind, op1:Entry<'transaction>, proc:F) -> R {
+        match kind {
+            Kind::I8 => proc(&[unsafe {op1.i8} as u8]),
+            Kind::U8 => proc(&[unsafe {op1.u8}]),
+            Kind::I16 => {
+                let mut input = [0; 2];
+                EncodingByteOrder::write_i16(&mut input, unsafe {op1.i16});
+                proc(&input)
+            },
+            Kind::U16 =>  {
+                let mut input = [0; 2];
+                EncodingByteOrder::write_u16(&mut input, unsafe {op1.u16});
+                proc(&input)
+            },
+            Kind::I32 => {
+                let mut input = [0; 4];
+                EncodingByteOrder::write_i32(&mut input, unsafe {op1.i32});
+                proc(&input)
+            },
+            Kind::U32 => {
+                let mut input = [0; 4];
+                EncodingByteOrder::write_u32(&mut input, unsafe {op1.u32});
+                proc(&input)
+            },
+            Kind::I64 => {
+                let mut input = [0; 8];
+                EncodingByteOrder::write_i64(&mut input, unsafe {op1.i64});
+                proc(&input)
+            },
+            Kind::U64 => {
+                let mut input = [0; 8];
+                EncodingByteOrder::write_u64(&mut input, unsafe {op1.u64});
+                proc(&input)
+            },
+            Kind::I128 => {
+                let mut input = [0; 16];
+                EncodingByteOrder::write_i128(&mut input, unsafe {op1.i128});
+                proc(&input)
+            },
+            Kind::U128 => {
+                let mut input = [0; 16];
+                EncodingByteOrder::write_u128(&mut input, unsafe {op1.u128});
+                proc(&input)
+            },
+            Kind::Data => proc(unsafe {&op1.data})
+        }
+    }
+
+    fn data_to_entry(&mut self, kind:Kind, op1:SlicePtr<'transaction, u8>) -> Entry<'transaction> {
+        match kind {
+            Kind::I8 => Entry{i8:op1[0] as i8},
+            Kind::U8 => Entry{u8:op1[0]},
+            Kind::I16 => Entry{i16:EncodingByteOrder::read_i16(&op1)},
+            Kind::U16 => Entry{u16:EncodingByteOrder::read_u16(&op1)},
+            Kind::I32 => Entry{i32:EncodingByteOrder::read_i32(&op1)},
+            Kind::U32 => Entry{u32:EncodingByteOrder::read_u32(&op1)},
+            Kind::I64 => Entry{i64:EncodingByteOrder::read_i64(&op1)},
+            Kind::U64 => Entry{u64:EncodingByteOrder::read_u64(&op1)},
+            Kind::I128 => Entry{i128:EncodingByteOrder::read_i128(&op1)},
+            Kind::U128 => Entry{u128:EncodingByteOrder::read_u128(&op1)},
+            Kind::Data => Entry{data:op1},
+        }
     }
 
     //converts numeric input to data
     //uses byteorder crate for conversion where not trivial
     // conversion is little endian
-    fn convert_to_data(&mut self, ValueRef(val):ValueRef) -> Result<Continuation<'code>> {
-        //cost: relative to: Object size
-        self.stack.push(self.alloc.alloc(match &*self.get(val)? {
-            Object::I8(data) => Object::Data(self.alloc.copy_alloc_slice(&[*data as u8])?),
-            Object::U8(data) => Object::Data(self.alloc.copy_alloc_slice(&[*data])?),
-            Object::I16(data) => {
-                let mut input = [0; 2];
-                EncodingByteOrder::write_i16(&mut input, *data);
-                Object::Data(self.alloc.copy_alloc_slice(&input)?)
-            },
-            Object::U16(data) => {
-                let mut input = [0; 2];
-                EncodingByteOrder::write_u16(&mut input, *data);
-                Object::Data(self.alloc.copy_alloc_slice(&input)?)
-            },
-            Object::I32(data) => {
-                let mut input = [0; 4];
-                EncodingByteOrder::write_i32(&mut input, *data);
-                Object::Data(self.alloc.copy_alloc_slice(&input)?)
-            },
-            Object::U32(data) => {
-                let mut input = [0; 4];
-                EncodingByteOrder::write_u32(&mut input, *data);
-                Object::Data(self.alloc.copy_alloc_slice(&input)?)
-            },
-            Object::I64(data) => {
-                let mut input = [0; 8];
-                EncodingByteOrder::write_i64(&mut input, *data);
-                Object::Data(self.alloc.copy_alloc_slice(&input)?)
-            },
-            Object::U64(data) => {
-                let mut input = [0; 8];
-                EncodingByteOrder::write_u64(&mut input, *data);
-                Object::Data(self.alloc.copy_alloc_slice(&input)?)
-            },
-            Object::I128(data) => {
-                let mut input = [0; 16];
-                EncodingByteOrder::write_i128(&mut input, *data);
-                Object::Data(self.alloc.copy_alloc_slice(&input)?)
-            },
-            Object::U128(data) => {
-                let mut input = [0; 16];
-                EncodingByteOrder::write_u128(&mut input, *data);
-                Object::Data(self.alloc.copy_alloc_slice(&input)?)
-            },
-            _ => unreachable!(),
-        })?)?;
+    fn convert_to_data(&mut self, kind:Kind, ValueRef(val):ValueRef, tail:bool) -> Result<Continuation<'code>> {
+        let op1 = self.get(val as usize)?;
+        let res = Entry{ data:self.entry_to_data(kind,op1)?};
+        self.get_stack(tail).push(res)?;
         Ok(Continuation::Next)
     }
-    /*
-    //gets a bit in a data value (as boolean)
-    fn get_bit(&mut self, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef) -> Result<Continuation<'code>> {
-        //helper that gets a bit in a vector
-        fn get_inner_bit<'script>(v: &[u8], idx: u16) -> Option<Object<'script>> {
-            //reverse the index (todo: is this really necessary??)
-            let rev_index = (idx / 8) as usize;
-            // check if it is in range
-            if rev_index >= v.len() { return None }
-            //calculate the byte position
-            let byte_pos = v.len() - rev_index - 1;
-            //calculate the bit position
-            let bit_pos = idx % 8;
-            //create the mask needed to probe the bit
-            let bit_mask = 1u8 << (bit_pos as u8);
-            //probe the bit
-            if v[byte_pos] & bit_mask != 0 {
-                Some(Object::Adt(1, SlicePtr::empty()))
-            } else {
-                Some(Object::Adt(0, SlicePtr::empty()))
-            }
-        }
-        //cost: constant
-        //extract vector and index and get bit
-        let res = match (&*self.get(val1)?, &*self.get(val2)?) {
-            (Object::Data(op1), Object::U8(op2)) => get_inner_bit(op1, u16::from(*op2)),
-            (Object::Data(op1), Object::U16(op2)) => get_inner_bit(op1, *op2),
-            _ => unreachable!()
-        };
 
-        match res {
-            //todo: reimplement when we have the module with the correct error
-            None => unimplemented!(),
-            Some(r) => {
-                self.stack.push(self.alloc.alloc(r)?)?;
-                Ok(Continuation::Next)
-            }
-        }
+    //converts dat input to numerics
+    //uses byteorder crate for conversion where not trivial
+    // conversion is little endian
+    fn convert_from_data(&mut self, kind:Kind, ValueRef(val):ValueRef, tail:bool) -> Result<Continuation<'code>> {
+        let op1 = self.get(val as usize)?;
+        let res = self.data_to_entry(kind,unsafe{op1.data});
+        self.get_stack(tail).push(res)?;
+        Ok(Continuation::Next)
     }
-
-    //sets a bit in a data value (as boolean)
-    fn set_bit(&mut self, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef, ValueRef(val3):ValueRef) -> Result<Continuation<'code>> {
-        //helper that sets a bit in a vector
-        fn set_inner_bit<'script,'heap>(v: &[u8], idx: u16, val: bool, alloc:&'script VirtualHeapArena<'heap>) -> Result<Option<Object<'script>>> {
-            //reverse the index (todo: is this really necessary??)
-            let rev_index = (idx / 8) as usize;
-            // check if it is in range
-            if rev_index >= v.len() { return Ok(None) }
-            //calculate the byte position
-            let byte_pos = v.len() - rev_index - 1;
-            //calculate the bit position
-            let bit_pos = idx % 8;
-            //create the mask needed to set the bit
-            let bit_mask = 1u8 << (bit_pos as u8);
-            //prepare a new vector for the result
-            let mut new_v = alloc.copy_alloc_mut_slice(v)?;
-            //set the bit in the new vector
-            if val {
-                new_v[byte_pos as usize] |= bit_mask;
-            } else {
-                new_v[byte_pos as usize] &= !bit_mask;
-            }
-            Ok(Some(Object::Data(new_v.freeze())))
-        }
-        //cost: relative to data size
-        //extract vector and index and set bit
-        let res = match (&*self.get(val1)?, &*self.get(val2)?, &*self.get(val3)?) {
-            (Object::Data(op1), Object::U8(op2), Object::Adt(tag, _)) => set_inner_bit(op1, u16::from(*op2), *tag == 1, self.alloc),
-            (Object::Data(op1), Object::U16(op2), Object::Adt(tag, _)) => set_inner_bit(op1, *op2, *tag == 1, self.alloc),
-            _ => unreachable!()
-        }?;
-
-        match res {
-            //todo: reimplement when we have the module with the correct error
-            None => unimplemented!(),
-            Some(r) => {
-                self.stack.push(self.alloc.alloc(r)?)?;
-                Ok(Continuation::Next)
-            }
-        }
-    }*/
-
-
 }

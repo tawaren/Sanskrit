@@ -1,83 +1,123 @@
-use alloc::rc::Rc;
 use utils::Crc;
-use sanskrit_common::capabilities::*;
-use alloc::collections::BTreeSet;
-use sanskrit_common::model::ValueRef;
 use alloc::vec::Vec;
 use sanskrit_common::model::*;
-
+use sanskrit_common::errors::*;
+use model::linking::Link;
+use model::bitsets::{CapSet, BitSet, PermSet};
+use model::Permission;
 
 //Global structs and enum to represent language elements
 //  they are global as they do no longer depend on a context and can be used cross module
 
-//An error
-#[derive(Ord, PartialOrd, Eq, PartialEq)]
-pub struct ResolvedErr {
-    pub offset:u8,
-    pub module:Rc<ModuleLink>
-}
-
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
-//needed to capture phantom information which influence the Capability calculation
-pub struct ResolvedApply{
-    pub is_phantom:bool,
-    pub typ:Crc<ResolvedType>
-}
-
 //A Type (Can be compared for type equality)
 //Capabilities here do already take into account the generics
-#[derive(Ord, PartialOrd, Eq, PartialEq, Debug)]
+#[derive(Debug)]
 pub enum ResolvedType {
     //A generic import that was not substituted (happens only if it is a top level generic)
-    Generic { extended_caps: CapSet, caps:CapSet, offset:u8, is_phantom:bool },
-    //An Image type capturing the information of another type
-    Image { typ: Crc<ResolvedType> },
+    Generic { caps:CapSet, offset:u8, is_phantom:bool },
+    //A Projection type capturing the information of a projected type
+    Projection { un_projected: Crc<ResolvedType> },
     //An signature type (can be from same module if Module == This)
-    Sig { extended_caps: CapSet, caps: CapSet, base_caps:CapSet, module:Rc<ModuleLink> , offset:u8, applies: Vec<ResolvedApply>},
+    Sig { generic_caps: CapSet, caps: CapSet, module:Crc<ModuleLink>, offset:u8, applies: Vec<Crc<ResolvedType>>},
     //An imported type (can be from same module if Module == This)
-    Data { extended_caps: CapSet, caps: CapSet, base_caps:CapSet, module:Rc<ModuleLink> , offset:u8, applies: Vec<ResolvedApply>},
+    Data { generic_caps: CapSet, caps: CapSet, module:Crc<ModuleLink>, offset:u8, applies: Vec<Crc<ResolvedType>>},
     //An imported type (can be from same module if Module == This)
-    Lit { extended_caps: CapSet, caps: CapSet, base_caps:CapSet, module:Rc<ModuleLink> , offset:u8, size:u16, applies: Vec<ResolvedApply>},
-
+    Lit { generic_caps: CapSet, caps: CapSet, module:Crc<ModuleLink>, offset:u8, applies: Vec<Crc<ResolvedType>>, size:u16},
+    //An External Type
+    Virtual(Hash)
 }
 
-//A function
-pub struct ResolvedFunction {
-    pub module:Rc<ModuleLink>,
-    pub offset:u8,
-    pub applies: Vec<Crc<ResolvedType>>
+
+#[derive(Debug)]
+pub enum ResolvedPermission{
+    TypeSig{perm:PermSet, typ:Crc<ResolvedType>, signature:Crc<ResolvedSignature>},
+    FunSig{perm:PermSet, fun:Crc<ResolvedCallable>, signature:Crc<ResolvedSignature>},
+    TypeData{perm:PermSet, typ:Crc<ResolvedType>, ctrs: Crc<Vec<Vec<Crc<ResolvedType>>>>},
+    TypeLit{perm:PermSet, typ:Crc<ResolvedType>, size:u16},
 }
 
-//Parameters of a Signature
-pub struct ResolvedCapture {
-    pub typ: Crc<ResolvedType>,
-    pub pos: u8,
-}
-
-//A function impl
-pub struct ResolvedImpl {
-    pub sig_type:Crc<ResolvedType>,              //The sig type
-    pub capture_types:Vec<Rc<ResolvedCapture>>       //The capture types
+//A Callable
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub enum ResolvedCallable {
+    Function{module:Crc<ModuleLink>, offset:u8, applies: Vec<Crc<ResolvedType>>},
+    Implement{module:Crc<ModuleLink>, offset:u8, applies: Vec<Crc<ResolvedType>>},
 }
 
 //A function signature (retrieved from applying generics to a function)
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct ResolvedSignature {
     pub params:Vec<ResolvedParam>,          //The parameters (including if they are consumed)
-    pub returns:Vec<ResolvedReturn>,        //returns including if they borrow something (in bernouli notation)
-    pub risks:BTreeSet<Rc<ResolvedErr>>,    //the risks that the function can throw
+    pub returns:Vec<Crc<ResolvedType>>,        //returns including if they borrow something (in bernouli notation)
+    pub transactional:bool
 }
 
 //Parameters of a Signature
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct ResolvedParam {
     pub typ: Crc<ResolvedType>,
     //The typ of the param
     pub consumes: bool,               //is it consumed when the function is applied
 }
 
-//Returns of a Function
-pub struct ResolvedReturn {
-    pub typ:Crc<ResolvedType>,      //The type of the return
-    pub borrows:Vec<ValueRef>       //an indicator if the return borrows something
+impl Crc<ResolvedPermission> {
+
+    pub fn check_value_permission(&self, expected_typ:&Crc<ResolvedType>, expected_perm:Permission) -> bool {
+        match **self {
+            ResolvedPermission::TypeLit { perm, ref typ, ..}
+            | ResolvedPermission::TypeData { perm, ref typ, .. }
+            | ResolvedPermission::TypeSig { perm, ref typ, .. } => expected_typ == typ && perm.contains(expected_perm),
+            _ => false
+        }
+    }
+
+    pub fn check_permission(&self, expected_perm:Permission) -> bool {
+        match **self {
+            ResolvedPermission::TypeSig { perm, .. }
+            | ResolvedPermission::TypeData { perm, .. }
+            | ResolvedPermission::TypeLit { perm, .. }
+            | ResolvedPermission::FunSig {perm, ..} => perm.contains(expected_perm),
+        }
+    }
+
+    pub fn get_type(&self) -> Result<&Crc<ResolvedType>> {
+        match **self {
+            ResolvedPermission::TypeLit { ref typ, ..}
+            | ResolvedPermission::TypeData { ref typ, .. }
+            | ResolvedPermission::TypeSig { ref typ, .. } => Ok(typ),
+            _ => error(||"Only sig, data & lit permissions have types"),
+        }
+    }
+
+    pub fn get_fun(&self) -> Result<&Crc<ResolvedCallable>> {
+        match **self {
+            ResolvedPermission::FunSig { ref fun, .. } => Ok(fun),
+            _ => error(||"Only fun permissions have funs"),
+        }
+    }
+
+
+    pub fn get_sig(&self) -> Result<&Crc<ResolvedSignature>> {
+        match **self {
+            ResolvedPermission::TypeSig { ref signature, .. }
+            | ResolvedPermission::FunSig { ref signature, .. } => Ok(signature),
+            _ => error(||"Only call & implement permissions have signatures"),
+        }
+    }
+
+    pub fn get_ctrs(&self) -> Result<&Crc<Vec<Vec<Crc<ResolvedType>>>>> {
+        match **self {
+            ResolvedPermission::TypeData { ref ctrs, .. } => Ok(ctrs),
+            _ => error(||"Only create, consume & inspect permissions have constructors"),
+        }
+    }
+
+    pub fn get_lit_size(&self) -> Result<u16> {
+        match **self {
+            ResolvedPermission::TypeLit { size, .. } => Ok(size),
+            _ => error(||"Only lit create permissions have a size"),
+        }
+    }
+
 }
 
 //Some usefull functions on the Type
@@ -88,13 +128,14 @@ impl Crc<ResolvedType> {
     //   Without this: we would need: a CopyOption, DropOption, PersistOption, CopyDropOption, ..... , CopyDropPersistOption
     //  This must be used when checking adt fields against the adt base caps
     // Note: this only influences generics and applied types with generic inputs
-    pub fn get_extended_caps(&self) -> CapSet {
+    pub fn get_generic_caps(&self) -> CapSet {
         match **self {
-            ResolvedType::Generic { extended_caps, .. }
-            | ResolvedType::Sig { extended_caps, .. }
-            | ResolvedType::Lit { extended_caps, .. }
-            | ResolvedType::Data { extended_caps, .. } => extended_caps,
-            ResolvedType::Image { .. } => CapSet::open(),
+            ResolvedType::Sig { generic_caps, .. }
+            | ResolvedType::Lit { generic_caps, .. }
+            | ResolvedType::Data { generic_caps, .. } => generic_caps,
+            ResolvedType::Generic { .. }
+            | ResolvedType::Projection { .. }  => CapSet::all(),
+            ResolvedType::Virtual(_) => CapSet::empty()
         }
     }
 
@@ -110,15 +151,26 @@ impl Crc<ResolvedType> {
             | ResolvedType::Sig { caps, .. }
             | ResolvedType::Lit { caps, .. }
             | ResolvedType::Data { caps, .. } => caps,
-            ResolvedType::Image { .. } => CapSet::open()
+            ResolvedType::Projection { .. } => CapSet::all(),
+            ResolvedType::Virtual(_) => CapSet::empty()
+        }
+    }
+
+    pub fn get_target(&self) -> &Crc<ResolvedType> {
+        match **self {
+            ResolvedType::Projection { ref un_projected, .. } => {
+                assert!(if let ResolvedType::Projection{..} = **un_projected {false} else {true});
+                un_projected
+            },
+            _ => self
         }
     }
 
     //checks if this type is a literal
     pub fn is_literal(&self) -> bool {
         match **self {
-            ResolvedType::Image { .. } | ResolvedType::Generic { .. } | ResolvedType::Sig { .. } | ResolvedType::Data { .. }=> false,
             ResolvedType::Lit {  .. }  => true,
+            _ => false
         }
     }
 
@@ -127,11 +179,23 @@ impl Crc<ResolvedType> {
         match **self {
             ResolvedType::Sig { ref module, .. }
             | ResolvedType::Lit { ref module, .. }
-            | ResolvedType::Data { ref module, .. } => match **module {
-                ModuleLink::This(_) => true,
-                _ => false
-            },
-            ResolvedType::Image { .. } | ResolvedType::Generic { .. }  => false,
+            | ResolvedType::Data { ref module, .. } => module.is_local_link(),
+            ResolvedType::Virtual(_)
+            | ResolvedType::Generic { .. }
+            | ResolvedType::Projection {  .. } => false,
+        }
+    }
+}
+
+
+//Some usefull functions on the Callable
+impl Crc<ResolvedCallable> {
+
+    //checks if this type is local (from current module)
+    pub fn is_local(&self) -> bool {
+        match **self {
+            ResolvedCallable::Function { ref module, .. }
+            | ResolvedCallable::Implement { ref module, .. } => module.is_local_link(),
         }
     }
 }

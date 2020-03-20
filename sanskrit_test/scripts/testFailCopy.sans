@@ -1,5 +1,5 @@
 module TestFailCopy {
-    private fun Test[A](a:A):(b:A){
+    private fun Test[<Value, Unbound> A](a:A):(b:A){
         b = copy a;
         return b;
     };

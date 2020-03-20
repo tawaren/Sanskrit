@@ -1,5 +1,11 @@
-signed(A) transaction{
-   d = lit 0x00112233445566778899AABBCCDDEEFF00112233:Data.Data20;
-   a = call IndexOps.ToRef2(d);
-   b = load a;
+transaction:(store s:System.Entry[IntU8.U8]){
+   a = lit 3:IntU8.U8;
+   key = lit 0x00:Data.Data1;
+   id = call IndexOps.GenIndex1(key);
+   return pack System.Entry[IntU8.U8]#Ctr(id,a);
+};
+
+
+transaction(borrow(IndexOps(0x01)) b:System.Entry[IntU8.U8]){
+   return;
 };

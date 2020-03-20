@@ -1,47 +1,78 @@
-signed(A) transaction{
+transactional transaction{
    c = call ErrorOps.CatchOne();
    () = call Helpers.AssertTrue(c);
 };
 
-
-signed(A) transaction{
-   a = pack ErrorOps.ErrSwitch#One();
-   c = call ErrorOps.CatchMany(a);
-   c2 = lit 1:IntU8.U8;
-   () = call Helpers.AssertEqU8(c,c2);
+transaction:(log b:Bool.Bool){
+   return call ErrorOps.CatchOne();
 };
 
-signed(A) transaction{
-   a = pack ErrorOps.ErrSwitch#Two();
-   c = call ErrorOps.CatchMany(a);
-   c2 = lit 2:IntU8.U8;
-   () = call Helpers.AssertEqU8(c,c2);
+transactional transaction{
+   c = call ErrorOps.CatchPropagate();
+   () = call Helpers.AssertTrue(c);
 };
 
-signed(A) transaction{
-   a = pack ErrorOps.ErrSwitch#Three();
-   c = call ErrorOps.CatchMany(a);
-   c2 = lit 3:IntU8.U8;
-   () = call Helpers.AssertEqU8(c,c2);
+transaction:(log b:Bool.Bool){
+   return call ErrorOps.CatchPropagate();
 };
 
-signed(A) transaction{
-   a = pack ErrorOps.ErrSwitch#One();
-   c = call ErrorOps.CatchMany2(a);
-   c2 = lit 1:IntU8.U8;
-   () = call Helpers.AssertEqU8(c,c2);
+transactional transaction{
+   c = try call ErrorOps.Throw(){
+      success => {
+          return pack Bool.Bool#False();
+      };
+      failure => {
+          return pack Bool.Bool#True();
+      };
+   };
+   () = call Helpers.AssertTrue(c);
 };
 
-signed(A) transaction{
-   a = pack ErrorOps.ErrSwitch#Two();
-   c = call ErrorOps.CatchMany2(a);
-   c2 = lit 2:IntU8.U8;
-   () = call Helpers.AssertEqU8(c,c2);
+transaction:(log b:Bool.Bool){
+   return try call ErrorOps.Throw(){
+      success => {
+          return pack Bool.Bool#False();
+      };
+      failure => {
+          return pack Bool.Bool#True();
+      };
+   };
 };
 
-signed(A) transaction{
-   a = pack ErrorOps.ErrSwitch#Three();
-   c = call ErrorOps.CatchMany2(a);
-   c2 = lit 3:IntU8.U8;
-   () = call Helpers.AssertEqU8(c,c2);
+transactional transaction{
+   c = try call ErrorOps.Propagate(){
+      success => {
+          return pack Bool.Bool#False();
+      };
+      failure => {
+          return pack Bool.Bool#True();
+      };
+   };
+   () = call Helpers.AssertTrue(c);
+};
+
+transaction:(log b:Bool.Bool){
+   return try call ErrorOps.Propagate(){
+      success => {
+          return pack Bool.Bool#False();
+      };
+      failure => {
+          return pack Bool.Bool#True();
+      };
+   };
+};
+
+transaction{
+  return try call ErrorOps.NoThrow(){
+        success => {
+            return ();
+        };
+        failure => {
+            return ();
+        };
+  };
+};
+
+transactional transaction{
+  return call ErrorOps.NoThrow();
 };

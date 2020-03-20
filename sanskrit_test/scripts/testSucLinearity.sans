@@ -1,130 +1,50 @@
 module TestSucLinearity{
 
-  fun TestFun1[A](consume a:A):(d:A) {
+  fun TestFun1[<Value, Unbound> A](consume a:A):(d:A) {
     b = a;
     c = b;
     d = c;
     return d;
   };
 
-  fun TestFun2[A](a:A):(borrowed(a) d:A) {
-      b = &a;
-      c = &b;
-      d = &c;
-      discard c borrowedBy d;
-      discard b borrowedBy d;
-      return d;
+  fun TestFun6[<Value, Unbound> A](consume a:A):(b:A) {
+          return a;
   };
 
-  fun TestFun3[A](consume a:A):(d:A, borrowed(d) g:A) {
-      b = a;
-      c = b;
-      d = c;
-      e = &d;
-      f = &e;
-      g = &f;
-      discard f borrowedBy g;
-      discard e borrowedBy g;
-      return (d,g);
-    };
-
-  fun TestFun4[A](consume a:A):(d:A) {
-      b = a;
-      c = b;
-      d = c;
-      e = &d;
-      f = &e;
-      g = &f;
-      return d;
-  };
-
-  fun TestFun5[A](consume a:A):(d:A) {
-        b = a;
-        c = b;
-        d = c;
-        e = &d;
-        f = &e;
-        g = &f;
-        return d;
-  };
-
-  fun TestFun6[A](consume a:A):(b:A) {
-          b = a;
-          return b;
-  };
-
-  fun TestFun7[A](consume a:A):(c:A) {
-        c = let  {
-            b = a;
-            return b;
+  fun TestFun7[<Value, Unbound> A](consume a:A):(c:A) {
+        return let  {
+            return a;
         };
-        return c;
-  };
-
-  err X;
-
-  fun TestFun8[A](consume a:A):(c:A) {
-          c = try  {
-              b = a;
-              return b;
-          } catch {
-            .X => {
-                b = a;
-                return b;
-            };
-          };
-          return c;
-  };
-
-  fun TestFun9[A](consume a:A):(c:A) {
-          c = try  {
-              b = a;
-              return b;
-          } catch {
-            .X => {
-                b = a;
-                return b;
-            };
-          };
-          return c;
   };
 
   type Enum { A; B; C; };
 
-  fun TestFun10[A](consume a:A, consume e:.Enum):(c:A) {
-        c = switch e:.Enum  {
+  fun TestFun10[<Value, Unbound> A](consume a:A, consume e:.Enum):(c:A) {
+        return switch e:.Enum  {
            A() => {
-                b = a;
-                return b;
+                return a;
            };
            B() => {
-               b = a;
-               return b;
+               return a;
            };
            C() => {
-              b = a;
-              return b;
+              return a;
            };
         };
-        return c;
   };
 
-  fun TestFun11[A](consume a:A, e:.Enum):(c:A) {
-        c = &switch e:.Enum  {
+  fun TestFun101[<Value, Unbound> A](consume a:A, e:.Enum):(c:A) {
+        return inspect e:.Enum  {
            A() => {
-                b = a;
-                return b;
+                return a;
            };
            B() => {
-               b = a;
-               return b;
+               return a;
            };
            C() => {
-              b = a;
-              return b;
+              return a;
            };
         };
-        return c;
   };
 
   fun TestFun12[<Drop> A](consume a:A):() {
@@ -133,28 +53,14 @@ module TestSucLinearity{
   };
 
   fun TestFun13[<Drop> A](consume a:A):() {
-        () = let  {
+        return let  {
             b = a;
             return;
         };
-        return;
-  };
-
-  fun TestFun14[<Drop> A](consume a:A):() {
-          () = try  {
-              b = a;
-              return;
-          } catch {
-            .X => {
-                b = a;
-                return;
-            };
-          };
-          return;
   };
 
   fun TestFun13[<Drop> A](consume a:A, consume e:.Enum):() {
-        () = switch e:.Enum  {
+        return switch e:.Enum  {
            A() => {
                 b = a;
                 return;
@@ -168,237 +74,107 @@ module TestSucLinearity{
               return;
            };
         };
-        return;
   };
 
-  fun TestFun15[<Drop> A](consume a:A, e:.Enum):() {
-        c = &switch e:.Enum  {
-           A() => {
+  fun TestFun131[<Drop> A](consume a:A, e:.Enum):() {
+          return inspect e:.Enum  {
+             A() => {
+                  b = a;
+                  return;
+             };
+             B() => {
+                 b = a;
+                 return;
+             };
+             C() => {
                 b = a;
                 return;
-           };
-           B() => {
-               b = a;
-               return;
-           };
-           C() => {
-              b = a;
-              return;
-           };
-        };
-        return;
-  };
-
-  fun TestFun16[A](consume a:A, consume b:A):(c:A, d:A) {
-          c = a;
-          d = b;
-          return (c,d);
-  };
-
-  fun TestFun17[A](consume a:A, consume b:A):(c:A, d:A) {
-        (c,d) = let  {
-           c = a;
-           d = b;
-           return (c,d);
-        };
-        return (c,d);
-  };
-
-  fun TestFun18[A](consume a:A, consume b:A):(c:A, d:A) {
-        (c,d) = try  {
-            c = a;
-            d = b;
-            return (c,d);
-        } catch {
-            .X => {
-                 c = a;
-                 d = b;
-                 return (c,d);
-            };
-        };
-        return (c,d);
-  };
-
-  fun TestFun19[A](consume a:A, consume b:A):(c:A, d:A) {
-          (c,d) = try  {
-               c = a;
-               d = b;
-               return (c,d);
-          } catch {
-            .X => {
-                 c = a;
-                 d = b;
-                 return (c,d);
-            };
+             };
           };
-          return (c,d);
   };
 
-  fun TestFun20[A](consume a:A, consume b:A, consume e:.Enum):(c:A, d:A) {
-        (c,d) = switch e:.Enum  {
+  fun TestFun16[<Value, Unbound> A](consume a:A, consume b:A):(c:A, d:A) {
+          return (a,b);
+  };
+
+  fun TestFun17[<Value, Unbound> A](consume a:A, consume b:A):(c:A, d:A) {
+        return let  {
+           return (a,b);
+        };
+  };
+
+  fun TestFun20[<Value, Unbound> A](consume a:A, consume b:A, consume e:.Enum):(c:A, d:A) {
+        return switch e:.Enum  {
            A() => {
-                c = a;
-                d = b;
-                return (c,d);
+                return (a,b);
            };
            B() => {
-               c = a;
-               d = b;
-               return (c,d);
+               return (a,b);
            };
            C() => {
-              c = a;
-              d = b;
-              return (c,d);
+              return (a,b);
            };
         };
-        return (c,d);
   };
 
-  fun TestFun21[A](consume a:A, consume b:A, e:.Enum):(c:A, d:A) {
-        (c,d) = &switch e:.Enum  {
-           A() => {
-                 c = a;
-                 d = b;
-                 return (c,d);
-           };
-           B() => {
-                 c = a;
-                 d = b;
-                 return (c,d);
-           };
-           C() => {
-                 c = a;
-                 d = b;
-                 return (c,d);
-           };
-        };
-        return (c,d);
-  };
-
-
-  fun TestFun22[<Drop> A](consume a:A, consume b:A):(c:A) {
-          c = a;
-          d = b;
-          return c;
-  };
-
-  fun TestFun23[<Drop> A](consume a:A, consume b:A):(c:A) {
-        c = let  {
-           c = a;
-           d = b;
-           return c;
-        };
-        return c;
-  };
-
-  fun TestFun24[<Drop> A](consume a:A, consume b:A):(c:A) {
-        c = try  {
-               c = a;
-               d = b;
-               return c;
-        } catch {
-            .X => {
-               c = a;
-               d = b;
-               return c;
-            };
-        };
-        return c;
-  };
-
-  fun TestFun25[<Drop> A](consume a:A, consume b:A):(c:A) {
-          c = try  {
-               c = a;
-               d = b;
-               return c;
-          } catch {
-            .X => {
-               c = a;
-               d = b;
-               return c;
-            };
+  fun TestFun201[<Value, Unbound> A](consume a:A, consume b:A, e:.Enum):(c:A, d:A) {
+          return inspect e:.Enum  {
+             A() => {
+                 return (a,b);
+             };
+             B() => {
+                 return (a,b);
+             };
+             C() => {
+                return (a,b);
+             };
           };
-          return c;
   };
 
-  fun TestFun26[<Drop> A](consume a:A, consume b:A, consume e:.Enum):(c:A) {
-        c = switch e:.Enum  {
+  fun TestFun22[<Drop, Value, Unbound> A](consume a:A, consume b:A):(c:A) {
+          d = b;
+          return a;
+  };
+
+  fun TestFun23[<Drop, Value, Unbound> A](consume a:A, consume b:A):(c:A) {
+        return let  {
+           d = b;
+           return a;
+        };
+  };
+
+  fun TestFun26[<Drop, Value, Unbound>  A](consume a:A, consume b:A, consume e:.Enum):(c:A) {
+        return switch e:.Enum  {
            A() => {
-               c = a;
                d = b;
-               return c;
+               return a;
            };
            B() => {
-               c = a;
                d = b;
-               return c;
+               return a;
            };
            C() => {
-               c = a;
                d = b;
-               return c;
+               return a;
            };
         };
-        return c;
   };
 
-  fun TestFun27[<Drop> A](consume a:A, consume b:A, e:.Enum):(c:A) {
-        c = &switch e:.Enum  {
-           A() => {
-               c = a;
-               d = b;
-               return c;
-           };
-           B() => {
-               c = a;
-               d = b;
-               return c;
-           };
-           C() => {
-               c = a;
-               d = b;
-               return c;
-           };
-        };
-        return c;
-  };
-
-  fun TestFun28[A](a:A):(borrowed(a) b:A) {
-     b = &a;
-     return b;
-  };
-
-  fun TestFun29[<Embed> A](a:A):(borrowed(a) b:TestSucAdt.Option[A]) {
-      b = &pack TestSucAdt.Option[A]#Some(a);
-      return b;
-  };
-
-  risky<.X> fun TestFun30[<Embed> A](a:TestSucAdt.Option[A]):(borrowed(a) b:A) {
-        b = &switch a:TestSucAdt.Option[A]{
-            Some(b) => {return b;};
-            None => {throw .X;};
-        };
-        return b;
-  };
-
-  fun TestFun31[<Embed> A](a:TestSucAdt.Wrapper[A]):(borrowed(a) b:A) {
-      b = &unpack a:TestSucAdt.Wrapper[A];
-      return b;
-  };
-
-  type Pair[<Embed> A,<Embed> B] {
-    Ctr(A,B);
-  };
-
-  fun TestFun32[<Embed> A, <Embed> B](a:A, b:B):(borrowed(a,b) c:.Pair[A,B]) {
-        c = &pack .Pair[A,B]#Ctr(a,b);
-        return c;
-  };
-
-  fun TestFun33[<Embed> A, <Embed> B](a:.Pair[A,B]):(borrowed(a) b:A, borrowed(a) c:B) {
-        (b,c) = &unpack a:.Pair[A,B];
-        return (b,c);
-  };
+  fun TestFun261[<Drop, Value, Unbound>  A](consume a:A, consume b:A, e:.Enum):(c:A) {
+          return inspect e:.Enum  {
+             A() => {
+                 d = b;
+                 return a;
+             };
+             B() => {
+                 d = b;
+                 return a;
+             };
+             C() => {
+                 d = b;
+                 return a;
+             };
+          };
+    };
 
 }

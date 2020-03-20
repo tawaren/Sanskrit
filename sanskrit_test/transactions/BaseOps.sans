@@ -1,14 +1,14 @@
 module BaseOps {
-   type <Copy,Drop,Embed,Create,Consume,Inspect> Wrapper[<Embed> A]{
+   public type <Copy,Drop,Primitive,Persist,Value,Unbound> Wrapper[A]{
         Ctr(A);
    };
 
-   type <Copy,Drop,Embed,Create,Consume,Inspect> TwoOfTwo[<Embed> A,<Embed> B]{
+   public type <Copy,Drop,Primitive,Persist,Value,Unbound> TwoOfTwo[A,B]{
         Ctr1(A,B);
         Ctr2(B,A);
    };
 
-   type <Copy,Drop,Embed> Test[<Embed> A, <Embed> B] {
+   public type <Copy,Drop,Primitive,Persist,Value,Unbound> Test[A,B] {
        Ctr1(Alt.Alt2[A,B]);
        Ctr2(Tuple.Tuple2[A,B]);
        Ctr3(A);
@@ -17,90 +17,74 @@ module BaseOps {
    };
 
    fun Extract(consume t:.Test[IntU8.U8,.Wrapper[IntU8.U8]]):(a:IntU8.U8) {
-        r = switch t:.Test[IntU8.U8,.Wrapper[IntU8.U8]] {
+        return switch t:.Test[IntU8.U8,.Wrapper[IntU8.U8]] {
              Ctr1(alt) => {
-                r = switch alt:Alt.Alt2[IntU8.U8,.Wrapper[IntU8.U8]]  {
-                    first(r) => {
+                return switch alt:Alt.Alt2[IntU8.U8,.Wrapper[IntU8.U8]]  {
+                    First(r) => {
                         return r;
                     };
-                    second(w) => {
-                        r = unpack w:.Wrapper[IntU8.U8];
-                        return r;
+                    Second(w) => {
+                        return unpack w:.Wrapper[IntU8.U8];
                     };
                 };
-                return r;
              };
              Ctr2(tup) => {
-                r = field[0] tup:Tuple.Tuple2[IntU8.U8,.Wrapper[IntU8.U8]];
-                return r;
+                return field[0] tup:Tuple.Tuple2[IntU8.U8,.Wrapper[IntU8.U8]];
              };
              Ctr3(r) => {
                 return r;
              };
              Ctr4(w) => {
-                r = unpack w:.Wrapper[IntU8.U8];
-                return r;
+                return unpack w:.Wrapper[IntU8.U8];
              };
              Ctr5(w) => {
-                r = field[0] w:.Wrapper[IntU8.U8];
-                return r;
+                return field[0] w:.Wrapper[IntU8.U8];
              };
         };
-        return r;
    };
 
-   fun BorrowOut(t:.Test[IntU8.U8,.Wrapper[IntU8.U8]]):(borrowed(t) a:IntU8.U8) {
-        r = &switch t:.Test[IntU8.U8,.Wrapper[IntU8.U8]] {
+   fun CopyOut(t:.Test[IntU8.U8,.Wrapper[IntU8.U8]]):(a:IntU8.U8) {
+        return inspect t:.Test[IntU8.U8,.Wrapper[IntU8.U8]] {
              Ctr1(alt) => {
-                r = &switch alt:Alt.Alt2[IntU8.U8,.Wrapper[IntU8.U8]]  {
-                    first(r) => {
-                        return r;
+                return inspect alt:Alt.Alt2[IntU8.U8,.Wrapper[IntU8.U8]]  {
+                    First(r) => {
+                        return copy r;
                     };
-                    second(w) => {
-                        r = &unpack w:.Wrapper[IntU8.U8];
-                        discard w borrowedBy r;
-                        return r;
+                    Second(w) => {
+                        w2 = copy w;
+                        return unpack w2:.Wrapper[IntU8.U8];
                     };
                 };
-                discard alt borrowedBy r;
-                return r;
              };
              Ctr2(tup) => {
-                r = &field[0] tup:Tuple.Tuple2[IntU8.U8,.Wrapper[IntU8.U8]];
-                discard tup borrowedBy r;
-                return r;
+                return copy field[0] tup:Tuple.Tuple2[IntU8.U8,.Wrapper[IntU8.U8]];
              };
              Ctr3(r) => {
-                return r;
+                return copy r;
              };
              Ctr4(w) => {
-                r = &unpack w:.Wrapper[IntU8.U8];
-                discard w borrowedBy r;
-                return r;
+                w2 = copy w;
+                return unpack w2:.Wrapper[IntU8.U8];
              };
              Ctr5(w) => {
-                r = &field[0] w:.Wrapper[IntU8.U8];
-                discard w borrowedBy r;
-                return r;
+                return copy field[0] w:.Wrapper[IntU8.U8];
              };
         };
-        return r;
    };
 
-
-   public risky<Helpers.ValidationError> fun CreateStuff():() {
+   public transactional fun CreateStuff():() {
         a = lit 1:IntU8.U8;
         aa = copy a;
         w = pack .Wrapper[IntU8.U8]#Ctr(aa);
         c11 = copy a;
-        a11 = pack Alt.Alt2[IntU8.U8,.Wrapper[IntU8.U8]]#first(c11);
+        a11 = pack Alt.Alt2[IntU8.U8,.Wrapper[IntU8.U8]]#First(c11);
         t11 = pack .Test[IntU8.U8,.Wrapper[IntU8.U8]]#Ctr1(a11);
         c12 = copy w;
-        a12 = pack Alt.Alt2[IntU8.U8,.Wrapper[IntU8.U8]]#second(c12);
+        a12 = pack Alt.Alt2[IntU8.U8,.Wrapper[IntU8.U8]]#Second(c12);
         t12 = pack .Test[IntU8.U8,.Wrapper[IntU8.U8]]#Ctr1(a12);
         c21 = copy a;
         c22 = copy w;
-        a2 = pack Tuple.Tuple2[IntU8.U8,.Wrapper[IntU8.U8]]#tuple(c21,c22);
+        a2 = pack Tuple.Tuple2[IntU8.U8,.Wrapper[IntU8.U8]]#Tuple(c21,c22);
         t2 = pack .Test[IntU8.U8,.Wrapper[IntU8.U8]]#Ctr2(a2);
         a3 = copy a;
         t3 = pack .Test[IntU8.U8,.Wrapper[IntU8.U8]]#Ctr3(a3);
@@ -108,12 +92,12 @@ module BaseOps {
         t4 = pack .Test[IntU8.U8,.Wrapper[IntU8.U8]]#Ctr4(a4);
         a5 = copy w;
         t5 = pack .Test[IntU8.U8,.Wrapper[IntU8.U8]]#Ctr5(a5);
-        br11 = call .BorrowOut(t11);
-        br12 = call .BorrowOut(t12);
-        br2 = call .BorrowOut(t2);
-        br3 = call .BorrowOut(t3);
-        br4 = call .BorrowOut(t4);
-        br5 = call .BorrowOut(t5);
+        br11 = call .CopyOut(t11);
+        br12 = call .CopyOut(t12);
+        br2 = call .CopyOut(t2);
+        br3 = call .CopyOut(t3);
+        br4 = call .CopyOut(t4);
+        br5 = call .CopyOut(t5);
         () = call Helpers.AssertEqU8(a,br11);
         () = call Helpers.AssertEqU8(a,br12);
         () = call Helpers.AssertEqU8(a,br2);
@@ -136,93 +120,25 @@ module BaseOps {
         return;
    };
 
-    public risky<Helpers.ValidationError> fun CreateBorrowedStuff():() {
-       a = lit 1:IntU8.U8;
-       aa = copy a;
-       w = &pack .Wrapper[IntU8.U8]#Ctr(aa);
-       c11 = copy a;
-       a11 = &pack Alt.Alt2[IntU8.U8,.Wrapper[IntU8.U8]]#first(c11);
-       t11 = &pack .Test[IntU8.U8,.Wrapper[IntU8.U8]]#Ctr1(a11);
-       c12 = copy w;
-       a12 = &pack Alt.Alt2[IntU8.U8,.Wrapper[IntU8.U8]]#second(c12);
-       t12 = &pack .Test[IntU8.U8,.Wrapper[IntU8.U8]]#Ctr1(a12);
-       c21 = copy a;
-       c22 = copy w;
-       a2 = &pack Tuple.Tuple2[IntU8.U8,.Wrapper[IntU8.U8]]#tuple(c21,c22);
-       t2 = &pack .Test[IntU8.U8,.Wrapper[IntU8.U8]]#Ctr2(a2);
-       a3 = copy a;
-       t3 = &pack .Test[IntU8.U8,.Wrapper[IntU8.U8]]#Ctr3(a3);
-       a4 = copy w;
-       t4 = &pack .Test[IntU8.U8,.Wrapper[IntU8.U8]]#Ctr4(a4);
-       a5 = copy w;
-       t5 = &pack .Test[IntU8.U8,.Wrapper[IntU8.U8]]#Ctr5(a5);
-       br11 = call .BorrowOut(t11);
-       br12 = call .BorrowOut(t12);
-       br2 = call .BorrowOut(t2);
-       br3 = call .BorrowOut(t3);
-       br4 = call .BorrowOut(t4);
-       br5 = call .BorrowOut(t5);
-       () = call Helpers.AssertEqU8(a,br11);
-       () = call Helpers.AssertEqU8(a,br12);
-       () = call Helpers.AssertEqU8(a,br2);
-       () = call Helpers.AssertEqU8(a,br3);
-       () = call Helpers.AssertEqU8(a,br4);
-       () = call Helpers.AssertEqU8(a,br5);
-       return;
+    public fun Pack[<Unbound> A](consume a:A):(w:.Wrapper[A]){
+        return pack .Wrapper[A]#Ctr(a);
     };
 
-    public fun Pack[<Embed> A](consume a:A):(w:.Wrapper[A]){
-        w = pack .Wrapper[A]#Ctr(a);
-        return w;
+    public fun Unpack[<Unbound> A](consume w:.Wrapper[A]):(a:A){
+        return unpack w:.Wrapper[A];
+    };
+    public fun Pack2[<Unbound> A,<Unbound> B](consume a:A,consume b:B):(w:.TwoOfTwo[A,B]){
+        return pack .TwoOfTwo[A,B]#Ctr1(a,b);
     };
 
-    public fun BorrowPack[<Embed> A](a:A):(borrowed(a) w:.Wrapper[A]){
-        w = &pack .Wrapper[A]#Ctr(a);
-        return w;
+    public transactional fun Unpack2[<Unbound> A,<Unbound> B](consume w:.TwoOfTwo[A,B]):(a:A,b:B){
+        return switch w:.TwoOfTwo[A,B] {
+              Ctr1(a,b) => {
+                  return (a,b);
+              };
+              Ctr2(b,a) => {
+                  return (a,b);
+              };
+          };
     };
-
-    public fun Unpack[<Embed> A](consume w:.Wrapper[A]):(a:A){
-        a = unpack w:.Wrapper[A];
-        return a;
-    };
-
-    public fun BorrowUnpack[<Embed> A](w:.Wrapper[A]):(borrowed(w) a:A){
-        a = &unpack w:.Wrapper[A];
-        return a;
-    };
-
-    public fun Pack2[<Embed> A,<Embed> B](consume a:A,consume b:B):(w:.TwoOfTwo[A,B]){
-        w = pack .TwoOfTwo[A,B]#Ctr1(a,b);
-        return w;
-    };
-
-    public fun BorrowPack2[<Embed> A,<Embed> B](a:A, b:B):(borrowed(a,b) w:.TwoOfTwo[A,B]){
-        w = &pack .TwoOfTwo[A,B]#Ctr2(b,a);
-        return w;
-    };
-
-    public fun Unpack2[<Embed> A,<Embed> B](consume w:.TwoOfTwo[A,B]):(a:A,b:B){
-        (a,b) = switch w:.TwoOfTwo[A,B] {
-            Ctr1(a,b) => {
-                return (a,b);
-            };
-            Ctr2(b,a) => {
-                return (a,b);
-            };
-        };
-        return (a,b);
-    };
-
-    public fun BorrowUnpack2[<Embed> A,<Embed> B](w:.TwoOfTwo[A,B]):(borrowed(w) a:A, borrowed(w) b:B){
-       (a,b) = &switch w:.TwoOfTwo[A,B] {
-           Ctr1(a,b) => {
-               return (a,b);
-           };
-           Ctr2(b,a) => {
-               return (a,b);
-           };
-       };
-       return (a,b);
-    };
-
 }

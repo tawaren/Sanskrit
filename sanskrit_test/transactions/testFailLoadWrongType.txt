@@ -1,0 +1,11 @@
+transaction:(store s:System.Entry[IntU8.U8]){
+   a = lit 3:IntU8.U8;
+   key = lit 0x00:Data.Data1;
+   id = call IndexOps.GenIndex1(key);
+   return pack System.Entry[IntU8.U8]#Ctr(id,a);
+};
+
+
+transaction(borrow(IndexOps(0x00)) b:System.Entry[IntU16.U16]){
+   return;
+};

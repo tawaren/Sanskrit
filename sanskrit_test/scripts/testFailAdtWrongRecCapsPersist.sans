@@ -1,5 +1,5 @@
 module TestFailAdtWrongRecCapsPersist {
-    type <Embed> Inner {
+    type Inner {
         Inner;
     };
 

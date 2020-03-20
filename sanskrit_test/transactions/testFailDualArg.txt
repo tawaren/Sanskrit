@@ -1,4 +1,4 @@
-signed(A) transaction{
+transaction{
      a = lit 1:IntU8.U8;
-     () = call SomeFunctions.Dual[IntU8.U8](a,a);
+     return call SomeFunctions.Dual[IntU8.U8](a,a);
 };

@@ -1,3 +1,0 @@
-signed(A) transaction{
-     () = call SomeFunctions.OneGenZeroArg[A]();
-};

@@ -1,9 +1,12 @@
-signed(A) transaction{
-   a = lit 1:IntU8.U8;
-   b = pack SomeTypes.NoCopy[IntU8.U8]#Ctr(a);
-   d = call IndexOps.ModIndex();
-   (r, s) = call SomeTypes.GenIndexedAt[SomeTypes.NoCopy[IntU8.U8]](d,b);
-   store s;
-   l = load r;
-   l2 = load r;
+transaction:(store s:System.Entry[IntU8.U8]){
+   a = lit 3:IntU8.U8;
+   key = lit 0x00:Data.Data1;
+   id = call IndexOps.GenIndex1(key);
+   return pack System.Entry[IntU8.U8]#Ctr(id,a);
+};
+
+
+transaction(copy(IndexOps(0x01)) b:System.Entry[IntU8.U8]){
+   discard b;
+   return;
 };

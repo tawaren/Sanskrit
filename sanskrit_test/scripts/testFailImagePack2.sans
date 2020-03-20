@@ -1,10 +1,10 @@
 module TestFailImagePack2 {
 
-    type <Embed> Wrapper[<Embed> X] {
+    type Wrapper[X] {
         Ctr(X);
     };
 
-    private fun Test[<Embed> A](consume a:A):(b:%.Wrapper[A]){
+    private fun Test[A](consume a:A):(b:%.Wrapper[A]){
        b = pack %.Wrapper[A]#Ctr(a);
        return b;
     };

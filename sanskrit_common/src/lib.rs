@@ -3,7 +3,6 @@
 //This contains way to store & Load stuff
 
 #![no_std]
-#![feature(alloc)]
 #![feature(nll)]
 
 extern crate blake2_rfc;
@@ -14,12 +13,9 @@ extern crate arrayref;
 #[macro_use]
 extern crate sanskrit_derive;
 
-
 pub mod encoding;
 pub mod store;
 pub mod errors;
-pub mod linear_stack;
 pub mod model;
-pub mod capabilities;
-pub mod arena;
 pub mod hashing;
+pub mod arena;

@@ -1,18 +1,5 @@
 //! A Validator that checks certain condition on the input and the linked Components
 //!
-//! Todo: is this still right
-//! This module has the following responsibilities:
-//!  1. Check that when a non module is deployed the module it is deployed into declares the component
-//!  2. Check that the declarations in an import declaration matches which the actual component they point to
-//!  3. Check that the declared types are consistent, primarily that Capabilities are used as Capabilities not as Base Types and vice versa
-//!  4. Check that the applied types have the correct amount and the correct kind of parameters
-//!  5. That the declarations of the generic parameters is done correctly
-//!  6. Check that the imports of function do full fill see the imported function (visibility constraints)
-//!  7. Check that the parameter and return types are base types and not capabilities
-
-//todo: think do we need all this fetch checks??
-//      if so name them that
-//      I think we do else we could fail later in compiler (which should no longer fail)
 
 use sanskrit_core::model::*;
 use sanskrit_core::model::linking::*;
@@ -22,261 +9,548 @@ use sanskrit_common::errors::*;
 use sanskrit_common::encoding::*;
 use sanskrit_common::store::Store;
 use sanskrit_core::utils::Crc;
-use sanskrit_common::capabilities::*;
-use sanskrit_core::loader::StorageCache;
+use sanskrit_core::loader::Loader;
 use code_type_checker::TypeCheckerContext;
-use sanskrit_common::model::Capability;
+use sanskrit_common::model::ModuleLink;
 use sanskrit_common::model::Hash;
+use sanskrit_core::model::bitsets::{CapSet, BitSet, PermSet};
+use sanskrit_core::accounting::Accounting;
 
-
-pub fn validate_top_function<S:Store>(fun:&FunctionComponent, store:&S) -> Result<()>{
+pub fn validate_top_function<S:Store>(data:&[u8], store:&S, accounting:&Accounting) -> Result<()>{
+    //Parse the function
+    let fun:FunctionComponent = Parser::parse_fully::<FunctionComponent,NoCustomAlloc>(data, usize::max_value(),&NoCustomAlloc())?;
     //Prepare the cache for this iteration
-    let resolver = StorageCache::new_complete(store);
+    let resolver = Loader::new_complete(store, &accounting);
     //Prepare the context
-    let context = Context::from_top_func(&fun, &resolver)?;
-    //Ensure the input is formally correct and has the expected properties
-    validate_function(&fun, &context, false)?;
+    let context = Context::from_top_component(&fun, &resolver)?;
+    //Ensure Transaction specific parts are correct
+    validate_transaction(&fun, &context)?;
     //Do the type checking of the code in the function body
-    if let FunctionImpl::Internal {ref code, ..} = fun.body {
-        TypeCheckerContext::new(context).type_check_function(fun, code)?;
+    if let CallableImpl::Internal {ref code, ..} = fun.body {
+        TypeCheckerContext::new(accounting, context).type_check_function(&fun, code)?;
     }
     Ok(())
 }
 
-pub fn validate<S:Store>(data:&[u8], store:&S, link:Hash, system_mode_on:bool) -> Result<()>{
+pub fn validate<S:Store>(data:&[u8], store:&S, accounting:&Accounting, link:Hash, system_mode_on:bool) -> Result<()> {
     //Parse the module
-    let parsed:Module = Parser::parse_fully::<Module,NoCustomAlloc>(data, usize::max_value(),&NoCustomAlloc())?;
+    let parsed: Module = Parser::parse_fully::<Module, NoCustomAlloc>(data, usize::max_value(), &NoCustomAlloc())?;
     //Prepare the cache for this iteration
-    let resolver = StorageCache::new_incremental(store, link,parsed);
+    let resolver = Loader::new_incremental(store, link, parsed, &accounting);
     //Get a reference to the cached Module
-    let module = resolver.get_module(&link)?;
+    let module = resolver.get_module(link)?;
+    // get the module lnk
+    let module_link = resolver.dedup_module_link(ModuleLink::This(link));
 
-    //Check each Adt for validity
-    for a in &module.data {
-        //Prepare the context
-        let context = Context::from_input_adt(a, link, &resolver)?;
-        //Ensure the input is formally correct and has the expected properties
-        validate_adt(a, &context, system_mode_on)?;
-        //Hint the cache that a new Adt is available in the current module
-        let tda = resolver.this_deployed_data.get();
-        resolver.this_deployed_data.set(tda+1);
-    }
-
-    //Check each Sig for validity
-    for s in &module.sigs {
-        //Prepare the context
-        let context = Context::from_input_sig(s, link, &resolver)?;
-        //Ensure the input is formally correct and has the expected properties
-        validate_sig(s, &context)?;
-        //Hint the cache that a new Adt is available in the current module
-        let tda = resolver.this_deployed_sigs.get();
-        resolver.this_deployed_sigs.set(tda+1);
-    }
-
-    for f in &module.functions {
-        //Prepare the context
-        let context = Context::from_input_func(f, link, &resolver)?;
-        //Ensure the input is formally correct and has the expected properties
-        validate_function(f, &context, system_mode_on)?;
-        //Do the type checking of the code in the function body
-        if let FunctionImpl::Internal {ref code, ..} = f.body {
-            TypeCheckerContext::new(context).type_check_function(f, code)?;
+    for sel in &module.data_sig_order.0 {
+        if *sel {
+            let tdd = resolver.this_deployed_data.get();
+            //check it is their
+            if tdd >= module.data.len() {
+                return error(||"Orderer addresses unavailable Data Component")
+            }
+            //get it
+            let d = &module.data[tdd];
+            //Prepare the context
+            let context = Context::from_module_component(d, &module_link, false,&resolver)?;
+            //Ensure the input is formally correct and has the expected properties
+            validate_adt(d, &context, system_mode_on)?;
+            //Hint the cache that a new Adt is available in the current module
+            resolver.this_deployed_data.set(tdd + 1);
+        } else {
+            let tds = resolver.this_deployed_sigs.get();
+            //check it is their
+            if tds >= module.sigs.len() {
+                return error(||"Orderer addresses unavailable Signature Component")
+            }
+            //get it
+            let s = &module.sigs[tds];
+            //Prepare the context
+            let context = Context::from_module_component(s, &module_link, false, &resolver)?;
+            //Ensure the input is formally correct and has the expected properties
+            validate_sig(s, &context)?;
+            //Hint the cache that a new Signature is available in the current module
+            resolver.this_deployed_sigs.set(tds + 1);
         }
-        //Hint the cache that a new Function is available in the current
-        let tdf = resolver.this_deployed_functions.get();
-        resolver.this_deployed_functions.set(tdf+1);
     }
+
+    for sel in &module.fun_impl_order.0 {
+        if *sel {
+            let tdf = resolver.this_deployed_functions.get();
+            //check it is their
+            if tdf >= module.functions.len() {
+                return error(||"Orderer addresses unavailable Function Component")
+            }
+            //get it
+            let f = &module.functions[tdf];
+            let context = Context::from_module_component(f, &module_link, true, &resolver)?;
+            //Ensure the input is formally correct and has the expected properties
+            validate_function(f, &context, system_mode_on)?;
+            //Do the type checking of the code in the function body
+            if let CallableImpl::Internal {ref code, ..} = f.body {
+                TypeCheckerContext::new(accounting, context).type_check_function(f, code)?;
+            }
+            //Hint the cache that a new Function is available in the current module
+            resolver.this_deployed_functions.set(tdf + 1);
+        } else {
+            let tdi = resolver.this_deployed_implements.get();
+            //check it is their
+            if tdi >= module.implements.len() {
+                return error(||"Orderer addresses unavailable Implement Component")
+            }
+            //get it
+            let i = &module.implements[tdi];
+            //Prepare the context
+            let context = Context::from_module_component(i, &module_link, true,&resolver)?;
+            //Ensure the input is formally correct and has the expected properties
+            validate_implement(i, &context, system_mode_on)?;
+            //Do the type checking of the code in the function body
+            if let CallableImpl::Internal {ref code, ..} = i.body {
+                TypeCheckerContext::new(accounting, context).type_check_implement(i, code)?;
+            }
+            //Hint the cache that a new Implement is available in the current module
+            resolver.this_deployed_implements.set(tdi+1);
+        }
+    }
+
     Ok(())
 }
-
 
 //Checks that an Adt declaration is semantically valid
-pub fn validate_adt<S:Store>(adt:&DataComponent, context:&Context<S>, system_mode_on:bool ) -> Result<()>{
-    //Check the import section
-    check_type_import_constraints_validity(&adt.import, context)?;
+fn validate_adt<S:Store>(adt:&DataComponent, context:&Context<S>, system_mode_on:bool ) -> Result<()>{
+    //ensure only system deploys tops
+    if adt.top && !system_mode_on {
+        return error(||"system mode is required for deployment of top data type")
+    }
 
+    //Check the import section
+    //we allow no protection forwarding as adts have 2 visibilities & should not need to import create, consumes & implements
+    check_type_import_integrity(context)?;
+
+    //Check capability constraints
+    check_provided_capability_constraints(adt)?;
+    check_generic_capability_constraints(&adt.generics)?;
+
+    //Check the body
     match adt.body {
-        DataImpl::Adt { ref constructors, .. } => {
+        DataImpl::Internal { ref constructors, .. } => {
+            //All caps are allowed
             //Check constructors for phantoms and enforce recursive capabilities
-            check_ctr_fields(adt, constructors, context)?
+            check_ctr_fields(adt.provided_caps, constructors, context)?
         },
-        DataImpl::Lit(_) => {},
-        DataImpl::ExternalLit(_,_) | DataImpl::ExternalAdt(_) => if !system_mode_on {return system_mode_required()},
+        DataImpl::External(_) => if !system_mode_on {
+            return error(||"Deploying externals requires system mode")
+        },
+    }
+
+    //check visibility
+    check_visibility_integrity(&adt.create_scope, adt.generics.len())?;
+    check_visibility_integrity(&adt.consume_scope, adt.generics.len())
+
+}
+
+
+
+//Checks that an signature declaration is semantically valid
+fn validate_sig<S:Store>(sig:&SigComponent, ctx:&Context<S>) -> Result<()>{
+    //Check the import section
+    //we allow no protection forwarding as sigs have 2 visibilities & should not need to import create, consumes & implements
+    check_type_import_integrity(ctx)?;
+
+    //check sig capabilities
+    if !sig.provided_caps.intersect(CapSet::signature_prohibited()).is_empty() {
+        return error(||"Provided capabilities not allowed on signature type")
+    }
+
+    //Check capability constraints
+    sig.provided_caps.check_constraints()?;
+    check_generic_capability_constraints(&sig.shared.generics)?;
+
+    //check param and return for phantoms
+    check_params_and_returns(&sig.shared.params, &sig.shared.returns, ctx)?;
+
+    //check visibility
+    check_visibility_integrity(&sig.call_scope, sig.shared.generics.len())?;
+    check_visibility_integrity(&sig.implement_scope, sig.shared.generics.len())
+
+}
+
+fn check_body<S:Store>(fun:&CallableImpl, ctx:&Context<S>, system_mode_on:bool) -> Result<()> {    //load everithing
+    match fun {
+        CallableImpl::External => if !system_mode_on {return error(||"Deploying externals requires system mode")},
+        CallableImpl::Internal { .. } => {
+            //Check integret of imports
+            check_function_import_integrity(ctx)?;
+            //check that the imported functions are visible
+            check_callable_import_visibility(ctx)?;
+            //check permissions
+            check_permission_visibility(ctx)?;
+        },
     }
     Ok(())
 }
 
-//Checks that an signature declaration is semantically valid
-pub fn validate_sig<S:Store>(fun:&SigComponent, ctx:&Context<S>) -> Result<()>{
+fn validate_transaction<S:Store>(fun:&FunctionComponent, ctx:&Context<S>) -> Result<()> {
+    //Transactions must be public
+    match fun.scope {
+        Accessibility::Guarded(_) | Accessibility::Local => return error(||"Transactions functions must be public"),
+        Accessibility::Global => {},
+    }
+
     //Check the import section
-    check_type_import_constraints_validity(&fun.shared.import, ctx)?;
+    check_type_import_integrity(ctx)?;
+
+    //Transactions can not have Generics
+    if fun.shared.generics.len() != 0 {
+        return error(||"Transactions functions can not be generic")
+    }
+
+    //Check the Body
+    check_body(&fun.body, ctx, false)?;
 
     //check param and return for phantoms
-    check_params_and_returns(&fun.shared, ctx, true)
+    check_txt_params_and_returns(&fun.shared.params, &fun.shared.returns, ctx)?;
 
+    //check visibility
+    check_visibility_integrity(&fun.scope, fun.shared.generics.len())
 }
 
 //Checks that an function declaration is semantically valid
-pub fn validate_function<S:Store>(fun:&FunctionComponent, ctx:&Context<S>, system_mode_on:bool) -> Result<()> {
+fn validate_function<S:Store>(fun:&FunctionComponent, ctx:&Context<S>, system_mode_on:bool) -> Result<()> {
     //Check the import section
-    check_type_import_constraints_validity(&fun.shared.import, ctx)?;
+    check_type_import_integrity(ctx)?;
 
-    match fun.body {
-        FunctionImpl::External(_) => if !system_mode_on {return system_mode_required()},
-        FunctionImpl::Internal { ref functions, .. } => {
-            //check that the imported functions have valid generic parameter
-            check_function_import_validity(functions, ctx)?;
-            //check that the imported functions are visible
-            check_function_import_visibility(fun, functions.len() as u8, ctx)?;
-        },
-    }
+    //Check capability constraints
+    check_generic_capability_constraints(&fun.shared.generics)?;
 
-
+    //check the body
+    check_body(&fun.body , ctx, system_mode_on)?;
 
     //check param and return for phantoms
-    check_params_and_returns(&fun.shared, ctx, false)?;
+    check_params_and_returns(&fun.shared.params, &fun.shared.returns, ctx)?;
 
     //check visibility
-    check_function_visibility(&fun)?;
-
-    //check the sig implementations
-    check_impl_sig(&fun, ctx)
+    check_visibility_integrity(&fun.scope, fun.shared.generics.len())
 }
 
 
+//Checks that an function declaration is semantically valid
+fn validate_implement<S:Store>(imp:&ImplementComponent, ctx:&Context<S>, system_mode_on:bool) -> Result<()> {
+    //Check the import section
+    check_type_import_integrity(ctx)?;
+
+    //Check capability constraints
+    check_generic_capability_constraints(&imp.generics)?;
+
+    //check the body
+    check_body(&imp.body , ctx, system_mode_on)?;
+
+    //check param and return for phantoms
+    check_params_and_returns(&imp.params, &[], ctx)?;
+
+    //check the captures and permission
+    check_implement_constraints(imp, ctx)?;
+
+    //check visibility
+    check_visibility_integrity(&imp.scope, imp.generics.len())
+
+}
+
+fn check_provided_capability_constraints(adt:&DataComponent) -> Result<()> {
+    adt.provided_caps.check_constraints()?;
+    if adt.provided_caps.contains(Capability::Primitive) {
+        if adt.create_scope != Accessibility::Global || adt.consume_scope != Accessibility::Global || adt.inspect_scope != Accessibility::Global {
+            return error(||"A primitive data type can only have public permissions")
+        }
+    }
+    Ok(())
+}
+
+fn check_generic_capability_constraints(gens:&[Generic]) -> Result<()> {
+    for g in gens {
+        match g {
+            Generic::Phantom => {}
+            Generic::Physical(caps) => caps.check_constraints()?
+        }
+    }
+    Ok(())
+}
+
+
+fn check_generic_constraints(generics:&[Generic], applies:&[Crc<ResolvedType>]) -> Result<()>{
+    // check that the number of applies is correct
+    if generics.len() != applies.len() {
+        return error(||"Applied types mismatch required generics")
+    }
+
+    for (generic,typ) in  generics.iter().zip(applies.iter()) {
+        //update caps
+        if let Generic::Physical(l_caps) = *generic{
+            //A Phantom generic or virtual can only be applied to a phantom generic
+            match **typ {
+                ResolvedType::Generic { is_phantom:true,  .. }
+                | ResolvedType::Virtual(_) => return error(||"Phantom types can not be used as to apply non phantom generics"),
+                _ => {}
+            }
+
+            //when a Physical is applied the applier must have all the required capabilities
+            check_cap_constraints(l_caps, typ.get_caps())?;
+        }
+    }
+    Ok(())
+}
+
 //Checks that native imports are allowed and have correct amount and kind of arguments
 //Checks that normal imports have correct amount and kind of arguments
-fn check_type_import_constraints_validity<S:Store>(import:&PublicImport, context:&Context<S>) -> Result<()> {
+fn check_type_import_integrity<S:Store>(context:&Context<S>) -> Result<()> {
     //iterate over all type imports
-    for t in 0..import.types.len() {
-        //ensure that the length bound hold (should be given)
-        assert!(t <= u8::max_value() as usize);
+    for typ in context.list_types() {
         //resolve the type to ensure it is legit
-        // non-legit types can not be resolved
-        // is required to ensure that even unused but imported types are legit
-        // will cache the result so it can be reused
-        TypeRef(t as u8).fetch(context)?;
+        match **typ {
+            //Nothing has to be checked for Generics, Projections and Virtuals
+            ResolvedType::Generic { .. }
+            | ResolvedType::Projection { .. }
+            | ResolvedType::Virtual(_) => {},
+            //we need to check implement and call visibility
+            ResolvedType::Sig { ref module, offset, ref applies, .. } => {
+                //Fetch the Cache Entry
+                let imp_sig_cache = context.store.get_component::<SigComponent>(&*module, offset)?;
+                //Retrieve the function from the cache
+                let imp_sig_comp = imp_sig_cache.retrieve();
+                //check it
+                check_generic_constraints(&imp_sig_comp.shared.generics, applies)?;
+            },
+            ResolvedType::Data { ref module, offset, ref applies, .. } => {
+                //Fetch the Cache Entry
+                let imp_data_cache = context.store.get_component::<DataComponent>(&*module, offset)?;
+                //Retrieve the function from the cache
+                let imp_data_comp = imp_data_cache.retrieve();
+                //check it
+                check_generic_constraints(&imp_data_comp.generics, applies)?;
+            }
+            //An imported type (can be from same module if Module == This)
+            ResolvedType::Lit { ref module, offset, ref applies, .. } => {
+                //Fetch the Cache Entry
+                let imp_data_cache = context.store.get_component::<DataComponent>(&*module, offset)?;
+                //Retrieve the function from the cache
+                let imp_data_comp = imp_data_cache.retrieve();
+                //check it
+                check_generic_constraints(&imp_data_comp.generics, applies)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn check_function_import_integrity<S:Store>(context:&Context<S>) -> Result<()> {
+    //iterate over all type imports
+    for c in context.list_callables() {
+        //resolve the type to ensure it is legit
+        match **c {
+            //we need to check implement consraints
+            ResolvedCallable::Implement { ref module, offset, ref applies, .. } => {
+                //Fetch the Cache Entry
+                let imp_cache = context.store.get_component::<ImplementComponent>(&*module, offset)?;
+                //Retrieve the function from the cache
+                let imp_comp = imp_cache.retrieve();
+                //check it
+                check_generic_constraints(&imp_comp.generics, applies)?;
+            },
+            ResolvedCallable::Function { ref module, offset, ref applies, .. } => {
+                //Fetch the Cache Entry
+                let imp_fun_cache = context.store.get_component::<FunctionComponent>(&*module, offset)?;
+                //Retrieve the function from the cache
+                let imp_fun_comp = imp_fun_cache.retrieve();
+                //check it
+                check_generic_constraints(&imp_fun_comp.shared.generics, applies)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+//check that capp full fills constraints
+fn check_cap_constraints(must_have_caps:CapSet, caps:CapSet) -> Result<()>{
+    //check the target has all the necessary caps + embed
+    //Note: a top level generic in an adt context does always have all the rec caps
+    if !must_have_caps.is_subset_of(caps) {
+        return error(||"Capabilities of type must full fill the constraints")
     }
     Ok(())
 }
 
 //Checks that the fields in the constructor do not use phantoms as type and do not violate the recursive generics declared on the adt
-fn check_ctr_fields<S:Store>(adt:&DataComponent, ctrs:&[Case], context:&Context<S>) -> Result<()> {
-    fn check_cap_constraints(must_have_caps:CapSet, caps:CapSet) -> Result<()>{
-        //check the target has all the necessary caps + embed
-        //Note: a top level generic in an adt context does always have all the rec caps
-        if !must_have_caps.is_subset_of(caps) {
-            return capability_constraints_violation()
-        }
-        //check that they are embeddable
-        if !caps.contains(Capability::Embed) {
-            return capability_missing_error()
-        }
-
-        Ok(())
-    }
-
-    //The fields must have all the recursive caps supported by the adt, so extract them for later use
-    let must_have_caps = adt.provided_caps.intersect(CapSet::recursive());
+fn check_ctr_fields<S:Store>(provided_caps:CapSet, ctrs:&[Case], context:&Context<S>) -> Result<()> {
     //Go over all constructors
     for ctr in ctrs {
         //Go over all fields
         for field in &ctr.fields {
             //resolve field type
-            match *field.fetch(context)? {
+            match **field.fetch(context)?.get_target() {
                 //if the type is generic ensure it is not a phantom
+                // Externals are always Phantom types
+                ResolvedType::Generic { is_phantom:true, .. }
+                | ResolvedType::Virtual(_) => return error(||"Phantom types can not be used as constructor fields"),
                 // Note: generic recursive-caps is delayed (rechecked) to apply side to allow Option[T] (or even Option[Option[T]] instead of requiring DropOption[Drop T] ... PersistOption[Persist T] etc...
-                ResolvedType::Generic { extended_caps, is_phantom, .. } => {
-                    //Check that they are real
-                    if is_phantom {
-                        return vals_need_to_be_real()
-                    }
-                    //check that the caps hold
-                    check_cap_constraints(must_have_caps,extended_caps)?
-                },
-                //if a regular type check that it does support the caps
-                ResolvedType::Data { extended_caps, .. }
-                | ResolvedType::Sig { extended_caps, .. }
-                | ResolvedType::Lit { extended_caps, .. } => check_cap_constraints(must_have_caps,extended_caps)?,
-                //Image full fill all constraints by definition
-                ResolvedType::Image { .. } => {}
+                //if a regular type on non phantom generic check that it does support the caps
+                ResolvedType::Data { generic_caps, .. }
+                | ResolvedType::Sig { generic_caps, .. }
+                | ResolvedType::Lit { generic_caps, .. } => check_cap_constraints(provided_caps,generic_caps)?,
+                ResolvedType::Generic { .. } => {},
+                ResolvedType::Projection { .. }  => unreachable!()
             }
         }
     }
     Ok(())
 }
 
-//Checks the generic function param application
-fn check_function_import_validity<S:Store>(funs:&[FunctionImport], context:&Context<S>) -> Result<()> {
-    //iterate over all imported functions
-    for f in 0..funs.len() {
-        //ensure that the length bound hold (should be given)
-        assert!(f <= u8::max_value() as usize);
-        //resolve the function to ensure it is legit
-        // non-legit function can not be resolved
-        // is required to ensure that even unused but imported function are legit
-        // will cache the result so it can be reused
-        FuncRef(f as u8).fetch(context)?;
+//check the functions visibility
+fn check_visibility(comp_vis:&Accessibility, comp_module:&Crc<ModuleLink>, comp_applies:&[Crc<ResolvedType>]) -> Result<()> {
+    //check the functions visibility
+    match comp_vis {
+        //public can always be imported
+        Accessibility::Global => {},
+        //private can only be imported if from the same module
+        Accessibility::Local => if !comp_module.is_local_link() {
+            return error(||"A private permission must be from the current module")
+        },
+        //Protected can only be imported if the protected types are owned or are declared as protected as well
+        Accessibility::Guarded(ref guards) => {
+            //check that all protected types are ok
+            for &GenRef(index) in guards {
+                //check the ownership protection
+               if !comp_applies[index as usize].is_local() {
+                    return error(||"A type from the current module is required to be applied to a protected generic")
+               }
+            }
+        }
     }
     Ok(())
 }
 
+//Checks the visibility constraints
+fn check_callable_import_visibility<S:Store>(context:&Context<S>) -> Result<()> {
+    //iterate over all imported functions
+    for c in context.list_callables() {
+        //fetch the function
+        match **c {
+            ResolvedCallable::Function { ref module,offset, ref applies, ..} => {
+                //Fetch the Cache Entry
+                let imp_fun_cache = context.store.get_component::<FunctionComponent>(&*module, offset)?;
+                //Retrieve the function from the cache
+                let imp_fun_comp = imp_fun_cache.retrieve();
+                //check it
+                check_visibility(&imp_fun_comp.scope, module, &applies)?;
+            },
 
-//shared helper to check if a base full fills the protection constraint
-fn check_typ_protection(fun:&FunctionComponent, typ:&Crc<ResolvedType>) -> Result<()> {
-    match &**typ {
-        //Natives & Images are owned collectively
-        ResolvedType::Image {..} => visibility_violation(),
-        //Imported ones must be from this Module
-        ResolvedType::Sig { module, .. }
-        | ResolvedType::Lit { module, .. }
-        | ResolvedType::Data { module, .. } => {
-            //We must own the type to use it under protection (shared types are collectively owned)
-            //Meaning: It must either be defined in the same module(is_local_link) or collectively owned (is_shared)
-            if !module.is_local_link() {
-                return visibility_violation()
+            ResolvedCallable::Implement  { ref module,offset, ref applies, ..} => {
+                //Fetch the Cache Entry
+                let imp_cache = context.store.get_component::<ImplementComponent>(&*module, offset)?;
+                //Retrieve the function from the cache
+                let imp_comp = imp_cache.retrieve();
+                //check it
+                check_visibility(&imp_comp.scope, module, &applies)?;
             }
-            Ok(())
-        },
-        //if the protected is itself generic check if we are protected to it as well or if it is a primitive
-        ResolvedType::Generic{ offset, .. } => {
-            match fun.visibility {
-                //privates and public can not call protected on its generics
-                Visibility::Private | Visibility::Public => {
-                    return visibility_violation()
-                },
-                //Protected can call protected if it declares the type under investigation as well (or if it requires it to be primitive)
-                Visibility::Protected(ref prot) => if !prot.contains(&GenRef(*offset)){
-                    return visibility_violation()
-                },
-            }
-            Ok(())
-        },
+        }
     }
+    Ok(())
 }
 
 //Checks the visibility constraints
-fn check_function_import_visibility<S:Store>(fun:&FunctionComponent, num_func:u8, context:&Context<S>) -> Result<()> {
+fn check_permission_visibility<S:Store>(context:&Context<S>) -> Result<()> {
     //iterate over all imported functions
-    for f in 0..num_func {
+    for p in context.list_perms() {
         //fetch the function
-        let imp_fun = FuncRef(f).fetch(context)?;
-        //Fetch the Cache Entry
-        let imp_fun_cache = context.store.get_func(&*imp_fun.module, imp_fun.offset)?;
-        //Retrieve the function from the cache
-        let imp_fun_comp= imp_fun_cache.retrieve();
-        //check the functions visibility
-        match imp_fun_comp.visibility {
-            //public can always be imported
-            Visibility::Public => {},
-            //private can only be imported if from the same module
-            Visibility::Private => if !imp_fun.module.is_local_link() {return visibility_violation()},
-            //Protected can only be imported if the protected types are owned or are declared as protected as well
-            Visibility::Protected(ref guards) => {
-                //check that all protected types are ok
-                for &GenRef(index) in guards {
-                    //check the ownership/forwarded protection
-                    check_typ_protection(&fun,&imp_fun.applies[index as usize])?
+        match **p {
+            ResolvedPermission::FunSig {perm, ref fun, ..} => {
+                if !perm.is_subset_of(PermSet::callable_perms()) {
+                    return error(||"Permissions not applicable to callable")
+                }
+                match **fun {
+                    ResolvedCallable::Function {ref module,offset, ref applies,..} => {
+                        if perm.contains(Permission::Call) {
+                            //Fetch the Cache Entry
+                            let fun_cache = context.store.get_component::<FunctionComponent>(&*module, offset)?;
+                            //Retrieve the function from the cache
+                            let fun = fun_cache.retrieve();
+                            //check it
+                            check_visibility(&fun.scope, module, &applies)?;
+                        }
+                    },
+                    ResolvedCallable::Implement {ref module,offset, ref applies,..} => {
+                        if perm.contains(Permission::Call) {
+                            //Fetch the Cache Entry
+                            let imp_cache = context.store.get_component::<ImplementComponent>(&*module, offset)?;
+                            //Retrieve the function from the cache
+                            let imp = imp_cache.retrieve();
+                            //check it
+                            check_visibility(&imp.scope, module, &applies)?;
+                        }
+                    }
+                }
+            },
+            ResolvedPermission::TypeLit {perm, ref typ, ..} => {
+                if !perm.is_subset_of(PermSet::lit_perms()) {
+                    return error(||"Permissions not applicable to literal")
+                }
+                match **typ.get_target() {
+                    ResolvedType::Lit {ref module,offset, ..} => {
+                        if perm.contains(Permission::Create) {
+                            //Fetch the Cache Entry
+                            let imp_data_cache = context.store.get_component::<DataComponent>(&*module, offset)?;
+                            //Retrieve the function from the cache
+                            let imp_data_comp = imp_data_cache.retrieve();
+                            //check it
+                            check_visibility(&imp_data_comp.create_scope, module, &[])?;
+                        }
+                    },
+                    _ =>  return error(||"Create permission must be used on a lit type")
+                }
+            },
+            ResolvedPermission::TypeData {perm, ref typ, ..} => {
+                if !perm.is_subset_of(PermSet::data_perms()) {
+                    return error(|| "Permissions not applicable to data")
+                }
+                match **typ.get_target() {
+                    ResolvedType::Data { ref module, offset, ref applies, .. } => {
+                        //Fetch the Cache Entry
+                        let imp_data_cache = context.store.get_component::<DataComponent>(&*module, offset)?;
+                        //Retrieve the function from the cache
+                        let imp_data_comp = imp_data_cache.retrieve();
+                        //check it
+                        if perm.contains(Permission::Create) {
+                            check_visibility(&imp_data_comp.create_scope, module, &applies)?;
+                        }
+                        if perm.contains(Permission::Consume) {
+                            check_visibility(&imp_data_comp.consume_scope, module, &applies)?;
+                        }
+                        if perm.contains(Permission::Inspect) {
+                            check_visibility(&imp_data_comp.inspect_scope, module, &applies)?;
+                        }
+                    },
+                    _ => return error(|| "TypeData permissions must be used on a data type")
+                }
+            },
+
+            ResolvedPermission::TypeSig {perm, ref typ, ..} => {
+                if !perm.is_subset_of(PermSet::sig_perms()) {
+                    return error(|| "Permissions not applicable to signature")
+                }
+                match **typ {
+                    ResolvedType::Sig {ref module,offset, ref applies,..} => {
+                        //Fetch the Cache Entry
+                        let imp_sig_cache = context.store.get_component::<SigComponent>(&*module, offset)?;
+                        //Retrieve the function from the cache
+                        let imp_sig_comp = imp_sig_cache.retrieve();
+                        //check it
+                        if perm.contains(Permission::Call) {
+                            check_visibility(&imp_sig_comp.call_scope, module, &applies)?;
+                        }
+                        if perm.contains(Permission::Implement) {
+                            check_visibility(&imp_sig_comp.implement_scope, module, &applies)?;
+                        }
+                    } ,
+                    _ => return error(||"Call permission must be used on a not projected signature type")
                 }
             }
         }
@@ -284,127 +558,140 @@ fn check_function_import_visibility<S:Store>(fun:&FunctionComponent, num_func:u8
     Ok(())
 }
 
-fn check_function_visibility(fun:&FunctionComponent) -> Result<()>  {
-    match fun.visibility {
-        Visibility::Protected(ref guards) => {
+fn check_visibility_integrity(vis:&Accessibility, num_gens:usize) -> Result<()>  {
+    match vis {
+        Accessibility::Guarded(ref guards) => {
             //check that all protected types are ok
             for &GenRef(index) in guards {
                 //fetch the corresponding type in the importer context and check it
-                if index as usize >= fun.shared.generics.len() {return wrong_protect_declaration()}
+                if index as usize >= num_gens {
+                    return error(||"Generic type used in protection declaration not found")
+                }
             }
         }
-        Visibility::Private | Visibility::Public => {},
+        Accessibility::Local | Accessibility::Global => {},
     }
     Ok(())
 }
 
 //Checks that params and return to not phantoms
-fn check_params_and_returns<S:Store>(fun:&FunSigShared, context:&Context<S>, ignore_phantom:bool) -> Result<()> {
+fn check_params_and_returns<S:Store>(params:&[Param], returns:&[TypeRef], context:&Context<S>) -> Result<()> {
 
     //process all params
-    for &Param{ typ, ..} in &fun.params {
-        if let ResolvedType::Generic { is_phantom:true, .. } = *typ.fetch(context)? {
-            //forbid phantoms
-            if !ignore_phantom {
-                return vals_need_to_be_real()
-            }
+    for &Param{ typ, ..} in params {
+        match *typ.fetch(context)?  {
+            ResolvedType::Generic { is_phantom:true, .. }
+            | ResolvedType::Virtual(_) => return error(||"Phantom types can not be used as parameter types"),
+            _ => {}
         }
     }
 
     //process all returns
-    for Ret{ typ, ..} in &fun.returns {
-        if let ResolvedType::Generic { is_phantom:true, .. } =  *typ.fetch(context)? {
-            //forbid phantoms
-            if !ignore_phantom {
-                return vals_need_to_be_real()
-            }
+    for typ in returns {
+        let r_typ = typ.fetch(context)?;
+        match *r_typ  {
+            ResolvedType::Generic { is_phantom:true, .. }
+            | ResolvedType::Virtual(_) => return error(||"Phantom types can not be used as return types"),
+            _ => { }
+        }
+        if !r_typ.get_caps().contains(Capability::Unbound) {
+            return error(||"Returning a value requires the unbound capability")
         }
     }
     Ok(())
 }
 
-//todo: Comment
-fn check_impl_sig<S:Store>(fun:&FunctionComponent, context:&Context<S>) -> Result<()> {
-    for imp in &fun.implements {
-        if let ResolvedType::Sig {base_caps , ..} = *imp.typ.fetch(context)? {
-            if base_caps.contains(Capability::Copy) || base_caps.contains(Capability::Persist){
-                return capability_implication_mismatch()
-            }
 
-            let sig = context.get_type_sig(imp.typ, &context.store)?;
+//Checks that params and return to not phantoms
+fn check_txt_params_and_returns<S:Store>(params:&[Param], returns:&[TypeRef], context:&Context<S>) -> Result<()> {
 
-            if fun.shared.params.len() - imp.captures.len() != sig.params.len() {
-                return fun_sig_mismatch();
-            }
-
-            let mut mig = vec![-1isize; fun.shared.params.len()];
-
-            //ensure captures are ordered
-            let mut prev = -1isize;
-            let mut next_capture = 0;
-
-            //compare the function sigs ignoring captures
-            for (idx,p) in fun.shared.params.iter().enumerate() {
-                let c = imp.captures[next_capture] as usize;
-                let p_typ = p.typ.fetch(context)?;
-                //can we ignore the param??
-                if idx == c {
-                    //are the captures ordered?
-                    if c as isize <= prev {
-                        return capture_order_violation();
-                    }
-                    //are the captures owned or can be droped
-                    if !p.consumes && !p_typ.get_caps().contains(Capability::Drop) {
-                        //todo: better error
-                        return fun_sig_mismatch();
-                    }
-
-                    //advance the state
-                    prev = c as isize;
-                    next_capture += 1
-                } else {
-                    mig[idx] = (idx-next_capture) as isize;
-                    let sig_p = &sig.params[idx-next_capture];
-                    if p_typ != sig_p.typ || p.consumes != sig_p.consumes  {
-                        return fun_sig_mismatch();
+    //process all params
+    for &Param{ typ, ..} in params {
+        match **typ.fetch(context)?.get_target() {
+            ResolvedType::Data {caps, ref module, offset, ..}
+            | ResolvedType::Lit { caps, ref module, offset, ..} => {
+                if !caps.contains(Capability::Primitive) {
+                    //Fetch the Cache Entry
+                    let data_cache = context.store.get_component::<DataComponent>(&*module, offset)?;
+                    //Retrieve the function from the cache
+                    let data = data_cache.retrieve();
+                    if !data.top {
+                        return error(||"transaction parameter must be primitives or top values")
                     }
                 }
-            }
-
-            //not all captures where used
-            if next_capture != imp.captures.len() {
-                return fun_sig_mismatch();
-            }
-
-            let sig_p_len = sig.params.len();
-            let cap_len = imp.captures.len();
-            //check the returns
-            for (idx,(fr,sr)) in fun.shared.returns.iter().zip(&sig.returns).enumerate() {
-                //does return type match
-                if fr.typ.fetch(&context)? !=  sr.typ {
-                    return fun_sig_mismatch();
-                }
-
-                //both need to borrow the same amount
-                if fr.borrows.len() != sr.borrows.len() {
-                    return fun_sig_mismatch();
-                }
-
-                for (fb,sb) in fr.borrows.iter().zip(&sr.borrows) {
-                    let abs_sb = (sig_p_len+idx)-(sb.0 as usize) -1;
-                    let abs_fb = (mig.len()+idx)-(fb.0 as usize) -1;
-                    let mig_abs_fb = if abs_fb < mig.len() {mig[abs_fb]} else {(abs_fb-cap_len) as isize};
-                    if mig_abs_fb != (abs_sb as isize){
-                        return fun_sig_mismatch();
-                    }
-                }
-
-            }
-
-        } else {
-            //todo: better error
-            return item_not_found()
+            },
+            _ => return error(||"transaction parameter must be primitives or top values")
         }
+    }
+
+    //process all returns
+    for typ in returns {
+        let r_typ = typ.fetch(context)?;
+        match **r_typ.get_target() {
+            ResolvedType::Data {caps, ref module, offset, ..}
+            | ResolvedType::Lit { caps, ref module, offset, ..} => {
+                if !caps.contains(Capability::Primitive) {
+                    //Fetch the Cache Entry
+                    let data_cache = context.store.get_component::<DataComponent>(&*module, offset)?;
+                    //Retrieve the function from the cache
+                    let data = data_cache.retrieve();
+                    if !data.top {
+                        return error(||"transaction returns must be primitives or top values")
+                    }
+                }
+            },
+            _ => return error(||"transaction returns must be primitives or top values")
+        }
+        if !r_typ.get_caps().contains(Capability::Unbound) {
+            return error(||"Returning a value requires the unbound capability")
+        }
+    }
+    Ok(())
+}
+
+
+fn check_implement_constraints<S:Store>(imp:&ImplementComponent, context:&Context<S>) -> Result<()> {
+    //Ensure we are permissioned
+    let perm = imp.sig.fetch(context)?;
+    //Check the permission type
+    if !perm.check_permission(Permission::Implement) {
+        return error(||"Wrong permission supplied: Implement Permission needed")
+    }
+
+    let transactional = perm.get_sig()?.transactional;
+
+    if let ResolvedType::Sig {caps:sig_caps , ..} = **perm.get_type()? {
+        for capture in &imp.params {
+            //The captures must be consumed (owned)
+            if !capture.consumes {
+                return error(||"Implements can not have borrow parameters")
+            }
+
+            //fetch the type
+            let typ = capture.typ.fetch(context)?;
+
+            //check that the values can be dropped in case of a rollback
+            if transactional && !typ.get_caps().contains(Capability::Drop) {
+                return error(||"Implements of transactional signatures can only capture values with the Drop capability")
+            }
+
+            //The captures must full fill sig caps
+            //resolve field type
+            match **capture.typ.fetch(context)?.get_target() {
+                //if the type is generic ensure it is not a phantom
+                // Externals are always Phantom types
+                ResolvedType::Generic { is_phantom:true, .. }
+                | ResolvedType::Virtual(_) => return error(||"Phantom types can not be used as parameter types"),
+                //if a regular type on non phantom generic check that it does support the caps
+                ResolvedType::Generic { caps, .. }
+                | ResolvedType::Data { caps, .. }
+                | ResolvedType::Sig { caps, .. }
+                | ResolvedType::Lit { caps, .. } => check_cap_constraints(sig_caps,caps)?,
+                ResolvedType::Projection { .. } => unreachable!()
+            }
+        }
+    } else {
+        return error(||"Permission supplied is not for a signature type");
     }
     Ok(())
 }

@@ -1,8 +1,0 @@
-module TestFailThrow2 {
-    err X;
-    err Y;
-
-    risky <.Y> fun Test():(){
-        throw .X;
-    };
-}

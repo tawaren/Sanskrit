@@ -1,6 +1,0 @@
-module TestFailCreate2 {
-    private fun Test[<Embed> A](a:A):(borrowed(a) b:TestSucAdt.Wrapper[A]){
-       b = &pack TestSucAdt.Wrapper[A]#Ctr(a);
-       return b;
-    };
-}

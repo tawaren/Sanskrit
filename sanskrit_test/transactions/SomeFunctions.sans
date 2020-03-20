@@ -11,7 +11,7 @@ module SomeFunctions {
         return;
     };
 
-    public fun Identity[A](consume a:A):(a:A){
+    public fun Identity[<Unbound> A](consume a:A):(a:A){
        b = a;
        return b;
     };

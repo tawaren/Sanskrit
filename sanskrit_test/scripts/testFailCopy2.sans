@@ -1,5 +1,5 @@
 module TestFailCopy2 {
-    type X {
+    type <Value, Unbound> X {
         X();
     };
 

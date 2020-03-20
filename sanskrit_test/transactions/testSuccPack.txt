@@ -1,0 +1,33 @@
+transaction{
+   a = lit 1:IntU8.U8;
+   b = pack SomeTypes.X[IntU8.U8]#Ctr(a);
+   return ();
+};
+
+transaction{
+   a = lit 1:IntU8.U8;
+   b = pack SomeTypes.X[IntU8.U8]#Ctr(a);
+   c = unpack b:SomeTypes.X[IntU8.U8];
+   return ();
+};
+
+transaction:(log b:SomeTypes.X[IntU8.U8]){
+   a = lit 1:IntU8.U8;
+   return pack SomeTypes.X[IntU8.U8]#Ctr(a);
+};
+
+transaction:(log c:IntU8.U8){
+   a = lit 1:IntU8.U8;
+   b = pack SomeTypes.X[IntU8.U8]#Ctr(a);
+   return unpack b:SomeTypes.X[IntU8.U8];
+};
+
+transaction:(log b:SomeTypes.Dual[IntU8.U8]){
+   a = lit 1:IntU8.U8;
+   return pack SomeTypes.Dual[IntU8.U8]#Ctr1(a);
+};
+
+transaction:(log b:SomeTypes.Dual[IntU8.U8]){
+   a = lit 1:IntU8.U8;
+   return pack SomeTypes.Dual[IntU8.U8]#Ctr2(a);
+};

@@ -1,20 +1,26 @@
 module IntU128 {
-   external(0) lit(16) <Copy,Drop,Persist,Create,Embed> U128;
-   
-   external(2) public fun hash(num:.U128):(res:Data.Data20);
+   public extType(16) <Copy,Drop,Persist,Primitive,Value,Unbound> U128;
 
-   external(1) public fun eq(num1:.U128, num2:.U128):(res:Bool.Bool);
-   external(4) public fun lt(num1:.U128, num2:.U128):(res:Bool.Bool);
-   external(5) public fun lte(num1:.U128, num2:.U128):(res:Bool.Bool);
-   external(6) public fun gt(num1:.U128, num2:.U128):(res:Bool.Bool);
-   external(7) public fun gte(num1:.U128, num2:.U128):(res:Bool.Bool);
 
-   external(8) public risky<Errors.Numeric> fun add(num1:.U128, num2:.U128):(res:.U128);
-   external(9) public risky<Errors.Numeric> fun sub(num1:.U128, num2:.U128):(res:.U128);
-   external(10) public risky<Errors.Numeric> fun div(num1:.U128, num2:.U128):(res:.U128);
-   external(11) public risky<Errors.Numeric> fun mul(num1:.U128, num2:.U128):(res:.U128);
+   public extFun eq(num1:.U128, num2:.U128):(res:Bool.Bool);
+   public extFun lt(num1:.U128, num2:.U128):(res:Bool.Bool);
+   public extFun lte(num1:.U128, num2:.U128):(res:Bool.Bool);
+   public extFun gt(num1:.U128, num2:.U128):(res:Bool.Bool);
+   public extFun gte(num1:.U128, num2:.U128):(res:Bool.Bool);
 
-   external(12) public fun toData(num:.U128):(res:Data.Data16);
+   public transactional extFun add(num1:.U128, num2:.U128):(res:.U128);
+   public transactional extFun sub(num1:.U128, num2:.U128):(res:.U128);
+   public transactional extFun div(num1:.U128, num2:.U128):(res:.U128);
+   public transactional extFun mul(num1:.U128, num2:.U128):(res:.U128);
 
+   public extFun and(num1:.U128, num2:.U128):(res:.U128);
+   public extFun or(num1:.U128, num2:.U128):(res:.U128);
+   public extFun xor(num1:.U128, num2:.U128):(res:.U128);
+   public extFun not(num1:.U128):(res:.U128);
+
+   public extFun toData(num:.U128):(res:Data.Data16);
+   public extFun fromData(data:Data.Data16):(res:.U128);
+
+   public extFun hash(num:.U128):(res:Data.Data20);
 
 }

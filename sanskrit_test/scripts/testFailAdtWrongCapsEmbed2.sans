@@ -1,6 +1,0 @@
-module TestFailAdtWrongCapsEmbed2 {
-
-    type Wrapper[A] {
-        Ctr(A);
-    };
-}

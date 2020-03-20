@@ -1,9 +1,0 @@
-module TestFailLetReturn {
-   fun TestFunApply[A](consume a:A):(a:A) {
-       b = a;
-       c = let {
-          return b;
-       };
-       return c;
-   };
-}

@@ -1,5 +1,5 @@
 module TestFailAdtApply {
-    type <Embed> Inner[A,B] {
+    type Inner[A,B] {
         Inner;
     };
 

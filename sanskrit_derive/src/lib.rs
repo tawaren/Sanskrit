@@ -14,7 +14,7 @@ use syn::Generics;
 use quote::ToTokens;
 use syn::punctuated::Pair;
 
-#[proc_macro_derive(Serializable)]
+#[proc_macro_derive(Serializable, attributes(ByteSize, StartIndex))]
 pub fn serialize_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     // Construct a representation of Rust code as a syntax tree
     // that we can manipulate
@@ -25,7 +25,7 @@ pub fn serialize_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStre
     impl_serialize_macro(&ast).into()
 }
 
-#[proc_macro_derive(Parsable, attributes(AllocLifetime))]
+#[proc_macro_derive(Parsable, attributes(AllocLifetime, ByteSize, StartIndex))]
 pub fn parse_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     // Construct a representation of Rust code as a syntax tree
     // that we can manipulate
@@ -52,10 +52,16 @@ fn impl_serialize_macro(ast:&DeriveInput) -> TokenStream {
     let prefix = &ast.ident;
     let body = match ast.data {
         Data::Struct(ref ds) => {
+            let size_field = extract_size_field(ds.fields.iter());
+            let start_field = extract_start_field(ds.fields.iter());
+
             let mut body = Vec::new();
-            for (idx,f) in ds.fields.iter().enumerate() {
+            for (idx,f) in ds.fields.iter().filter(|f|(size_field.is_none() || f.ident != size_field) && (start_field.is_none() || f.ident != start_field)).enumerate() {
                 body.push(match &f.ident {
-                    None => quote!{self.#idx.serialize(s)?},
+                    None => {
+                        let idx = syn::Index::from(idx);
+                        quote!{self.#idx.serialize(s)?}
+                    },
                     Some(id) => quote!{self.#id.serialize(s)?},
                 })
             }
@@ -83,7 +89,9 @@ fn impl_serialize_macro(ast:&DeriveInput) -> TokenStream {
                 if v.fields.iter().len() == 0 {
                     cases.push(quote!{#prefix::#name => s.produce_byte(#num)})
                 } else {
-                    let body = pattern_body_serialize(v.fields.iter());
+                    let size_field = extract_size_field(v.fields.iter());
+                    let start_field = extract_start_field(v.fields.iter());
+                    let body = pattern_body_serialize(v.fields.iter(),size_field,start_field);
                     if named {
                         cases.push(quote!{#prefix::#name{#(#fields),*} => {
                             s.produce_byte(#num);
@@ -127,16 +135,40 @@ fn impl_parsable_macro(ast:&DeriveInput) -> TokenStream {
     let prefix = &ast.ident;
     let body = match ast.data {
         Data::Struct(ref ds) => {
+            let size_field = extract_size_field(ds.fields.iter());
+            let start_field = extract_start_field(ds.fields.iter());
+
+            let pos_fetch = match (&size_field,&start_field) {
+                (None,None) => quote!{},
+                _ => quote!{let start = p.index;},
+
+            };
             let mut named = false;
-            let body:Vec<_> = ds.fields.iter().map(|f|{
-                match &f.ident {
-                    None => quote!{Parsable::parse(p,alloc)?},
-                    Some(id) => {
-                        named = true;
-                        quote!{#id:Parsable::parse(p,alloc)?}
-                    },
-                }
-            }).collect();
+            let mut body:Vec<_> = ds.fields.iter()
+                .filter(|f|(size_field.is_none() || f.ident != size_field) && (start_field.is_none() || f.ident != start_field))
+                .map(|f|{
+                    match &f.ident {
+                        None => quote!{Parsable::parse(p,alloc)?},
+                        Some(id) => {
+                            named = true;
+                            quote!{#id:Parsable::parse(p,alloc)?}
+                        },
+                    }
+                }).collect();
+            match size_field {
+                None => {},
+                Some(id) => {
+                    body.push(quote!{#id:Option::Some(p.index-start)})
+                },
+            };
+
+            match start_field {
+                None => {},
+                Some(id) => {
+                    body.push(quote!{#id:Option::Some(start)})
+                },
+            };
+
             let fields = body.len();
             let build = if named {
                 quote!{ Ok(#prefix{#(#body),*}) }
@@ -144,11 +176,15 @@ fn impl_parsable_macro(ast:&DeriveInput) -> TokenStream {
                 quote!{ Ok(#prefix(#(#body),*)) }
             };
 
-            if fields == 0{
-                build
+            if fields == 0 {
+                quote!{
+                    #pos_fetch
+                    #build
+                }
             } else {
                 quote!{
                     p.increment_depth()?;
+                    #pos_fetch
                     let res = #build;
                     p.decrement_depth();
                     res
@@ -164,14 +200,27 @@ fn impl_parsable_macro(ast:&DeriveInput) -> TokenStream {
                 if v.fields.iter().len() == 0 {
                     cases.push(quote!{#num => #prefix::#name})
                 } else {
-                    let body = pattern_body_parse(v.fields.iter());
-                    cases.push(quote!{#num => #prefix::#name #body})
+                    let size_field = extract_size_field(v.fields.iter());
+                    let start_field = extract_start_field(v.fields.iter());
+
+
+                    let pos_fetch = match (&size_field,&start_field) {
+                        (None,None) => quote!{},
+                        _ => quote!{let start = p.index;},
+                    };
+
+                    let body = pattern_body_parse(v.fields.iter(),size_field, start_field);
+                    cases.push(quote!{#num => {
+                            #pos_fetch
+                            #prefix::#name #body
+                        }
+                    })
                 }
             }
             quote!{
                 Ok(match p.consume_byte()? {
                     #(#cases,)*
-                    _ => return parsing_case_failure()
+                    _ => return error(||"Can not parse unknown enum variant")
                 })
             }
         },
@@ -232,10 +281,13 @@ fn impl_virtual_size_macro(ast:&DeriveInput) -> TokenStream {
     let body = match ast.data {
         Data::Struct(ref ds) => expr(ds.fields.iter()),
         Data::Enum(ref ed) => {
-            let res = max_all(&mut ed.variants.iter().map(|v|expr(v.fields.iter())).collect());
+            let res = max_all(&mut ed.variants.iter().map(|v| expr(v.fields.iter())).collect());
             quote!{1+#res} //1Byte for the tag
         },
-        Data::Union(_) => unimplemented!(),
+        Data::Union(ref us) => max_all(&mut us.fields.named.iter().map(|f| {
+            let typ = &f.ty;
+            quote!{TypeId::<#typ>::SIZE}
+        }).collect()),
     };
 
     let generics = &ast.generics;
@@ -250,25 +302,24 @@ fn impl_virtual_size_macro(ast:&DeriveInput) -> TokenStream {
 }
 
 
-fn pattern_body_serialize<'a>(fs: impl Iterator<Item=&'a Field>) -> TokenStream {
+fn pattern_body_serialize<'a>(fs: impl Iterator<Item=&'a Field>, size_field:Option<Ident>, start_field:Option<Ident>) -> TokenStream {
     let mut body = Vec::new();
-    for (idx,f) in fs.enumerate() {
+    for (idx,f) in fs.filter(|f|(size_field.is_none() || f.ident != size_field) && (start_field.is_none() || f.ident != start_field)).enumerate() {
         body.push(match &f.ident {
             None => {
                 let id = Ident::new(&format!("_{}",idx), Span::call_site());
                 quote!{#id.serialize(s)?}
-            }
+            },
             Some(id) => quote!{#id.serialize(s)?},
         })
     }
     quote!{#(#body;)*}
 }
 
-
-fn pattern_body_parse<'a>(fs: impl Iterator<Item=&'a Field>) -> TokenStream {
+fn pattern_body_parse<'a>(fs: impl Iterator<Item=&'a Field>, size_field:Option<Ident>, start_field:Option<Ident>) -> TokenStream {
     let mut named = false;
     let mut body = Vec::new();
-    for f in fs {
+    for f in fs.filter(|f|(size_field.is_none() || f.ident != size_field) && (start_field.is_none() || f.ident != start_field)) {
         body.push(match &f.ident {
             None => quote!{Parsable::parse(p,alloc)?},
             Some(id) => {
@@ -277,6 +328,20 @@ fn pattern_body_parse<'a>(fs: impl Iterator<Item=&'a Field>) -> TokenStream {
             },
         })
     }
+    match size_field {
+        None => {},
+        Some(id) => {
+            body.push(quote!{#id:Option::Some(p.index-start)})
+        },
+    };
+
+    match start_field {
+        None => {},
+        Some(id) => {
+            body.push(quote!{#id:Option::Some(start)})
+        },
+    };
+
     if named {
         quote!{{#(#body),*}}
     } else {
@@ -317,11 +382,44 @@ fn extract_agumented_generics(generics:&Generics, argument:TokenStream) -> Vec<T
 fn extract_alloc_lifetime(generics:&Generics) -> Option<TokenStream> {
     for l in generics.lifetimes() {
         for a in &l.attrs {
-            match  a.path.segments.last() {
+            match a.path.segments.last() {
                 None => {}
                 Some(Pair::Punctuated(p,_)) | Some(Pair::End(p))  => {
                     if p.ident == "AllocLifetime" {
                         return Some(l.clone().lifetime.into_token_stream())
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+fn extract_size_field<'a>(fs: impl Iterator<Item=&'a Field>) -> Option<Ident> {
+    for f in fs {
+        for a in &f.attrs {
+            match a.path.segments.last() {
+                None => {}
+                Some(Pair::Punctuated(p,_)) | Some(Pair::End(p))  => {
+                    if p.ident == "ByteSize" {
+                        return f.ident.clone();
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+
+fn extract_start_field<'a>(fs: impl Iterator<Item=&'a Field>) -> Option<Ident> {
+    for f in fs {
+        for a in &f.attrs {
+            match a.path.segments.last() {
+                None => {}
+                Some(Pair::Punctuated(p,_)) | Some(Pair::End(p))  => {
+                    if p.ident == "StartIndex" {
+                        return f.ident.clone();
                     }
                 }
             }

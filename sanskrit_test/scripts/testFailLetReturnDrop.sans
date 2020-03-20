@@ -1,5 +1,5 @@
 module TestFailLetReturnDrop {
-   fun TestFunApply[<Drop> A](consume a:A):(c:A) {
+   fun TestFunApply[<Drop, Value, Unbound>  A](consume a:A):(c:A) {
        c = let {
           b = a;
           discard b;

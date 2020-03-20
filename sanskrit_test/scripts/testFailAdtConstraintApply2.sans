@@ -1,5 +1,5 @@
 module TestFailAdtConstraintApply2 {
-    type <Embed> Inner[<Drop> A] {
+    type Inner[<Drop> A] {
         Inner;
     };
 
@@ -8,6 +8,6 @@ module TestFailAdtConstraintApply2 {
     };
 
     type Wrapper[A] {
-        Ctr(.Inner[Inner2[A]]);
+        Ctr(.Inner[.Inner2[A]]);
     };
 }

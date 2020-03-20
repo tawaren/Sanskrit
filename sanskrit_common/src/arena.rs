@@ -3,15 +3,16 @@ use core::cell::RefCell;
 use core::{mem, ptr};
 use errors::*;
 use alloc::vec::Vec;
-use core::slice::from_raw_parts_mut;
+use core::slice::{from_raw_parts_mut, from_raw_parts, SliceIndex};
 use encoding::ParserAllocator;
 use model::*;
 use core::ops::Deref;
 use core::ops::DerefMut;
-use linear_stack::MicroVec;
-use linear_stack::MicroVecBuilder;
 use encoding::VirtualSize;
 use core::cell::Cell;
+use core::marker::PhantomData;
+use core::fmt::{Debug, Formatter};
+use core::cmp::Ordering;
 
 fn align_address(ptr: *const u8, align: usize) -> usize {
     let addr = ptr as usize;
@@ -62,12 +63,13 @@ impl Heap {
     pub fn new_virtual_arena(&self, size: usize) -> VirtualHeapArena {
         //ensures at least size if f > 1
         let real_size = size + ((size as f64)*(self.convert-1.0)) as usize;
-        assert!(real_size > 0);
-        assert!(real_size > size);
+        assert!(real_size >= 0);
+        assert!(real_size >= size);
         VirtualHeapArena{
             uncounted:self.new_arena(real_size),
             virt_pos: Cell::new(0),
-            virt_end: size
+            virt_end_limit:  Cell::new(size),
+            virt_end_orig: size
         }
     }
 
@@ -88,6 +90,7 @@ pub struct HeapArena<'h> {
     locked: Cell<bool>,
 }
 
+/*
 pub trait ArenaUnlock {
     fn set_lock(&self, val:bool);
     fn get_lock(&self) -> bool;
@@ -119,6 +122,7 @@ impl<'a, T:ArenaUnlock> Drop for ArenaLock<'a, T> {
         self.new.set_lock(true);
     }
 }
+*/
 
 impl<'h> HeapArena<'h> {
 
@@ -204,6 +208,7 @@ impl<'h> HeapArena<'h> {
         }
     }
 
+    /*
     pub fn temp_arena(&self) -> ArenaLock<Self> {
         if self.locked.get() {panic!();}
         let new = self.unlocked_clone();
@@ -212,7 +217,7 @@ impl<'h> HeapArena<'h> {
             old: self,
             new,
         }
-    }
+    }*/
 
     pub fn merge_alloc_slice<T: Sized + Copy + VirtualSize>(&self, vals1: &[T], vals2: &[T]) -> Result<SlicePtr<T>> {
         let slice = unsafe {self.alloc_raw_slice(vals1.len() + vals2.len())};
@@ -235,7 +240,7 @@ impl<'h> HeapArena<'h> {
 
     pub fn slice_builder<T: Sized + Copy>(&self, len: usize) -> Result<SliceBuilder<T>> {
         if len > u16::max_value() as usize {
-            size_limit_exceeded_error()
+            error(||"Size limit exceeded:")
         } else {
             Ok(SliceBuilder::new(unsafe {self.alloc_raw_slice(len)}, 0))
         }
@@ -260,6 +265,7 @@ impl<'o> ParserAllocator for HeapArena<'o>  {
     }
 }
 
+/*
 impl<'o> ArenaUnlock for HeapArena<'o> {
     fn set_lock(&self, val: bool) {
         self.locked.set(val)
@@ -269,11 +275,13 @@ impl<'o> ArenaUnlock for HeapArena<'o> {
         self.locked.get()
     }
 }
+*/
 
 pub struct VirtualHeapArena<'o>{
     uncounted:HeapArena<'o>,
     virt_pos:Cell<usize>,
-    virt_end:usize,
+    virt_end_limit:Cell<usize>,
+    virt_end_orig:usize,
 }
 
 impl<'o> VirtualHeapArena<'o> {
@@ -281,9 +289,15 @@ impl<'o> VirtualHeapArena<'o> {
     fn ensure_virt_space(&self, size:usize) -> Result<()>{
         let pos = self.virt_pos.get();
         let new_pos = pos+size;
-        if new_pos >= self.virt_end {return size_limit_exceeded_error()}
+        if new_pos > self.virt_end_limit.get() {
+            return  error(||"Virtual size limit exceeded")
+        }
         self.virt_pos.set(new_pos);
         Ok(())
+    }
+
+    pub fn remaining_space(&self) -> usize {
+        self.virt_end_limit.get() - self.virt_pos.get()
     }
 
     pub fn repeated_slice<T: Sized + Copy + VirtualSize>(&self, val: T, len:usize) -> Result<SlicePtr<T>> {
@@ -301,27 +315,41 @@ impl<'o> VirtualHeapArena<'o> {
         self.uncounted.iter_result_alloc_slice(vals)
     }
 
+    pub fn limit(&self, space:usize) -> Result<()>{
+        if self.virt_end_orig - self.virt_pos.get() < space {  return error(||"Not enough virtual space available")}
+        Ok(self.virt_end_limit.set(self.virt_pos.get() + space))
+    }
+
     pub fn reuse(self) -> Self {
         VirtualHeapArena{
             uncounted:self.uncounted.reuse(),
             virt_pos:Cell::new(0),
-            virt_end: self.virt_end
+            virt_end_limit:  Cell::new(self.virt_end_orig),
+            virt_end_orig: self.virt_end_orig,
         }
     }
 
+    /*
     pub fn temp_arena(&self) -> Result<ArenaLock<Self>> {
-        if self.uncounted.locked.get() {return size_limit_exceeded_error();}
+        if self.uncounted.locked.get() {
+            return error(||"Arena already in use by a temporary arena")
+        }
+
         let new = VirtualHeapArena{
             uncounted:self.uncounted.unlocked_clone(),
             virt_pos: Cell::new(self.virt_pos.get()),
-            virt_end: self.virt_end
+            virt_end_limit: self.virt_end_limit,
+            virt_end_orig: self.virt_end_orig,
+
         };
+
         self.uncounted.locked.set(true);
         Ok(ArenaLock{
             old: self,
             new,
         })
     }
+    */
 
     pub fn merge_alloc_slice<T: Sized + Copy + VirtualSize>(&self, vals1: &[T], vals2: &[T]) -> Result<SlicePtr<T>> {
         self.ensure_virt_space(T::SIZE*(vals1.len()+vals2.len()))?;
@@ -349,7 +377,7 @@ impl<'o> VirtualHeapArena<'o> {
     }
 }
 
-
+#[derive(Debug)]
 pub struct HeapStack<'a, T> {
     slice: &'a mut [T],
     pos: usize
@@ -359,7 +387,7 @@ impl<'a, T:Copy + Sized> HeapStack<'a, T>{
 
     pub fn push(&mut self, val:T) -> Result<()> {
         if self.pos == self.slice.len() {
-            return size_limit_exceeded_error()
+            return error(||"Size limit exceeded: max allowed size")
         }
         self.slice[self.pos] = val;
         self.pos += 1;
@@ -369,7 +397,7 @@ impl<'a, T:Copy + Sized> HeapStack<'a, T>{
     pub fn pop(&mut self) -> Option<T> {
         if self.pos == 0 { return None; }
         self.pos -= 1;
-        Some(unsafe {mem::replace(&mut self.slice[self.pos], mem::uninitialized()) })
+        Some(self.slice[self.pos])
     }
 
     pub fn len(&self) -> usize {
@@ -381,18 +409,35 @@ impl<'a, T:Copy + Sized> HeapStack<'a, T>{
     }
 
     pub fn get(&self, pos:usize) -> Result<&T> {
-        if pos > self.pos {return out_of_range_stack_addressing()}
+        if pos > self.pos {
+            return error(||"Index out of bounds")
+        }
         Ok(&self.slice[pos])
     }
 
     pub fn get_mut(&mut self, pos:usize) -> Result<&mut T> {
-        if pos > self.pos {return out_of_range_stack_addressing()}
+        if pos > self.pos {
+            return error(||"Index out of bounds")
+        }
         Ok(&mut self.slice[pos])
     }
 
     pub fn rewind_to(&mut self, pos:usize) -> Result<()> {
-        if pos > self.pos {return out_of_range_stack_addressing()}
+        if pos > self.pos {
+            return error(||"Index out of bounds")
+        }
         self.pos = pos;
+        Ok(())
+    }
+
+    pub fn transfer_from(&mut self, other:&mut HeapStack<'a, T>) -> Result<()> {
+        let end = self.pos+other.pos;
+        if end > self.slice.len() {
+            return error(||"Size limit exceeded: max allowed size")
+        }
+        self.slice[self.pos..end].copy_from_slice(other.as_slice());
+        self.pos = end;
+        other.rewind_to(0)?;
         Ok(())
     }
 
@@ -401,7 +446,7 @@ impl<'a, T:Copy + Sized> HeapStack<'a, T>{
     }
 }
 
-
+/*
 impl<'o> ArenaUnlock for VirtualHeapArena<'o> {
     fn set_lock(&self, val: bool) {
         self.uncounted.locked.set(val)
@@ -411,6 +456,7 @@ impl<'o> ArenaUnlock for VirtualHeapArena<'o> {
         self.uncounted.locked.get()
     }
 }
+*/
 
 impl<'o> ParserAllocator for VirtualHeapArena<'o> {
     fn poly_alloc<T: Sized + Copy + VirtualSize>(&self, val: T) -> Result<Ptr<T>> {
@@ -422,7 +468,7 @@ impl<'o> ParserAllocator for VirtualHeapArena<'o> {
     }
 }
 
-impl<'a,T> Deref for Ptr<'a, T> {
+impl<'a,T:Copy> Deref for Ptr<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &T{
@@ -430,21 +476,28 @@ impl<'a,T> Deref for Ptr<'a, T> {
     }
 }
 
-impl<'a,T> SlicePtr<'a,T>{
+impl<'a, T:Debug> Debug for Ptr<'a,T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result{
+        self.0.fmt(f)
+    }
+}
+
+impl<'a,T:Copy> SlicePtr<'a,T>{
     fn new(slice:&'a [T]) -> Result<Self>{
         if slice.len() <= u16::max_value() as usize {
-            Ok(SlicePtr(slice))
+            Ok(SlicePtr(slice.len() as u16, slice.as_ptr(), PhantomData))
         } else {
-            size_limit_exceeded_error()
+            error(||"Slice Pointer to large")
         }
     }
 
     pub fn empty() -> Self {
-        SlicePtr(&[])
+        SlicePtr(0,[].as_ptr(), PhantomData)
     }
 
     pub fn wrap(val:&'a [T]) -> Self {
-        SlicePtr(val)
+        assert!(val.len() < u16::max_value() as usize);
+        SlicePtr(val.len() as u16, val.as_ptr(), PhantomData)
     }
 }
 
@@ -452,39 +505,64 @@ impl<'a,T> Deref for SlicePtr<'a, T> {
     type Target = [T];
 
     fn deref(&self) -> &[T]{
-        self.0
+        unsafe {from_raw_parts::<T>(self.1, self.0 as usize)}
     }
 }
 
-impl<'a,T> MutSlicePtr<'a,T>{
+impl<'a, T:Debug> Debug for SlicePtr<'a,T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        unsafe {from_raw_parts::<T>(self.1, self.0 as usize)}.fmt(f)
+    }
+}
+
+impl<'a, T:PartialEq> PartialEq for SlicePtr<'a,T> {
+    fn eq(&self, other: &Self) -> bool {
+       self.deref() == other.deref()
+    }
+}
+
+impl<'a, T:PartialOrd> PartialOrd for SlicePtr<'a,T> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.deref().partial_cmp(other.deref())
+    }
+}
+
+impl<'a, T:Ord> Ord for SlicePtr<'a,T> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.deref().cmp(other.deref())
+    }
+}
+
+impl<'a,T:Copy> MutSlicePtr<'a,T>{
     fn new(slice:&'a mut [T]) -> Result<Self>{
         if slice.len() <= u16::max_value() as usize {
-            Ok(MutSlicePtr(slice))
+            Ok(MutSlicePtr(slice.len() as u16, slice.as_mut_ptr(), PhantomData))
         } else {
-            size_limit_exceeded_error()
+            error(||"Slice Pointers to large")
         }
     }
 
     pub fn wrap(val:&'a mut [T]) -> Self {
-        MutSlicePtr(val)
+        assert!(val.len() < u16::max_value() as usize);
+        MutSlicePtr(val.len() as u16, val.as_mut_ptr(), PhantomData)
     }
 
     pub fn freeze(self) -> SlicePtr<'a, T> {
-        SlicePtr(self.0)
+        SlicePtr(self.0, self.1, PhantomData)
     }
 }
 
-impl<'a,T> Deref for MutSlicePtr<'a, T> {
+impl<'a,T:Copy> Deref for MutSlicePtr<'a, T> {
     type Target = [T];
 
     fn deref(&self) -> &[T]{
-        self.0
+        unsafe {from_raw_parts::<T>(self.1, self.0 as usize)}
     }
 }
 
-impl<'a,T> DerefMut for MutSlicePtr<'a, T> {
+impl<'a,T:Copy> DerefMut for MutSlicePtr<'a, T> {
     fn deref_mut(&mut self) -> &mut [T]{
-        self.0
+        unsafe {from_raw_parts_mut::<T>(self.1, self.0 as usize)}
     }
 }
 
@@ -494,7 +572,7 @@ pub struct SliceBuilder<'a, T> {
     pos: usize
 }
 
-impl<'a, T> SliceBuilder<'a, T>{
+impl<'a, T:Copy> SliceBuilder<'a, T>{
     fn new(slice:&'a mut [T], pos:usize) -> Self {
         SliceBuilder{
             slice,
@@ -507,68 +585,16 @@ impl<'a, T> SliceBuilder<'a, T>{
         self.pos += 1;
     }
 
+    pub fn len(&self) -> usize {
+        self.pos
+    }
+
+
     pub fn finish(self) -> SlicePtr<'a,T> {
         SlicePtr::new(&self.slice[..self.pos]).unwrap()
     }
 
     pub fn finish_mut(self) -> MutSlicePtr<'a,T> {
         MutSlicePtr::new(&mut self.slice[..self.pos]).unwrap()
-    }
-}
-
-
-impl<'a,T:Clone> MicroVec<T> for SlicePtr<'a,T>{
-    fn zero() -> Self {
-        SlicePtr::empty()
-    }
-
-    fn is_empty(&self) -> bool {
-        self.deref().is_empty()
-    }
-
-    fn slice(&self) -> &[T] {
-        self.deref()
-    }
-}
-
-impl<'a, T:Clone> MicroVecBuilder<T> for SliceBuilder<'a,T>{
-    type MicroVec = SlicePtr<'a,T>;
-
-    fn push(&mut self, val: T) -> Result<()> {
-        (self as &mut SliceBuilder<'a,T>).push(val);
-        Ok(())
-    }
-
-    fn finish(self) -> Self::MicroVec {
-        (self as SliceBuilder<'a,T>).finish()
-    }
-}
-
-
-impl<T:Clone> MicroVec<T> for Vec<T>{
-    fn zero() -> Self {
-        Vec::with_capacity(0)
-    }
-
-    fn is_empty(&self) -> bool {
-        (self as &Vec<T>).is_empty()
-    }
-
-    fn slice(&self) -> &[T] {
-        self
-    }
-}
-
-
-impl<T:Clone> MicroVecBuilder<T> for Vec<T>{
-    type MicroVec = Vec<T>;
-
-    fn push(&mut self, val: T) -> Result<()> {
-        (self as &mut Vec<T>).push(val);
-        Ok(())
-    }
-
-    fn finish(self) -> Self::MicroVec {
-        self
     }
 }
