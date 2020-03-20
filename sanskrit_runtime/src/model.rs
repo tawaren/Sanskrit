@@ -7,11 +7,12 @@ use alloc::vec::Vec;
 //A set of transactions
 #[derive(Clone, Debug, Parsable, Serializable, VirtualSize)]
 pub struct TransactionBundle<#[AllocLifetime] 'c> {
-    //Dynamic execution costs
-    //Todo: Do we require this per section?? -- Else a payment could load tons of stuff and then fail
-    pub storage_read_limit: u16,
+    //Dynamic execution costs <-- depends on witness sizes (these can be changed by a storage provider)
+    //Where should we have these: if we have under witness then sender may be overcharged - if we have here than witnesses can not be exchanged (made bigger)
     pub param_heap_limit: u16,
     //Static execution costs
+    //todo: finish implementation of entry hashing stuff
+    pub storage_cache: u16, //derivable from used txts & loaded entry hashes
     pub stack_elem_limit:u16,
     pub stack_frame_limit:u16,
     pub runtime_heap_limit:u16,

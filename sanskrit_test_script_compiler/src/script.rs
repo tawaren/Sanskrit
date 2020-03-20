@@ -523,7 +523,7 @@ impl<'a> Compiler<'a> {
         };
 
         let bundle = TransactionBundle {
-            storage_read_limit: 10000,
+            storage_cache: 10000,
             param_heap_limit: 10000,
             stack_elem_limit: 1000,
             stack_frame_limit: 1000,

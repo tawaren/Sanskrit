@@ -48,12 +48,6 @@ pub const STORAGE_COST: DataProcessingCost = DataProcessingCost {
     cost_divider: 1
 };
 
-pub const LOADING_COST: DataProcessingCost = DataProcessingCost {
-    //Todo: Just a guesses probably a bad ones
-    base_cost: 200,
-    cost_multiplier: 5,
-    cost_divider: 1
-};
 
 pub const ENCODING_COST: DataProcessingCost = DataProcessingCost {
     //Todo: Just a guesses probably a bad ones
@@ -72,7 +66,7 @@ pub const CONFIG: Configuration = Configuration {
     return_stack: 256,
     encoding_cost: ENCODING_COST,
     store_cost: STORAGE_COST,
-    load_cost: LOADING_COST
+    load_cost: 200,
 };
 
 impl Configuration {
@@ -93,9 +87,9 @@ pub struct Configuration {
     pub max_transaction_memory: usize,
     pub max_transaction_size: usize,
     pub return_stack: usize,
+    pub load_cost: usize,
     pub encoding_cost: DataProcessingCost,
     pub store_cost: DataProcessingCost,
-    pub load_cost: DataProcessingCost
 }
 
 pub struct DataProcessingCost {
@@ -108,7 +102,7 @@ pub struct DataProcessingCost {
 //A struct holding context information of the current transaction
 pub struct ExecutionEnvironment<'a, 'b, S:Store> {
     store:&'a S,
-    storage_alloc:VirtualHeapArena<'b>,
+    max_desc_alloc:VirtualHeapArena<'b>,
     txt_bundle:TransactionBundle<'b>,
     structural_arena:HeapArena<'b>,
     parameter_heap:VirtualHeapArena<'b>,
@@ -116,6 +110,10 @@ pub struct ExecutionEnvironment<'a, 'b, S:Store> {
     required_gas_prepay:u64,
     required_entry_prepay:u64,
     required_volume_prepay:u64,
+    //todo: we need to ensure that it is always parsed with the same desc even if cached
+    param_cache:Vec<Entry<'b>>,
+    literal_cache:Vec<Entry<'b>>,
+    witness_cache:Vec<Entry<'b>>,
     available_gas:u64,
     gas_refund:u64,
     entries_refund:u64,
@@ -162,13 +160,13 @@ pub fn execute<S:Store, L:Logger>(store:&S, txt_bundle_data:&[u8], block_no:u64,
             + Heap::elems::<Entry>(CONFIG.return_stack)
     );
 
-    let mut storage_alloc = heap.new_virtual_arena(txt_bundle.storage_read_limit as usize);
+    let mut storage_alloc = heap.new_virtual_arena(txt_bundle.storage_cache as usize);
     let mut parameter_heap = heap.new_virtual_arena(txt_bundle.param_heap_limit as usize);
     let mut runtime_heap = heap.new_virtual_arena(txt_bundle.runtime_heap_limit as usize);
 
     let mut exec_env = ExecutionEnvironment {
         store,
-        storage_alloc,
+        max_desc_alloc: storage_alloc,
         txt_bundle,
         structural_arena,
         parameter_heap,
@@ -176,68 +174,43 @@ pub fn execute<S:Store, L:Logger>(store:&S, txt_bundle_data:&[u8], block_no:u64,
         required_gas_prepay,
         required_entry_prepay,
         required_volume_prepay,
+        param_cache: Vec::new(),
+        literal_cache: Vec::new(),
+        witness_cache: Vec::new(),
         available_gas:0,        //will be set for each section
         gas_refund:0,           //will be increased for each section
         entries_refund:0,       //will be increased for each section
         volume_refund:0,        //will be increased for each section
     };
 
+    if exec_env.txt_bundle.store_witness.len() != exec_env.txt_bundle.stored.len() {return error(||"Not enough witnesses for stored values")}
+
+    //note we account the parsing on the source bytes not the target bytes
+    for p in exec_env.txt_bundle.store_witness.iter() {
+        //accounts for the parsing & loading of the hash
+        required_gas_prepay +=  (CONFIG.load_cost  as u64) + ((p.len() as u64)*CONFIG.encoding_cost.cost_multiplier)/CONFIG.encoding_cost.cost_divider;
+    }
+
     for txt_section in exec_env.txt_bundle.sections.iter() {
         exec_env.available_gas = txt_section.gas_limit;
         for txt in txt_section.txts.iter() {
-
-            //todo: can we limit these per section so we do not get that much refunds and the txt sender has more control
-            //      shall we do this per txt or per section
-            //      per txt is the most detailed but the other limiters are currently per section
-
-            //The Param Heap is empty currently and will fill over time
-            // each time we put something on it we have to parse it
-            // we account here for the parsing & storing on a per byte basis and will later refund if not all is needed
-            let param_space = exec_env.parameter_heap.remaining_space() as u64;
-            let param_cost = (param_space*CONFIG.encoding_cost.cost_multiplier)/CONFIG.encoding_cost.cost_divider;
-            if param_cost > exec_env.available_gas {return error(||"Gas limit reached: can not account for encoding cost under worst case param heap usage")}
-            exec_env.available_gas -= param_cost;
-
-            //The Storage Heap is empty currently and will fill over time
-            // each time we put something on it we had to load it from the store
-            // we account here for the store loading on a per byte basis and will later refund if not all is needed
-            let storage_space = exec_env.storage_alloc.remaining_space() as u64;
-            let storage_cost = (param_space*CONFIG.load_cost.cost_multiplier)/CONFIG.load_cost.cost_divider;
-            if storage_cost > exec_env.available_gas {return error(||"Gas limit reached: can not account for storage load coasts under worst case storage heap usage")}
-            exec_env.available_gas -= storage_cost;
-
-            //todo: we need to pre charge a per entry cost as the load from storage has a large overhead and is not linear to the bytes loaded
-            //todo: maybe the same is needed on the param heap but i do not think so
-
             match execute_transaction( &exec_env, txt, &full_bundle_hash,  &bundle_hash, logger ) {
                 Ok(gas) => {
-                    //Refund the unused encoding costs
-                    let unused_param_space = exec_env.parameter_heap.remaining_space() as u64;
-                    let param_space_refund = ((param_space - unused_param_space)*CONFIG.encoding_cost.cost_multiplier)/CONFIG.encoding_cost.cost_divider;
-                    exec_env.available_gas += param_space_refund;
-
-                    //Refund the unused loading costs
-                    let unused_storage_space = exec_env.storage_alloc.remaining_space() as u64;
-                    let storage_space_refund = ((storage_space - unused_storage_space)*CONFIG.load_cost.cost_multiplier)/CONFIG.load_cost.cost_divider;
-                    exec_env.available_gas += storage_space_refund;
-
                     //charge for the used gas
                     exec_env.available_gas -= gas as u64
                 },
                 Err(err) => {
-                    store.rollback(StorageClass::EntryValue);
+                    rollback_store(&exec_env)?;
                     return Err(err);
                 }
             };
 
             //release all the memory so it does not leak into the next transaction
             exec_env.structural_arena = exec_env.structural_arena.reuse();
-            exec_env.storage_alloc = exec_env.storage_alloc.reuse();
-            exec_env.parameter_heap = exec_env.parameter_heap.reuse();
+            exec_env.max_desc_alloc = exec_env.max_desc_alloc.reuse();
             exec_env.runtime_heap = exec_env.runtime_heap.reuse();
         }
 
-        exec_env.gas_refund += exec_env.available_gas;
 
 
         //Before commit check that limits hold
@@ -257,7 +230,7 @@ pub fn execute<S:Store, L:Logger>(store:&S, txt_bundle_data:&[u8], block_no:u64,
         //      Do the same precharge and recharge we do on a per transaction level
 
         //commit
-        store.commit(StorageClass::EntryValue);
+        commit_store(&exec_env)?;
 
         //calculate and add the refund
         exec_env.entries_refund += (txt_section.extra_entries_limit as isize - entries_difference) as u64;
@@ -272,9 +245,10 @@ fn execute_transaction<S:Store, L:Logger>(env:&ExecutionEnvironment<S>,txt:&Tran
     //Prepare all the Memory
     if env.txt_bundle.descriptors.len() <= txt.txt_desc as usize { return error(||"Descriptor index out of range")  }
 
+    //todo: shall we do at the start
     let target = &env.txt_bundle.descriptors[txt.txt_desc as usize];
-    //todo: now we can cache this
-    let txt_desc:TransactionDescriptor = env.store.parsed_get(StorageClass::Descriptor, target, CONFIG.max_structural_dept, &env.storage_alloc)?;
+    //todo: pre calculate this: how to gas charge this
+    let txt_desc:TransactionDescriptor = env.store.parsed_get(StorageClass::Descriptor, target, CONFIG.max_structural_dept, &env.max_desc_alloc)?;
 
     if txt_desc.gas_cost as u64 > env.available_gas {return error(||"Bundle has not reserved enough gas")}
     if txt_desc.max_frames > env.txt_bundle.stack_frame_limit {return error(||"Bundle has not reserved enough frame space")}
@@ -289,7 +263,7 @@ fn execute_transaction<S:Store, L:Logger>(env:&ExecutionEnvironment<S>,txt:&Tran
     let mut lock_set = BTreeSet::new();
     let mut deletes = Vec::with_capacity(txt_desc.params.len());
 
-    for (idx,(p,p_typ)) in txt_desc.params.iter().zip(txt.params.iter()).enumerate() {
+    for (p,p_typ) in txt_desc.params.iter().zip(txt.params.iter()) {
         match p_typ {
             ParamRef::Load(ParamMode::Consume,index) => {
                 if !p.consumes && !p.drop { return error(||"A owned store value must be consumed or dropped") }
@@ -366,7 +340,7 @@ fn execute_transaction<S:Store, L:Logger>(env:&ExecutionEnvironment<S>,txt:&Tran
 
     //Now that we know it succeeds we can modify the store
     for del in deletes {
-        env.store.delete(StorageClass::EntryValue, &del)?;
+        delete_from_store(env,del)?
     }
 
     assert_eq!(interpreter_stack.len(), txt.returns.len(), "Transaction Return Information missmatched Stack");
@@ -383,12 +357,7 @@ fn execute_transaction<S:Store, L:Logger>(env:&ExecutionEnvironment<S>,txt:&Tran
                         let id = unsafe {ret_entry.adt.1.get(0).expect("entry has to few fields").data.deref()}.try_into().expect("entry id has incorrect length");
                         let mut s = Serializer::new(CONFIG.max_structural_dept);
                         desc.serialize_value(*ret_entry, &mut s)?;
-                        let data = TypedData {
-                            typ,
-                            value: s.extract()
-                        };
-
-                        env.store.serialized_set(StorageClass::EntryValue, id, CONFIG.max_structural_dept, &data)?;
+                        write_to_store(env, id, s.extract(), typ)?
 
                     },
                     RetType::Put(index) => {
@@ -418,11 +387,32 @@ fn execute_transaction<S:Store, L:Logger>(env:&ExecutionEnvironment<S>,txt:&Tran
 
 
 fn load_from_store<S:Store>(env:&ExecutionEnvironment<S>, hash:&Hash, expected_type:Ptr<RuntimeType>) -> Result<Vec<u8>> {
-    let data:TypedData = env.store.parsed_get(StorageClass::EntryValue, hash, CONFIG.max_structural_dept, &env.storage_alloc)?;
+    //todo: this should be eliminated
+    let data:TypedData = env.store.parsed_get(StorageClass::EntryValue, hash, CONFIG.max_structural_dept, &env.max_desc_alloc)?;
     if !is_entry(expected_type) { return error(|| "Value parameter must be an entry") }
     //todo: is this expensive?? or dominated by loading??? -- Probably the Later
     if expected_type != data.typ { return error(|| "Data in store has wrong type") }
     return Ok(data.value)
+}
+
+fn write_to_store<S:Store>(env:&ExecutionEnvironment<S>, id:Hash, data:Vec<u8>, provided_type:Ptr<RuntimeType>) -> Result<()> {
+    let data = TypedData {
+        typ:provided_type,
+        value: data
+    };
+    env.store.serialized_set(StorageClass::EntryValue, id, CONFIG.max_structural_dept, &data)
+}
+
+fn delete_from_store<S:Store>(env:&ExecutionEnvironment<S>, id:&Hash) -> Result<()> {
+    env.store.delete(StorageClass::EntryValue, id)
+}
+
+fn commit_store<S:Store>(env:&ExecutionEnvironment<S>) -> Result<()> {
+    Ok(env.store.commit(StorageClass::EntryValue))
+}
+
+fn rollback_store<S:Store>(env:&ExecutionEnvironment<S>) -> Result<()> {
+    Ok(env.store.rollback(StorageClass::EntryValue))
 }
 
 pub fn create_ctx<'a,'h>(alloc:&'a VirtualHeapArena<'h>, full_hash:&Hash, txt_hash:&Hash) -> Result<Entry<'a>> {
