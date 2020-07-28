@@ -108,19 +108,20 @@ impl CapSet {
 
     const ALL_MASK:u8 = VALUE_MASK | UNBOUND_MASK | DROP_MASK | COPY_MASK | PERSIST_MASK | PRIMITIVE_MASK ;
 
-    const NOT_SIG_MASK:u8 = VALUE_MASK | UNBOUND_MASK | COPY_MASK | PERSIST_MASK;
+    const NOT_SIG_MASK:u8 = VALUE_MASK | UNBOUND_MASK | COPY_MASK | PERSIST_MASK | PRIMITIVE_MASK;
 
     const OPAQUE_AFFINE_MASK:u8 =  DROP_MASK  | PERSIST_MASK ;
 
     const PRIMITIVE_IMPLICATIONS: u8 = DROP_MASK | COPY_MASK | PERSIST_MASK | VALUE_MASK | UNBOUND_MASK ;
 
-    //This must consider capability inheritance
-    // Meaning if a is valid & b is valid => a & b & RECURSIVE_MASK must be valid
-    // ^ -- I think we violate this currently -- why is this necessary???
     pub fn check_constraints(self) -> Result<()> {
         if self.contains(Capability::Primitive) && !CapSet(CapSet::PRIMITIVE_IMPLICATIONS).is_subset_of(self) {
             return error(||"Types with the Primitive capability must have Drop, Copy, Persist, and Unbound as well")
         }
+        /* Todo: is this usefull if yes comment in (and change a lot of tests)
+        if self.contains(Capability::Persist) && !self.contains(Capability::Unbound) {
+            return error(||"Types with the Persist capability must have Unbound as well")
+        }*/
         Ok(())
     }
 
@@ -151,8 +152,8 @@ impl CapSet {
 #[derive(Ord, PartialOrd, Eq, PartialEq, Copy, Clone, Hash, Debug, Parsable, Serializable, VirtualSize)]
 pub struct PermSet(pub u8);
 
-//Assosiation between capabilities and bits
-//Eac capabulity is assosiated with 1 bit in a u8
+//Assosiation between permissions and bits
+//Eac permission is assosiated with 1 bit in a u8
 const CREATE_MASK:u8 = 1;
 const CONSUME_MASK:u8 = 1 << 1;
 const INSPECT_MASK:u8 = 1 << 2;

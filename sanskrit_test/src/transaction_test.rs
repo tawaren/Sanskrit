@@ -14,7 +14,7 @@ mod tests {
     use sanskrit_core::accounting::Accounting;
     use std::cell::Cell;
     use sanskrit_runtime::{CONFIG, execute, Logger};
-    use sanskrit_runtime::model::{Transaction, TypedData, TransactionBundle};
+    use sanskrit_runtime::model::{Transaction, TransactionBundle};
     use sanskrit_common::encoding::Serializer;
     use sanskrit_common::model::{Hash, SlicePtr, ValueRef, Ptr};
     use sanskrit_interpreter::model::ValueSchema;
@@ -158,6 +158,7 @@ mod tests {
             let bundle = comp.create_bundle(&hashes, &heap);
             heap = heap.reuse();
             execute(&s, &bundle, 0, &heap,  &mut NoLogger{}).expect("Execute Failed");
+            s.clear_section(StorageClass::EntryHash);
             s.clear_section(StorageClass::EntryValue);
         });
 
@@ -509,7 +510,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected="Data in store has wrong type")]
+    #[should_panic(expected="provided witness or stored value mismatched expected entry")]
     fn load_type_missmatch() {
         parse_and_compile_and_run("testFailLoadWrongType").unwrap();
     }

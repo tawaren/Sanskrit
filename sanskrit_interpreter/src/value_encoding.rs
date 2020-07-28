@@ -2,7 +2,12 @@ use model::{ValueSchema, Entry, Adt};
 use sanskrit_common::encoding::{Serializer, Serializable, ParserAllocator, Parser, Parsable, NoCustomAlloc};
 use sanskrit_common::errors::*;
 use sanskrit_common::model::SlicePtr;
+use sanskrit_common::arena::VirtualHeapArena;
 
+
+pub fn parse_with_schema<'c, 'h, 'b>(schema:ValueSchema<'c>, p:&'c mut Parser<'c>, alloc:&'b VirtualHeapArena<'h>) -> Result<Entry<'b>>{
+    schema.parse_value(p,alloc)
+}
 
 impl<'a> ValueSchema<'a> {
     pub fn serialize_value(&self, value:Entry, s:&mut Serializer) -> Result<()> {
@@ -44,8 +49,8 @@ impl<'a> ValueSchema<'a> {
 
     //todo: add checks and return Err if input mismatches (needed if literals are parsed)
     //todo: do we need to enforce structural depth here?
-    pub fn parse_value<A: ParserAllocator>(&self, p:&mut Parser, alloc:&'a A) -> Result<Entry<'a>> {
-        Ok(match *self {
+    pub fn parse_value<'c, 'd, 'b, A: ParserAllocator>(self, p:&'c mut Parser<'d>, alloc:&'b A) -> Result<Entry<'b>> {
+        Ok(match self {
             ValueSchema::Adt(ctrs) => {
                     //if their is only 1 tag it was omitted
                     let tag = if ctrs.len() != 1 {

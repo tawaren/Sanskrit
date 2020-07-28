@@ -101,10 +101,10 @@ pub struct ImplementComponent {
     #[ByteSize]
     pub byte_size:Option<usize>,
     pub scope: Accessibility,                  //A Fun has a visibility defining who can call it
-    pub sig: PermRef,                           //Defines the Type & Permission of this Implement (Must point to a Implement Perm)
-    pub generics:Vec<Generic>,                  //A Fun/Sig has Generic Type parameters that can be constraint
-    pub import: PublicImport,                    //A Fun/Sig has imports usable in its dig & body
-    pub params:Vec<Param>,                      //A Fun/Sig has input params
+    pub sig: PermRef,                          //Defines the Type & Permission of this Implement (Must point to a Implement Perm)
+    pub generics:Vec<Generic>,                 //A Fun/Sig has Generic Type parameters that can be constraint
+    pub import: PublicImport,                  //A Fun/Sig has imports usable in its dig & body
+    pub params:Vec<Param>,                     //A Fun/Sig has input params
     pub body: CallableImpl
 }
 
@@ -124,7 +124,7 @@ pub struct PublicImport {
 pub struct BodyImport {
     pub public: PublicImport,
     pub callables:Vec<CallableImport>,       //Imports for use in code
-    pub permissions:Vec<PermissionImport>,       //Permisions
+    pub permissions:Vec<PermissionImport>,   //Permisions
 
 }
 
@@ -253,8 +253,8 @@ pub enum OpCode {
     Return(Vec<ValueRef>),
     Discard(ValueRef),                                                      //Releases a Borrow and unlocks the borrowed elements or drops a value with Drop capability
     DiscardMany(Vec<ValueRef>),                                             //As discard but many elements
-    CopyUnpack(ValueRef, PermRef),                                          //Copies a value to produce its fields (single Ctr only) (Needs Consume or Inspect Cap)
-    Unpack(ValueRef, PermRef),                                              //Consumes a value to produce its fields (single Ctr only) (Needs Consume or Inspect Cap)
+    CopyUnpack(ValueRef, PermRef),                                          //Copies a value to produce its fields (single Ctr only) (Needs Inspect Cap)
+    Unpack(ValueRef, PermRef),                                              //Consumes a value to produce its fields (single Ctr only) (Needs Consume Cap)
     CopyField(ValueRef, PermRef, u8),                                       //<-- requires Inspect & Field to have Copy
     Field(ValueRef, PermRef, u8),                                           //<-- requires Consume & others to have Drop
     CopySwitch(ValueRef, PermRef, Vec<Exp>),                                //Branches on a type that has multiple ctrs where each branch corresponds to 1 Ctr (Does an implicit CopyUnpack)

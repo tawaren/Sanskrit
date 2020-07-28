@@ -157,13 +157,8 @@ fn validate_sig<S:Store>(sig:&SigComponent, ctx:&Context<S>) -> Result<()>{
     //we allow no protection forwarding as sigs have 2 visibilities & should not need to import create, consumes & implements
     check_type_import_integrity(ctx)?;
 
-    //check sig capabilities
-    if !sig.provided_caps.intersect(CapSet::signature_prohibited()).is_empty() {
-        return error(||"Provided capabilities not allowed on signature type")
-    }
-
     //Check capability constraints
-    sig.provided_caps.check_constraints()?;
+    check_provided_sig_capability_constraints(&sig)?;
     check_generic_capability_constraints(&sig.shared.generics)?;
 
     //check param and return for phantoms
@@ -242,14 +237,14 @@ fn validate_implement<S:Store>(imp:&ImplementComponent, ctx:&Context<S>, system_
     //Check capability constraints
     check_generic_capability_constraints(&imp.generics)?;
 
+    //check the captures and permission
+    check_implement_constraints(imp, ctx)?;
+
     //check the body
     check_body(&imp.body , ctx, system_mode_on)?;
 
     //check param and return for phantoms
     check_params_and_returns(&imp.params, &[], ctx)?;
-
-    //check the captures and permission
-    check_implement_constraints(imp, ctx)?;
 
     //check visibility
     check_visibility_integrity(&imp.scope, imp.generics.len())
@@ -265,6 +260,16 @@ fn check_provided_capability_constraints(adt:&DataComponent) -> Result<()> {
     }
     Ok(())
 }
+
+fn check_provided_sig_capability_constraints(sig:&SigComponent) -> Result<()> {
+    sig.provided_caps.check_constraints()?;
+    if !sig.provided_caps.intersect(CapSet::signature_prohibited()).is_empty() {
+        return error(||"Only the drop capability is allowed on signature types")
+    }
+
+    Ok(())
+}
+
 
 fn check_generic_capability_constraints(gens:&[Generic]) -> Result<()> {
     for g in gens {

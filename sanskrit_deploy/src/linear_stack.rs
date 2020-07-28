@@ -202,7 +202,7 @@ impl<'acc, T:Clone+Eq> LinearStack<'acc, T>  {
             elem.mark = true;
         }
 
-        //get tge consume cell
+        //get the consume cell
         let consume_status = self.get_consume_cell();
 
         //consume it
@@ -601,10 +601,10 @@ impl<'acc, T:Clone+Eq> LinearStack<'acc, T>  {
     }
 
     // Correlates the stack to the Function signature, consuming the stack in the process and finishing the roundtrip
-    pub fn check_function_param_signature(&mut self, params:u16, is_throw:bool) -> Result<()>  {
+    pub fn check_function_param_signature(&mut self, params:u16) -> Result<()>  {
         //Check that the stack is big enough
         if self.stack_depth() != params as usize {
-            return error(||"Number of elements on stack is must match number of parameters")
+            return error(||"Number of elements on stack must match number of parameters")
         }
 
         //Second check the params, starting at the end
@@ -612,7 +612,7 @@ impl<'acc, T:Clone+Eq> LinearStack<'acc, T>  {
             //We pop and free them while we process them
             let elem = self.stack.pop().unwrap();
             //if a regular return check that signature hold
-            if !is_throw && !elem.can_be_freed() {
+            if !elem.can_be_freed() {
                 return error(||"Parameters must be borrowed or consumed at the end of a function body")
             }
         }

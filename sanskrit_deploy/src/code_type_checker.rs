@@ -43,8 +43,7 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
         }
     }
 
-    //Note: I would love to do here steals as well but the algorithm is complicated
-    //      And I want to keep the on chain verifier simple
+
     fn clean_frame(&mut self, results:u8, start:usize) -> Result<()> {
         //how many values are on the stack
         let frame_size = self.stack.stack_depth() - start;
@@ -126,7 +125,32 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
         self.stack.check_function_return_signature(sig.returns.len() as u8)?;
         assert!(imp.params.len() <= u8::max_value() as usize);
         assert!(sig.params.len() <= u8::max_value() as usize);
-        self.stack.check_function_param_signature(imp.params.len() as u16 + sig.params.len() as u16, false)
+
+        for (v, p) in sig.params.iter().rev().enumerate() {
+            if p.consumes {
+                let target = ValueRef(v as u16);
+                //discard it if allowed
+                //returns the status of a stack elem without modifying anything
+                if !self.stack.get_elem(target)?.can_be_freed() {
+                    self.discard(target)?;
+                }
+            }
+        }
+
+        let offset = sig.params.len();
+        for (v,p) in imp.params.iter().rev().enumerate() {
+            if p.consumes {
+                let target = ValueRef((offset + v) as u16);
+                //discard it if allowed
+                //returns the status of a stack elem without modifying anything
+                if !self.stack.get_elem(target)?.can_be_freed() {
+                    self.discard(target)?;
+                }
+            }
+        }
+
+        //todo: auto Discard consumes that have drop and are not consumed
+        self.stack.check_function_param_signature(imp.params.len() as u16 + sig.params.len() as u16)
     }
 
     //Type checks a function in the current context
@@ -172,7 +196,19 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
         assert!(func.shared.returns.len() <= u8::max_value() as usize);
         self.stack.check_function_return_signature(func.shared.returns.len() as u8)?;
         assert!(func.shared.params.len() <= u8::max_value() as usize);
-        self.stack.check_function_param_signature(func.shared.params.len() as u16, false)
+
+        for (v, p) in func.shared.params.iter().rev().enumerate() {
+            if p.consumes {
+                let target = ValueRef(v as u16);
+                //discard it if allowed
+                //returns the status of a stack elem without modifying anything
+                if !self.stack.get_elem(target)?.can_be_freed() {
+                    self.discard(target)?;
+                }
+            }
+        }
+
+        self.stack.check_function_param_signature(func.shared.params.len() as u16)
     }
 
     //Type checks an expression in the current context
@@ -357,8 +393,14 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
         let r_typ = self.stack.value_of(value)?;
         //get the perm
         let r_perm = perm.fetch(&self.context)?;
+        //Calc the required permission
+        let perm_type = match mode {
+            FetchMode::Consume => Permission::Consume,
+            FetchMode::Copy => Permission::Inspect,
+        };
+
         //check that it is of the right type
-        if !r_perm.check_value_permission(&r_typ, Permission::Consume) {
+        if !r_perm.check_value_permission(&r_typ, perm_type) {
             //expected type does not much provided type
             return error(||"Wrong Permission supplied")
         }
@@ -444,7 +486,7 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
 
         //check that it is of the right type
         if !r_perm.check_value_permission(&r_typ,perm_type) {
-            //expected type does not much provided type
+            //expected type does not mach provided type
             return error(||"Wrong Permission supplied")
         }
 
@@ -672,7 +714,7 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
 
         //Prepare the Inputs
         let inputs:Vec<(ValueRef,bool)> = vals.iter().zip(signature.params.iter()).map(|((essential,v),p)| {
-            //Ensure tat the argument has the expected type
+            //Ensure that the argument has the expected type
             if self.stack.value_of(*v)? != p.typ {
                 return error(||"Parameter for function call has wrong type")
             }

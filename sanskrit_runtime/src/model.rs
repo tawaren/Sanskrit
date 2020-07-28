@@ -7,12 +7,10 @@ use alloc::vec::Vec;
 //A set of transactions
 #[derive(Clone, Debug, Parsable, Serializable, VirtualSize)]
 pub struct TransactionBundle<#[AllocLifetime] 'c> {
-    //Dynamic execution costs <-- depends on witness sizes (these can be changed by a storage provider)
-    //Where should we have these: if we have under witness then sender may be overcharged - if we have here than witnesses can not be exchanged (made bigger)
+    //Todo: Add o witness
     pub param_heap_limit: u16,
     //Static execution costs
-    //todo: finish implementation of entry hashing stuff
-    pub storage_cache: u16, //derivable from used txts & loaded entry hashes
+    pub transaction_storage_heap: u16,
     pub stack_elem_limit:u16,
     pub stack_frame_limit:u16,
     pub runtime_heap_limit:u16,
@@ -25,8 +23,8 @@ pub struct TransactionBundle<#[AllocLifetime] 'c> {
     //params passed in from the outside
     pub literal: SlicePtr<'c, SlicePtr<'c,u8>>,
     //witnesses
-    pub witness: SlicePtr<'c, SlicePtr<'c,u8>>,         //witnesses are ignored in the Hash
-    pub store_witness: SlicePtr<'c, SlicePtr<'c,u8>>,   //witnesses are ignored in the Hash
+    pub witness: SlicePtr<'c, SlicePtr<'c,u8>>,                 //witnesses are ignored in the Hash
+    pub store_witness: SlicePtr<'c, Option<SlicePtr<'c,u8>>>,   //witnesses are ignored in the Hash
 
 }
 
@@ -41,9 +39,10 @@ pub enum SectionType {
 pub struct BundleSection<#[AllocLifetime] 'c> {
     //Section type
     pub typ:SectionType,
-    //Storage costs
-    pub extra_entries_limit: u32,
-    pub storage_volume_limit: u32,
+    //Storage costs         -- we later could optimize: load -> delete -> store (as in reality this triggers 1 Load & 1 Write and not 2 writes)
+    pub entries_loaded:u32,
+    pub entries_created:u32,
+    pub entries_deleted:u32,
     //Execution Cost
     pub gas_limit: u64,
     //Transactions
@@ -73,7 +72,7 @@ pub enum ParamMode {
 #[derive(Copy, Eq, PartialEq, Clone, Parsable, Serializable, VirtualSize, Debug)]
 pub enum ParamRef {
     Load(ParamMode, u16),
-    Fetch(ParamMode, u16),
+    //Fetch(ParamMode, u16),
     Literal(u16),
     Witness(u16),
     Provided
@@ -82,14 +81,7 @@ pub enum ParamRef {
 #[derive(Copy, Eq, PartialEq, Clone, Parsable, Serializable, VirtualSize, Debug)]
 pub enum RetType {
     Store,
-    Put(u16),
+    //Put(u16),
     Drop,
     Log
-}
-
-
-#[derive(Parsable, Serializable)]
-pub struct TypedData<#[AllocLifetime] 'a>{
-    pub typ:Ptr<'a, RuntimeType<'a>>,
-    pub value:Vec<u8>
 }

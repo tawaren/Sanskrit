@@ -444,7 +444,7 @@ impl<'b, S:Store + 'b> Context<'b, S> {
             },
             ResolvedCallable::Implement {  ref module, offset, ref applies, .. } => {
                 //create the sig
-                self.resolve_signature_from_component::<SigComponent>(module, offset, applies)
+                self.resolve_signature_from_component::<ImplementComponent>(module, offset, applies)
             }
         }
     }

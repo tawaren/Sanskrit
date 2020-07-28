@@ -875,7 +875,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected= "Parameters must be borrowed or consumed at the end of a function body")]
+    #[should_panic(expected= "Discard requires drop capability for input")]
     fn param_consume_fail() {
         parse_and_deploy("testFailFunParamConsume").unwrap();
     }

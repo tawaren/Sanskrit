@@ -4,17 +4,14 @@ First:
   Track Minimal types at runtime (Extend on demand if more comes up)
    Track in value:
     //Todo: See update later
-    Alla Value(Caps,Module.Name,Tag,List(Value))
-         Value(Caps,Image(Module.Name),Tag,List(Value))
-         Value(Caps,Int(5),Literal)
+    Alla Value(Caps,RuntimeType,Tag,List(Value))
+         Value(Caps,RuntimeType,Literal)
          Caps + RuntimeType is Meta
          Tag + List(Value) is Content
 
          Note: RuntimeType = Module.Name
                              Image(RuntimeType)
-                             Int(5)
-         //TopValue can not be packed
-         TopValue = Value | Error
+                             Int(Size)
 
       Do not carry around applies @ Runtime
        Do first a full Dynamic Semantic -- Later we can introduce Check and bounds

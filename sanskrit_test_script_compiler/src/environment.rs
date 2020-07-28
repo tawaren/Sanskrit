@@ -344,7 +344,8 @@ pub struct BundleImportBuilder{
     witness_assoc:HashMap<Vec<u8>,u16>,
 
     value_import:Vec<Vec<u8>>,
-    value_assoc:HashMap<Vec<u8>,u16>,
+    //this would only be appropriate if we know that it has the same value each time
+    //value_assoc:HashMap<Vec<u8>,u16>,
 
     desc_import:Vec<Hash>,
     desc_assoc:HashMap<Hash,u16>,
@@ -360,7 +361,7 @@ impl BundleImportBuilder {
             witness_import: Vec::new(),
             witness_assoc: HashMap::new(),
             value_import: Vec::new(),
-            value_assoc: HashMap::new(),
+            //value_assoc: HashMap::new(),
             desc_import: Vec::new(),
             desc_assoc: HashMap::new()
         }
@@ -370,7 +371,6 @@ impl BundleImportBuilder {
     pub fn param_ref(&mut self, param:&ParamData) -> ParamRef{
         match *param {
             ParamData::Load(mode, ref data) => ParamRef::Load(mode, self.value_ref(data)),
-            ParamData::Fetch(mode, ref data) => ParamRef::Fetch(mode, self.value_ref(data)),
             ParamData::Literal(ref data) => ParamRef::Literal(self.literal_ref(data)),
             ParamData::Witness(ref data) => ParamRef::Witness(self.witness_ref(data)),
             ParamData::Provided => ParamRef::Provided
@@ -400,13 +400,14 @@ impl BundleImportBuilder {
     }
 
     pub fn value_ref(&mut self, val:&Vec<u8>) -> u16{
+        /* we can not ensure that it has the same witness if id is te same
         if self.value_assoc.contains_key(val) {
             return self.value_assoc[val]
         }
-
+        */
         let pos = self.value_import.len() as u16;
         self.value_import.push(val.clone());
-        self.value_assoc.insert(val.clone(), pos);
+        //self.value_assoc.insert(val.clone(), pos);
         pos
     }
 
@@ -442,6 +443,10 @@ impl BundleImportBuilder {
             builder.push(alloc.copy_alloc_slice(v).unwrap());
         }
         builder.finish()
+    }
+
+    pub fn empty_storage_witnesses<'a>(&self,  alloc:&'a HeapArena) -> SlicePtr<'a, Option<SlicePtr<'a, u8>>>  {
+        alloc.repeated_slice(None, self.value_import.len()).unwrap()
     }
 
     pub fn descs(&self) -> &[Hash] {

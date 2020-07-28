@@ -6,6 +6,7 @@ use loader::{FetchCache, Loader};
 use utils::Crc;
 use resolver::Context;
 use sanskrit_common::model::ModuleLink;
+use core::slice::from_ref;
 
 //The ref trait allows to fetch the target it reference from a context
 pub trait Ref<T, S:Store> {
@@ -302,4 +303,25 @@ impl Component for ImplementComponent {
     fn get_generics(&self) -> &[Generic] {
         &self.generics
     }
+}
+
+impl CallableComponent for ImplementComponent {
+    fn get_params(&self) -> &[Param] {
+        &self.params
+    }
+
+    fn get_returns(&self) -> &[TypeRef] {
+        //sadly we do not have direct access to the return type without duplicating it in the input
+        match &self.body {
+            //would fail in fetching the permission when validating
+            CallableImpl::External => unreachable!(),
+            CallableImpl::Internal { ref imports, .. } => match imports.permissions[self.sig.0 as usize] {
+                //Would fail on get type in validate
+                PermissionImport::Callable(_, _) => unreachable!(),
+                PermissionImport::Type(_, ref typRef) => from_ref(typRef),
+            },
+        }
+    }
+
+    fn is_transactional(&self) -> bool { false }
 }

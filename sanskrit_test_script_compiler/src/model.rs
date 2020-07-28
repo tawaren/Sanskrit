@@ -37,7 +37,6 @@ pub struct TransactionCompilationResult {
 #[derive(Eq, PartialEq, Clone)]
 pub enum ParamData {
     Load(ParamMode, Vec<u8>),
-    Fetch(ParamMode, Vec<u8>),
     Literal(Vec<u8>),
     Witness(Vec<u8>),
     Provided

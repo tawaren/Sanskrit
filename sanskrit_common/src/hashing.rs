@@ -14,6 +14,7 @@ pub enum HashingDomain {
     Object,
     Account,
     Code,
+    Entry
 }
 
 pub struct Hasher(Blake2b);
@@ -57,6 +58,7 @@ impl HashingDomain {
             HashingDomain::Account => 6,
             HashingDomain::Code => 7,
             HashingDomain::Bundle => 8,
+            HashingDomain::Entry => 9,
         }
     }
 

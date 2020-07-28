@@ -80,33 +80,33 @@ pub enum OpCode<#[AllocLifetime] 'b> {
 }
 
 #[derive(Copy, Clone, Debug, Parsable, Serializable, VirtualSize)]
-pub struct TransactionDescriptor<#[AllocLifetime] 'b> {
+pub struct TransactionDescriptor<#[AllocLifetime] 'c> {
     pub gas_cost:u32,
     pub max_stack:u16,
     pub max_frames:u16,
     pub max_mem:u16,
-    pub params:SlicePtr<'b,TxTParam<'b>>,
-    pub returns:SlicePtr<'b,TxTReturn<'b>>,
-    pub functions:SlicePtr<'b,Ptr<'b, Exp<'b>>>,        //multiple functions (calls are embeded)
+    pub params:SlicePtr<'c,TxTParam<'c>>,
+    pub returns:SlicePtr<'c,TxTReturn<'c>>,
+    pub functions:SlicePtr<'c,Ptr<'c, Exp<'c>>>,        //multiple functions (calls are embeded)
 }
 
 #[derive(Copy, Clone, Debug, Parsable, Serializable, VirtualSize)]
-pub struct TxTParam<#[AllocLifetime] 'b> {
+pub struct TxTParam<#[AllocLifetime] 'c> {
     pub primitive:bool,
     pub copy:bool,
     pub drop:bool,
     pub consumes:bool,
-    pub typ:Ptr<'b, RuntimeType<'b>>,
-    pub desc:Ptr<'b, ValueSchema<'b>>
+    pub typ:Ptr<'c, RuntimeType<'c>>,
+    pub desc:Ptr<'c, ValueSchema<'c>>
 }
 
 #[derive(Copy, Clone, Debug, Parsable, Serializable, VirtualSize)]
-pub struct TxTReturn<#[AllocLifetime] 'b> {
+pub struct TxTReturn<#[AllocLifetime] 'c> {
     pub primitive:bool,
     pub copy:bool,
     pub drop:bool,
-    pub typ:Ptr<'b, RuntimeType<'b>>,
-    pub desc:Ptr<'b, ValueSchema<'b>>
+    pub typ:Ptr<'c, RuntimeType<'c>>,
+    pub desc:Ptr<'c, ValueSchema<'c>>
 }
 
 #[derive(Clone, Copy, Eq, PartialEq, Debug, Parsable, Serializable, VirtualSize)]

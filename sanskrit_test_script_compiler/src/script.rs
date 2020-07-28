@@ -516,14 +516,15 @@ impl<'a> Compiler<'a> {
         //Todo: Compute these costs
         let main_section = BundleSection {
             typ: SectionType::Custom,
-            extra_entries_limit: 1000,
-            storage_volume_limit: 1000,
+            entries_loaded: 1000,
+            entries_created: 1000,
+            entries_deleted: 1000,
             gas_limit: 10000000,
             txts: alloc.copy_alloc_slice(&built_txts).unwrap()
         };
 
         let bundle = TransactionBundle {
-            storage_cache: 10000,
+            transaction_storage_heap: 10000,
             param_heap_limit: 10000,
             stack_elem_limit: 1000,
             stack_frame_limit: 1000,
@@ -534,7 +535,7 @@ impl<'a> Compiler<'a> {
             literal: env.literals(&alloc),
             witness: env.witnesses(&alloc),
             //todo: fill over state provider runtime extension later: when ready
-            store_witness: SlicePtr::empty()
+            store_witness: env.empty_storage_witnesses(&alloc)
         };
         Serializer::serialize_fully(&bundle,CONFIG.max_structural_dept).unwrap()
     }

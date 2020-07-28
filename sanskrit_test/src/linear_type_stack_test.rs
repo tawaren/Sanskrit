@@ -123,7 +123,7 @@ mod tests {
         }
 
         tester.inner.check_function_return_signature(rets.len() as u8).unwrap();
-        tester.inner.check_function_param_signature(20 + new_params.len() as u16, false).unwrap();
+        tester.inner.check_function_param_signature(20 + new_params.len() as u16).unwrap();
     }
 
 
@@ -518,7 +518,7 @@ mod tests {
 
 
     #[test]
-    #[should_panic(expected="Number of elements on stack is must match number of parameters")]
+    #[should_panic(expected="Number of elements on stack must match number of parameters")]
     fn signature_size_missmatch() {
         let accounting = max_accounting();
         test(&accounting,|stack|{
@@ -529,7 +529,7 @@ mod tests {
 
 
     #[test]
-    #[should_panic(expected="Number of elements on stack is must match number of parameters")]
+    #[should_panic(expected="Number of elements on stack must match number of parameters")]
     fn signature_size_missmatch3() {
         let accounting = max_accounting();
         test(&accounting,|stack|{
