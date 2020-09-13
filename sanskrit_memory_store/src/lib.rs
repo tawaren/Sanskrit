@@ -15,7 +15,7 @@ use core::mem;
 
 #[derive(Clone, Default, Debug)]
 struct Container {
-    persisted: BTreeMap<Hash, Vec<u8>>,
+    persisted:BTreeMap<Hash, Vec<u8>>,
     pending:BTreeMap<Hash, Option<Vec<u8>>>
 }
 

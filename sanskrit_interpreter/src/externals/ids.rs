@@ -1,15 +1,11 @@
-use sanskrit_common::model::{Hash, SlicePtr, ValueRef};
+use sanskrit_common::model::{SlicePtr, ValueRef, Tag, Hash};
 use externals::{External, just_gas_and_mem, CompilationResult};
 use sanskrit_common::arena::HeapArena;
-use model::{OpCode, Kind, ValueSchema};
+use model::{OpCode, Kind, ValueSchema, Exp, Entry};
 use sanskrit_common::errors::*;
+use sanskrit_common::encoding::VirtualSize;
 
-pub const MODULE:Hash = [2, 108, 191, 140, 39, 101, 233, 158, 21, 156, 100, 211, 183, 235, 206, 191, 90, 204, 139, 57];
 pub const EXT_IDS:&'static dyn External = &Ids;
-
-pub fn check_hash() {
-    assert_eq!(format!("{:?}", MODULE), include_str!("../../../sanskrit_test/scripts/out/ids.hash"));
-}
 
 pub struct Ids;
 impl External for Ids{
@@ -28,7 +24,7 @@ impl External for Ids{
     fn compile_call<'b, 'h>(&self, fun_idx: u8, params: SlicePtr<'b, ValueRef>, caller: &[u8; 20], alloc: &'b HeapArena<'h>) -> Result<CompilationResult<'b>> {
         match fun_idx {
             //public extFun moduleId():(pub:.PrivateId);
-            0 =>  Ok(just_gas_and_mem(13, 20, OpCode::Data(alloc.copy_alloc_slice(caller)?))),
+            0 =>  Ok(just_gas_and_mem(13, Hash::SIZE as u64, OpCode::Data(alloc.copy_alloc_slice(caller)?))),
             /*
             public extFun privateToPublic(priv:.PrivateId):(pub:.PublicId);
             public extFun dataToPublic(data:Data.Data20):(pub:.PublicId);
@@ -41,6 +37,15 @@ impl External for Ids{
             public extFun eqPriv(data1:.PrivateId, data2:.PrivateId):(res:Bool.Bool);
             */
             x if x >= 5 && x < 7 =>  Ok(just_gas_and_mem(14, 0,OpCode::Eq(Kind::Data,params[0], params[1]))),
+
+            //public extFun authenticatedMessage[<Unbound> T](value:T):(auth:.Auth[T]);
+            x if x == 7 => {
+                let mut exp_builder = alloc.slice_builder(2)?;
+                exp_builder.push(OpCode::Data(alloc.copy_alloc_slice(caller)?));
+                exp_builder.push(OpCode::Pack(Tag(0), alloc.copy_alloc_slice(&[ValueRef(0),ValueRef(params[0].0+1)])?));
+                Ok(just_gas_and_mem(/*70+13+15 ~ 100*/100, (Hash::SIZE+(Entry::SIZE * 2)) as u64,OpCode::Let(alloc.alloc(Exp(exp_builder.finish())))))
+            },
+
             /*
             public extFun derivePrivateIdPrivate(priv:.PrivateId, priv2:.PrivateId):(priv:.PrivateId);
             public extFun derivePrivateIdPublic(priv:.PrivateId, pub:.PublicId):(priv:.PrivateId);
@@ -68,7 +73,7 @@ impl External for Ids{
             public extFun derivePublicId28(pub:.PublicId, data:Data.Data28):(pub:.PublicId);
             public extFun derivePublicId32(pub:.PublicId, data:Data.Data32):(pub:.PublicId);
             */
-            _=>  Ok(just_gas_and_mem(70, 20, OpCode::Derive(params[0], params[1]))),
+            _=>  Ok(just_gas_and_mem(70, Hash::SIZE as u64, OpCode::Derive(params[0], params[1]))),
         }
     }
 }

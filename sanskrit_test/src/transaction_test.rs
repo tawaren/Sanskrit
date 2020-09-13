@@ -13,15 +13,16 @@ mod tests {
     use sanskrit_test_script_compiler::script::Compiler;
     use sanskrit_core::accounting::Accounting;
     use std::cell::Cell;
-    use sanskrit_runtime::{CONFIG, execute, Logger};
+    use sanskrit_runtime::{CONFIG, execute, Tracker};
     use sanskrit_runtime::model::{Transaction, TransactionBundle};
     use sanskrit_common::encoding::Serializer;
     use sanskrit_common::model::{Hash, SlicePtr, ValueRef, Ptr};
     use sanskrit_interpreter::model::ValueSchema;
     use sanskrit_common::store::{store_hash, StorageClass};
-    use sanskrit_interpreter::externals::Externals;
+    use sanskrit_interpreter::externals::External;
     use std::fs::File;
     use std::io::{BufReader, BufRead};
+    use externals::{ScriptExternals, ScriptSystem};
 
     fn max_accounting() -> Accounting {
         Accounting {
@@ -30,7 +31,8 @@ mod tests {
             process_byte_budget: Cell::new(usize::max_value()),
             stack_elem_budget: Cell::new(usize::max_value()),
             nesting_limit: 10,
-            input_limit: 1000000
+            input_limit: 1000000,
+            max_nesting: Cell::new(0)
         }
     }
 
@@ -38,6 +40,8 @@ mod tests {
         Limiter {
             max_functions:u16::max_value() as usize,
             max_nesting:u8::max_value() as usize,
+            max_used_nesting:Cell::new(0),
+            produced_functions: Cell::new(0)
         }
     }
 
@@ -53,7 +57,7 @@ mod tests {
     struct CheckedLogger{
         expects:Vec<String>
     }
-    impl Logger for CheckedLogger {
+    impl Tracker for CheckedLogger {
         fn log<'a>(&mut self, data: Vec<u8>) {
             let expect = self.expects.pop();
             assert!(expect.is_some(), format!("Found {:?} - But nothing expected", data));
@@ -74,7 +78,7 @@ mod tests {
         let s = BTreeMapStore::new();
         for (i,r) in mod_res {
             println!("M: {:?}",i);
-            deploy_module(&s, &accounting, r, true)?;
+            deploy_module(&s, &accounting, r, true, true)?;
         }
 
         let mut heap = Heap::new(CONFIG.calc_heap_size(2),2.0);
@@ -91,13 +95,15 @@ mod tests {
 
         let mut hashes = Vec::with_capacity(txt_res.len());
         for t in txt_res {
-            let fun_id = deploy_function(&s, &accounting, t.clone())?;
-            hashes.push(compile_function(&s, &accounting, &limiter,fun_id)?);
+            let fun_id = deploy_function(&s, &accounting, t.clone(), true)?;
+            hashes.push(compile_function::<BTreeMapStore,ScriptExternals>(&s, &accounting, &limiter,fun_id, true)?.0);
         }
 
         let bundle = comp.create_bundle(&hashes, &heap);
+
+
         heap = heap.reuse();
-        execute(&s, &bundle, 0, &heap, &mut checker).expect("Execute Failed");
+        execute::<_, _, ScriptExternals,_>(&s, &ScriptSystem,&bundle, 0, &heap, &mut checker, false).expect("Execute Failed");
         assert_eq!(checker.expects.len(), 0, "Expected more logs");
 
         Ok(())
@@ -127,7 +133,7 @@ mod tests {
 
 
     struct NoLogger{}
-    impl Logger for NoLogger {
+    impl Tracker for NoLogger {
         fn log<'a>(&mut self, data: Vec<u8>) {}
     }
 
@@ -143,13 +149,13 @@ mod tests {
         let s = BTreeMapStore::new();
         for (i,r) in mod_res {
             println!("M: {:?}",i);
-            deploy_module(&s, &accounting, r, true)?;
+            deploy_module(&s, &accounting, r, true, true)?;
         }
 
         let mut hashes = Vec::with_capacity(txt_res.len());
         for t in txt_res {
-            let fun_id = deploy_function(&s, &accounting, t.clone())?;
-            hashes.push(compile_function(&s, &accounting, &limiter,fun_id)?);
+            let fun_id = deploy_function(&s, &accounting, t.clone(), true)?;
+            hashes.push(compile_function::<BTreeMapStore,ScriptExternals>(&s, &accounting, &limiter,fun_id, true)?.0);
         }
 
 
@@ -157,7 +163,7 @@ mod tests {
             let mut heap = Heap::new(CONFIG.calc_heap_size(2),2.0);
             let bundle = comp.create_bundle(&hashes, &heap);
             heap = heap.reuse();
-            execute(&s, &bundle, 0, &heap,  &mut NoLogger{}).expect("Execute Failed");
+            execute::<_, _, ScriptExternals, _>(&s, &ScriptSystem,&bundle, 0, &heap,  &mut NoLogger{}, false).expect("Execute Failed");
             s.clear_section(StorageClass::EntryHash);
             s.clear_section(StorageClass::EntryValue);
         });

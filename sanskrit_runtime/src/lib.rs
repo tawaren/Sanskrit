@@ -7,6 +7,9 @@ extern crate byteorder;
 extern crate num_traits;
 //extern crate ed25519_dalek;
 //extern crate sha2;
+extern crate sanskrit_core;
+extern crate sanskrit_deploy;
+extern crate sanskrit_compile;
 extern crate sanskrit_interpreter;
 extern crate sanskrit_common;
 #[macro_use]
@@ -14,28 +17,32 @@ extern crate sanskrit_derive;
 extern crate alloc;
 
 
-use sanskrit_common::store::{Store, StorageClass, store_hash, ChangeReport};
+use sanskrit_common::store::{Store, StorageClass};
 use sanskrit_common::errors::*;
-use sanskrit_common::encoding::{Parser, Serializer};
-use model::{Transaction, ParamRef, RetType, TransactionBundle, ParamMode};
-use sanskrit_common::model::{Hash, SlicePtr, Ptr};
+use sanskrit_common::encoding::{Parser, Serializer, ParserAllocator};
+use model::{Transaction, ParamRef, RetType, TransactionBundle, ParamMode, DeployType, BundleSection};
+use sanskrit_common::model::{Hash, Ptr, hash_from_slice};
 //use ed25519_dalek::*;
 //use sha2::{Sha512};
 use sanskrit_common::arena::*;
 use sanskrit_interpreter::interpreter::{Frame, ExecutionContext};
 use sanskrit_common::hashing::{HashingDomain, Hasher};
-use sanskrit_interpreter::model::{Entry, Adt, TransactionDescriptor, TxTParam, TxTReturn, ValueSchema, RuntimeType};
+use sanskrit_interpreter::model::{Entry, Adt, TransactionDescriptor, TxTParam, TxTReturn, RuntimeType};
 use alloc::vec::Vec;
-use alloc::format;
 
-use alloc::collections::{BTreeMap, BTreeSet};
-use system::{is_entry, is_context};
+use alloc::collections::BTreeSet;
+use system::System;
 use core::convert::TryInto;
 use core::ops::Deref;
-use core::cell::RefCell;
+use core::cell::{RefCell, Cell};
+use sanskrit_deploy::{deploy_module, deploy_function};
+use sanskrit_core::accounting::Accounting;
+use sanskrit_compile::compile_function;
+use sanskrit_compile::limiter::Limiter;
+use sanskrit_interpreter::externals::CompilationExternals;
 
 pub mod model;
-mod system;
+pub mod system;
 
 pub const STORE_MODE: bool = true;
 
@@ -52,6 +59,7 @@ pub const ENCODING_COST: DataProcessingCost = DataProcessingCost {
     cost_divider: 5
 };
 
+//Todo: Enforce these, check they are not reached
 pub const CONFIG: Configuration = Configuration {
     max_stack_depth:2048,
     max_frame_depth:512,
@@ -63,6 +71,7 @@ pub const CONFIG: Configuration = Configuration {
     parsing_cost: ENCODING_COST,
     store_cost: 2000,
     load_cost: 200,
+    block_inclusion_window: 100,
 };
 
 impl Configuration {
@@ -86,6 +95,7 @@ pub struct Configuration {
     pub load_cost: u64,
     pub store_cost: u64,
     pub parsing_cost: DataProcessingCost,
+    pub block_inclusion_window:u64,
 }
 
 pub struct DataProcessingCost {
@@ -129,24 +139,48 @@ pub struct TxTStats {
     pub gas: u32,
 }
 
-pub trait Logger {
-    fn log<'a>(&mut self, data:Vec<u8>);
+pub trait Tracker {
+    fn section_start(&mut self, section:&BundleSection);
+     fn transaction_start(&mut self, transaction:&Transaction);
+       fn parameter_load(&mut self, p_ref:&ParamRef, p_desc:&TxTParam, value:&Entry);
+       fn return_value(&mut self, r_typ:&RetType, r_desc:&TxTReturn, value:&Entry);
+     fn transaction_finish(&mut self, transaction:&Transaction, success:bool);
+    fn section_finish(&mut self, section:&BundleSection, success:bool);
 }
 
+//todo: should this be in Local Server or another Wrapper that has the Store???
+//Helper for outside transaction builder
+pub fn read_elem<S:Store>(hash:&Hash, store:&S) -> Result<Vec<u8>>{
+    store.get(StorageClass::EntryValue, hash, |d|d.to_vec())
+}
 
-//TODO: Make cmplete rework of the fas stuff and see if with the witnesses we can get it in order
+//todo: should this be in Local Server or another Wrapper that has the Store???
+//Helper for outside transaction builder
+pub fn read_transaction_desc<'a, S:Store, A:ParserAllocator>(target:&Hash, store:&S, heap:&'a A) -> Result<TransactionDescriptor<'a>>{
+    store.parsed_get(StorageClass::Descriptor, target, CONFIG.max_structural_dept, heap)
+}
+
+//TODO: Make cmplete rework of the fast stuff and see if with the witnesses we can get it in order
 //      In storage / provider mode do not execute payment txts (for now)
 //
 
+//Todo: We need evaluation Mode
+//      Takes Bundle but with limits & ev: witnesses set to 0/null
+//      Then it evaluates them and returns the filled bundle data
+
 //Executes a transaction
-pub fn execute<S:Store, L:Logger>(store:&S, txt_bundle_data:&[u8], block_no:u64, heap:&Heap, logger:&mut L) -> Result<()> {
+pub fn execute<S:Store, L: Tracker, E:CompilationExternals, SYS:System>(store:&S, sys:&SYS, txt_bundle_data:&[u8], block_no:u64, heap:&Heap, tracker:&mut L, system_mode_on:bool) -> Result<()> {
     //Check that it is inside limit
     if txt_bundle_data.len() > CONFIG.max_transaction_size { return error(||"Transaction Bundle to big")}
     //Static allocations (could be done once)
     // A buffer to parse the transaction and load values from store
-    let txt_bundle_alloc = heap.new_virtual_arena(CONFIG.max_transaction_memory); //todo: will be static conf later (or block consensus)
+    let txt_bundle_alloc = heap.new_virtual_arena(CONFIG.max_transaction_memory);
     //Parse the transaction
     let txt_bundle:TransactionBundle = Parser::parse_fully(txt_bundle_data, CONFIG.max_structural_dept, &txt_bundle_alloc)?;
+    //check that it is in window
+    if block_no < txt_bundle.core.earliest_block || block_no >= txt_bundle.core.earliest_block + CONFIG.block_inclusion_window {
+        return error(||"Transaction not allowed in current block")
+    }
 
     //Calculate the payment information
     //Starts with the parsing costs which are already done mostly but this is inevitable (a miner could have a size limit)
@@ -158,7 +192,7 @@ pub fn execute<S:Store, L:Logger>(store:&S, txt_bundle_data:&[u8], block_no:u64,
 
 
     let mut change_in_stored_entries = 0;
-    for txt_section in txt_bundle.sections.iter() {
+    for txt_section in txt_bundle.core.sections.iter() {
         required_gas_prepay += txt_section.gas_limit as u64;
         let entries_diff = (txt_section.entries_created as i64) - (txt_section.entries_deleted as i64);
         let entry_loads = txt_section.entries_loaded;
@@ -170,34 +204,30 @@ pub fn execute<S:Store, L:Logger>(store:&S, txt_bundle_data:&[u8], block_no:u64,
         if required_entry_storage_prepay < change_in_stored_entries {
             required_entry_storage_prepay = change_in_stored_entries
         }
-
     }
 
-    //Todo: we need to have a witness limit in the non witness part to make sure that a bad miner does not manipulate the witnesses to make the sender pay for more
-    //      can he do this anyway? what happens if the second txt has an invalid witness?
-    //      shall we parse witnesses upfront? to protect txt sender (but then teh miner has higher risk)
-    //       Options?
-    let witness_size = txt_bundle.witness.iter().map(|w|w.len() + 2).sum::<usize>() + 2;  //2 is num wittness / Num Bytes
-    let store_witness_size = txt_bundle.store_witness.iter().map(|w|w.map_or(0,|d|d.len()+2)+1).sum::<usize>() + 2;  //2 is num wittness / Num Bytes
-    let witness_start = txt_bundle_data.len() - witness_size - store_witness_size;
+    //todo; is this right here or do we need this later??
+    if txt_bundle.byte_size.unwrap() - txt_bundle.core.byte_size.unwrap() - 4 /*the -4 is the 2 sizes*/ > txt_bundle.core.witness_bytes_limit as usize {
+        return error(||"Transaction Bundle witness size exceeds wittness limit")
+    }
 
     let full_bundle_hash = HashingDomain::Bundle.hash(&txt_bundle_data);
-    let bundle_hash = HashingDomain::Bundle.hash(&txt_bundle_data[..witness_start]);
+    let bundle_hash = HashingDomain::Bundle.hash(&txt_bundle_data[..txt_bundle.core.byte_size.unwrap()]);
 
     //Create Allocator
     //create heaps: based on bundle input
     let mut structural_arena = heap.new_arena(
-        Heap::elems::<Entry>(txt_bundle.stack_elem_limit as usize)
-            + Heap::elems::<Frame>(txt_bundle.stack_frame_limit as usize)
+        Heap::elems::<Entry>(txt_bundle.core.stack_elem_limit as usize)
+            + Heap::elems::<Frame>(txt_bundle.core.stack_frame_limit as usize)
             + Heap::elems::<Entry>(CONFIG.return_stack)
     );
 
-    let mut max_desc_alloc = heap.new_virtual_arena(txt_bundle.transaction_storage_heap as usize);
-    let mut parameter_heap = heap.new_virtual_arena(txt_bundle.param_heap_limit as usize);
-    let mut runtime_heap = heap.new_virtual_arena(txt_bundle.runtime_heap_limit as usize);
+    let mut max_desc_alloc = heap.new_virtual_arena(txt_bundle.core.transaction_storage_heap as usize);
+    let mut parameter_heap = heap.new_virtual_arena(txt_bundle.core.param_heap_limit as usize);
+    let mut runtime_heap = heap.new_virtual_arena(txt_bundle.core.runtime_heap_limit as usize);
 
     let entry_cache = RefCell::new(alloc::vec::from_elem(ParamCache::Unloaded, txt_bundle.store_witness.len()));
-    let literal_cache = RefCell::new(alloc::vec::from_elem(ParamCache::Unloaded, txt_bundle.literal.len()));
+    let literal_cache = RefCell::new(alloc::vec::from_elem(ParamCache::Unloaded, txt_bundle.core.literal.len()));
     let witness_cache = RefCell::new(alloc::vec::from_elem(ParamCache::Unloaded,txt_bundle.witness.len()));
 
     let mut exec_env = ExecutionEnvironment {
@@ -220,16 +250,18 @@ pub fn execute<S:Store, L:Logger>(store:&S, txt_bundle_data:&[u8], block_no:u64,
         witness_cache
     };
 
-    if exec_env.txt_bundle.store_witness.len() != exec_env.txt_bundle.stored.len() { return error(||"Not enough witnesses for stored values") }
+    if exec_env.txt_bundle.store_witness.len() != exec_env.txt_bundle.core.stored.len() { return error(||"Not enough witnesses for stored values") }
 
-    for txt_section in exec_env.txt_bundle.sections.iter() {
+    for txt_section in exec_env.txt_bundle.core.sections.iter() {
+        tracker.section_start(txt_section);
         exec_env.available_gas = txt_section.gas_limit;
         exec_env.available_entry_loaded = txt_section.entries_loaded;
         exec_env.available_entry_created = txt_section.entries_created;
         exec_env.available_entry_deleted = txt_section.entries_deleted;
 
         for txt in txt_section.txts.iter() {
-            match execute_transaction( &exec_env, txt, &full_bundle_hash,  &bundle_hash, logger ) {
+            tracker.transaction_start(txt);
+            match execute_transaction(&exec_env, sys, txt, &full_bundle_hash, &bundle_hash, block_no, tracker) {
                 Ok(stats) => {
                     //charge for the used gas
                     exec_env.available_gas -= stats.gas as u64;
@@ -239,6 +271,8 @@ pub fn execute<S:Store, L:Logger>(store:&S, txt_bundle_data:&[u8], block_no:u64,
                 },
                 Err(err) => {
                     rollback_store(&exec_env)?;
+                    tracker.transaction_finish(txt, false);
+                    tracker.section_finish(txt_section, false);
                     return Err(err);
                 }
             };
@@ -247,29 +281,72 @@ pub fn execute<S:Store, L:Logger>(store:&S, txt_bundle_data:&[u8], block_no:u64,
             exec_env.structural_arena = exec_env.structural_arena.reuse();
             exec_env.max_desc_alloc = exec_env.max_desc_alloc.reuse();
             exec_env.runtime_heap = exec_env.runtime_heap.reuse();
+            tracker.transaction_finish(txt, true);
         }
 
         //commit
         commit_store(&exec_env)?;
+        tracker.section_finish(txt_section, true);
+
     }
 
-    Ok(())
+    match exec_env.txt_bundle.core.deploy {
+        None =>  Ok(()),
+        Some(depl) => {
+            //todo: check these are not more than a static upper bound?
+
+            let accounting = Accounting {
+                load_byte_budget: Cell::new(depl.max_load_bytes as usize),
+                store_byte_budget: Cell::new(depl.max_store_bytes as usize),
+                process_byte_budget: Cell::new(depl.max_process_bytes as usize),
+                stack_elem_budget: Cell::new(depl.max_stack_elems as usize),
+                max_nesting: Cell::new(0),
+                nesting_limit: depl.max_block_nesting as usize,
+                input_limit: depl.data.len()
+            };
+            match depl.typ {
+                DeployType::Module => {
+                    //todo: I do not like the to_vec here (as we have it in memory twice now)
+                    //but without having seperate Transaction type it is hard not to do this
+                    //todo: we may consider passing &[u8] into store and copy there if necessary (but this gives lifetime hell)
+                    deploy_module(exec_env.store, &accounting, depl.data.to_vec(), system_mode_on, true)?;
+                    exec_env.store.commit(StorageClass::Module);
+                },
+                DeployType::Transaction => {
+                    //todo: I do not like the to_vec here (as we have it in memory twice now)
+                    //but without having seperate Transaction type it is hard not to do this
+                    //todo: we may consider passing &[u8] into store and copy there if necessary (but this gives lifetime hell)
+                    let target = deploy_function(exec_env.store, &accounting, depl.data.to_vec(), true)?;
+                    let limiter = Limiter {
+                        max_functions: depl.max_contained_functions as usize,
+                        max_nesting: depl.max_compile_block_nesting as usize,
+                        max_used_nesting: Cell::new(0),
+                        produced_functions: Cell::new(0)
+                    };
+                    compile_function::<S,E>(exec_env.store, &accounting,&limiter, target, true)?;
+                    exec_env.store.commit(StorageClass::Transaction);
+                    exec_env.store.commit(StorageClass::Descriptor);
+                },
+            }
+            Ok(())
+        },
+    }
 }
 
 
 
-fn execute_transaction<S:Store, L:Logger>(env:&ExecutionEnvironment<S>,txt:&Transaction,full_hash:&Hash,txt_hash:&Hash,logger:&mut L) -> Result<TxTStats>{
+fn execute_transaction<S:Store, L: Tracker, SYS:System>(env:&ExecutionEnvironment<S>, sys:&SYS, txt:&Transaction, full_hash:&Hash, txt_hash:&Hash, block_no:u64, tracker:&mut L) -> Result<TxTStats>{
 
     //Prepare all the Memory
-    if env.txt_bundle.descriptors.len() <= txt.txt_desc as usize { return error(||"Descriptor index out of range")  }
-    let target = &env.txt_bundle.descriptors[txt.txt_desc as usize];
+    if env.txt_bundle.core.descriptors.len() <= txt.txt_desc as usize { return error(||"Descriptor index out of range")  }
+    let target = &env.txt_bundle.core.descriptors[txt.txt_desc as usize];
     //todo: pre calculate this: how to gas charge this
     let txt_desc:TransactionDescriptor = env.store.parsed_get(StorageClass::Descriptor, target, CONFIG.max_structural_dept, &env.max_desc_alloc)?;
 
     if txt_desc.gas_cost as u64 > env.available_gas {return error(||"Bundle has not reserved enough gas")}
-    if txt_desc.max_frames > env.txt_bundle.stack_frame_limit {return error(||"Bundle has not reserved enough frame space")}
-    if txt_desc.max_stack > env.txt_bundle.stack_elem_limit {return error(||"Bundle has not reserved enough stack space")}
-    if txt_desc.max_mem > env.txt_bundle.runtime_heap_limit {return error(||"Bundle has not reserved enough heap space")}
+    if txt_desc.max_frames > env.txt_bundle.core.stack_frame_limit {return error(||"Bundle has not reserved enough frame space")}
+    if txt_desc.max_stack > env.txt_bundle.core.stack_elem_limit {return error(||"Bundle has not reserved enough stack space")}
+    if txt_desc.max_mem > env.txt_bundle.core.runtime_heap_limit {return error(||"Bundle has not reserved enough heap space")}
 
     let mut interpreter_stack = env.structural_arena.alloc_stack::<Entry>(txt_desc.max_stack as usize);
     let mut frame_stack = env.structural_arena.alloc_stack::<Frame>(txt_desc.max_frames as usize);
@@ -295,13 +372,14 @@ fn execute_transaction<S:Store, L:Logger>(env:&ExecutionEnvironment<S>,txt:&Tran
                 if strats.deleted as u32 > env.available_entry_deleted  {return error(||"Bundle has not reserved enough entry deletes")}
                 if !p.consumes && !p.drop { return error(||"A owned store value must be consumed or dropped") }
                 if p.primitive { return error(||"Primitives can not be loaded from store") }
-                if env.txt_bundle.stored.len() <= *index as usize { return error(||"Value index out of range")  }
-                let hash = array_ref!(&env.txt_bundle.stored[*index as usize],0,20);
+                if env.txt_bundle.core.stored.len() <= *index as usize { return error(||"Value index out of range")  }
+                let hash = &env.txt_bundle.core.stored[*index as usize];
                 if lock_set.contains(hash) { return error(||"An entry can only be fetched once"); }
                 lock_set.insert(hash.clone());
                 //We delete at end so others can copy and in case it produces an error it must still be their
                 deletes.push(hash);
-                let data = load_from_store(env,*index, hash,*p)?;
+                let data = load_from_store(env, sys, *index, hash,*p)?;
+                tracker.parameter_load(p_typ, p, &data);
                 interpreter_stack.push(data)?;
             }
             ParamRef::Load(ParamMode::Copy, index) => {
@@ -310,9 +388,10 @@ fn execute_transaction<S:Store, L:Logger>(env:&ExecutionEnvironment<S>,txt:&Tran
                 if !p.copy { return error(||"A Copied store value must allow copy") }
                 if !p.consumes && !p.drop { return error(||"A Copied store value must be consumed or dropped") }
                 if p.primitive { return error(||"Primitives can not be loaded from store") }
-                if env.txt_bundle.stored.len() <= *index as usize { return error(||"Value index out of range")  }
-                let hash = array_ref!(&env.txt_bundle.stored[*index as usize],0,20);
-                let data = load_from_store(env,*index, hash,*p)?;
+                if env.txt_bundle.core.stored.len() <= *index as usize { return error(||"Value index out of range")  }
+                let hash = &env.txt_bundle.core.stored[*index as usize];
+                let data = load_from_store(env, sys, *index, hash,*p)?;
+                tracker.parameter_load(p_typ, p, &data);
                 interpreter_stack.push(data)?;
             },
             ParamRef::Load(ParamMode::Borrow, index) => {
@@ -320,17 +399,20 @@ fn execute_transaction<S:Store, L:Logger>(env:&ExecutionEnvironment<S>,txt:&Tran
                 if strats.loaded as u32 > env.available_entry_loaded  {return error(||"Bundle has not reserved enough entry loads")}
                 if p.consumes { return error(||"A Borrowed store value can not be consumed") }
                 if p.primitive { return error(||"Primitives can not be loaded from store") }
-                if env.txt_bundle.stored.len() <= *index as usize { return error(||"Value index out of range")  }
-                let hash = array_ref!(&env.txt_bundle.stored[*index as usize],0,20);
+                if env.txt_bundle.core.stored.len() <= *index as usize { return error(||"Value index out of range")  }
+                let hash = &env.txt_bundle.core.stored[*index as usize];
                 if lock_set.contains(hash) { return error(||"An entry can only be fetched once"); }
                 lock_set.insert(hash.clone());
-                let data = load_from_store(env,*index, hash,*p)?;
+                let data = load_from_store(env, sys, *index, hash,*p)?;
+                tracker.parameter_load(p_typ, p, &data);
                 interpreter_stack.push(data)?;
             },
 
             ParamRef::Provided => {
-                if is_context(p.typ) {
-                    interpreter_stack.push(create_ctx(&env.parameter_heap, full_hash, txt_hash)?)?;
+                if sys.is_context(p.typ) {
+                    let data = create_ctx(&env.parameter_heap, full_hash, txt_hash, block_no)?;
+                    tracker.parameter_load(p_typ, p, &data);
+                    interpreter_stack.push(data)?;
                 } else {
                     return error(||"Provided value parameter must be of a supported type")
                 }
@@ -338,11 +420,15 @@ fn execute_transaction<S:Store, L:Logger>(env:&ExecutionEnvironment<S>,txt:&Tran
 
             ParamRef::Literal(index) => {
                 if !p.primitive { return error(||"Literals must be of primitive type") }
-                interpreter_stack.push(load_from_literal(env,*index,*p)?)?;
+                let data = load_from_literal(env,*index,*p)?;
+                tracker.parameter_load(p_typ, p, &data);
+                interpreter_stack.push(data)?;
             },
             ParamRef::Witness(index) => {
                 if !p.primitive { return error(||"Witnesses must be of primitive type") }
-                interpreter_stack.push(load_from_witness(env,*index,*p)?)?;
+                let data = load_from_witness(env,*index,*p)?;
+                tracker.parameter_load(p_typ, p, &data);
+                interpreter_stack.push(data)?;
             },
         };
     }
@@ -366,20 +452,22 @@ fn execute_transaction<S:Store, L:Logger>(env:&ExecutionEnvironment<S>,txt:&Tran
                         strats.created += 1;
                         if strats.created as u32 > env.available_entry_created  {return error(||"Bundle has not reserved enough entry creates")}
                         if primitive {return error(||"Can not store primitives") }
-                        if !is_entry(typ) { return error(||"Stored return must be an entry") }
+                        if !sys.is_entry(typ) { return error(||"Stored return must be an entry") }
                         let id = unsafe {ret_entry.adt.1.get(0).expect("entry has to few fields").data.deref()}.try_into().expect("entry id has incorrect length");
                         let mut s = Serializer::new(CONFIG.max_structural_dept);
+                        tracker.return_value(r_typ, r, ret_entry);
                         desc.serialize_value(*ret_entry, &mut s)?;
                         write_to_store(env, id, s.extract(), typ)?
 
                     },
-                    RetType::Drop => if !drop { return error(||"Returns without drop capability must be stored") },
+                    RetType::Drop => {
+                        if !drop { return error(||"Returns without drop capability must be stored") }
+                        tracker.return_value(r_typ, r, ret_entry);
+                    },
                     RetType::Log => {
                         if !drop { return error(||"Returns without drop capability must be stored") }
                         let mut s = Serializer::new(CONFIG.max_structural_dept);
-                        desc.serialize_value(*ret_entry, &mut s)?;
-                        let data = s.extract();
-                        logger.log(data);
+                        tracker.return_value(r_typ, r, ret_entry);
                     },
                 }
             },
@@ -410,10 +498,10 @@ fn load_from_literal<'a,'b,'c, S:Store>(env:&ExecutionEnvironment<'a,'b, 'c,S>, 
     let entry_copy = env.literal_cache.borrow()[index as usize];
     Ok(match entry_copy {
         ParamCache::Unloaded => {
-            let data = env.txt_bundle.literal[index as usize];
+            let data = env.txt_bundle.core.literal[index as usize];
             let mut parser = Parser::new(&data, CONFIG.max_structural_dept);
             let entry = param.desc.parse_value(&mut parser, env.parameter_heap)?;
-            env.entry_cache.borrow_mut()[index as usize] = ParamCache::Loaded(entry, control_hash);
+            env.literal_cache.borrow_mut()[index as usize] = ParamCache::Loaded(entry, control_hash);
             entry
         },
         ParamCache::Loaded(entry, cache_control_hash) => {
@@ -435,7 +523,7 @@ fn load_from_witness<'a,'b,'c, S:Store>(env:&ExecutionEnvironment<'a,'b, 'c,S>, 
             let data = env.txt_bundle.witness[index as usize];
             let mut parser = Parser::new(&data, CONFIG.max_structural_dept);
             let entry = param.desc.parse_value(&mut parser, env.parameter_heap)?;
-            env.entry_cache.borrow_mut()[index as usize] = ParamCache::Loaded(entry, control_hash);
+            env.witness_cache.borrow_mut()[index as usize] = ParamCache::Loaded(entry, control_hash);
             entry
         },
         ParamCache::Loaded(entry, cache_control_hash) => {
@@ -446,14 +534,15 @@ fn load_from_witness<'a,'b,'c, S:Store>(env:&ExecutionEnvironment<'a,'b, 'c,S>, 
 }
 
 
-fn load_from_store<'a,'b,'c, S:Store>(env:&ExecutionEnvironment<'a,'b, 'c,S>, index:u16, hash:&Hash, param:TxTParam) -> Result<Entry<'b>> {
-    if !is_entry(param.typ) { return error(|| "Value parameter must be an entry") }
+
+fn load_from_store<'a,'b,'c, S:Store, SYS:System>(env:&ExecutionEnvironment<'a,'b, 'c,S>, sys:&SYS, index:u16, hash:&Hash, param:TxTParam) -> Result<Entry<'b>> {
+    if !sys.is_entry(param.typ) { return error(|| "Value parameter must be an entry") }
 
     fn check_hash<'a,'b,'c, S:Store>(env:&ExecutionEnvironment<'a,'b, 'c,S>, typ:Ptr<RuntimeType>, key_hash:&Hash, value_hash:&Hash) -> Result<()>{
         let control_type = Serializer::serialize_fully(&typ,CONFIG.max_structural_dept)?;
         let expected_hash = entry_hash(&control_type,&value_hash);
 
-        let control_hash = env.store.get(StorageClass::EntryHash, key_hash,  |d|array_ref!(d,0,20).clone())?;
+        let control_hash = env.store.get(StorageClass::EntryHash, key_hash,  |d|hash_from_slice(d))?;
         if control_hash != expected_hash { return error(||"provided witness or stored value mismatched expected entry")}
         Ok(())
     }
@@ -464,7 +553,7 @@ fn load_from_store<'a,'b,'c, S:Store>(env:&ExecutionEnvironment<'a,'b, 'c,S>, in
             let data = match env.txt_bundle.store_witness[index as usize] {
                 None => {
                     if !STORE_MODE {return error(||"No witness was provided for store load and STORE MODE is off")}
-                    env.store.get(StorageClass::EntryValue, hash, |d|d.to_vec())?
+                    read_elem(hash, env.store)?
                 },
                 Some(data) => data.to_vec()
             };
@@ -520,12 +609,12 @@ fn rollback_store<S:Store>(env:&ExecutionEnvironment<S>) -> Result<()> {
     Ok(env.store.rollback(StorageClass::EntryHash))
 }
 
-pub fn create_ctx<'a,'h>(alloc:&'a VirtualHeapArena<'h>, full_hash:&Hash, txt_hash:&Hash) -> Result<Entry<'a>> {
+pub fn create_ctx<'a,'h>(alloc:&'a VirtualHeapArena<'h>, full_hash:&Hash, txt_hash:&Hash, block_no:u64) -> Result<Entry<'a>> {
     //Todo: construct over schema to be compiler agnostic
     Ok(Entry{adt: Adt(0,alloc.copy_alloc_slice(&[
         Entry {data: alloc.copy_alloc_slice(txt_hash)?},
         Entry {data: alloc.copy_alloc_slice(full_hash)?},
-        Entry {u64: 0},
+        Entry {u64: block_no},
         Entry {u64: 0}
     ])?)})
 }

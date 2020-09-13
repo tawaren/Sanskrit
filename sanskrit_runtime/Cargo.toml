@@ -11,9 +11,19 @@ std = []
 byteorder = { version = "1.2.6", features = ["i128"], default-features = false }
 arrayref = "0.3.5"
 num-traits = { version = "0.2", default-features = false}
+
 # ed25519-dalek = "0.8.1"
 # sha2 = "0.7.0"
 
+[dependencies.sanskrit_deploy]
+path = "../sanskrit_deploy"
+version = "0.1.0"
+default-features = false
+
+[dependencies.sanskrit_compile]
+path = "../sanskrit_compile"
+version = "0.1.0"
+default-features = false
 
 [dependencies.sanskrit_interpreter]
 path = "../sanskrit_interpreter"
@@ -27,4 +37,8 @@ default-features = false
 
 [dependencies.sanskrit_derive]
 path = "../sanskrit_derive"
+version = "0.1.0"
+
+[dependencies.sanskrit_core]
+path = "../sanskrit_core"
 version = "0.1.0"

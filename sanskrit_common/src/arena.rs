@@ -3,7 +3,7 @@ use core::cell::RefCell;
 use core::{mem, ptr};
 use errors::*;
 use alloc::vec::Vec;
-use core::slice::{from_raw_parts_mut, from_raw_parts, SliceIndex};
+use core::slice::{from_raw_parts_mut, from_raw_parts};
 use encoding::ParserAllocator;
 use model::*;
 use core::ops::Deref;
@@ -48,7 +48,7 @@ impl Heap {
         let start = self.pos.get();
         let end = start + size + align_offset;
         if self.buffer.borrow().capacity() < end {
-            panic!();
+            panic!("Not enough space for allocating arena");
         }
         self.pos.set(end);
         HeapArena {
@@ -62,8 +62,8 @@ impl Heap {
 
     pub fn new_virtual_arena(&self, size: usize) -> VirtualHeapArena {
         //ensures at least size if f > 1
+        assert!(self.convert >= 0f64);
         let real_size = size + ((size as f64)*(self.convert-1.0)) as usize;
-        assert!(real_size >= 0);
         assert!(real_size >= size);
         VirtualHeapArena{
             uncounted:self.new_arena(real_size),
@@ -198,7 +198,7 @@ impl<'h> HeapArena<'h> {
         }
     }
 
-    fn unlocked_clone(&self) -> Self {
+    /*fn unlocked_clone(&self) -> Self {
         HeapArena {
             buffer: self.buffer,
             start: self.pos.get(),
@@ -206,7 +206,7 @@ impl<'h> HeapArena<'h> {
             end: self.end,
             locked: Cell::new(false),
         }
-    }
+    }*/
 
     /*
     pub fn temp_arena(&self) -> ArenaLock<Self> {
@@ -256,6 +256,12 @@ impl<'h> HeapArena<'h> {
 }
 
 impl<'o> ParserAllocator for HeapArena<'o>  {
+    fn allocated_virtual_bytes(&self) -> usize {
+        //just use real size in case we have no virtual
+        self.pos.get()
+    }
+
+
     fn poly_alloc<T: Sized + Copy + VirtualSize>(&self, val: T) -> Result<Ptr<T>> {
         Ok(self.alloc(val))
     }
@@ -459,6 +465,10 @@ impl<'o> ArenaUnlock for VirtualHeapArena<'o> {
 */
 
 impl<'o> ParserAllocator for VirtualHeapArena<'o> {
+    fn allocated_virtual_bytes(&self) -> usize {
+        self.virt_pos.get()
+    }
+
     fn poly_alloc<T: Sized + Copy + VirtualSize>(&self, val: T) -> Result<Ptr<T>> {
         self.alloc(val)
     }

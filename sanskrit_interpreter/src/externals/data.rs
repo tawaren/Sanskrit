@@ -3,12 +3,13 @@ use externals::{External, just_gas_and_mem, CompilationResult};
 use sanskrit_common::arena::HeapArena;
 use model::{OpCode, Kind, ValueSchema};
 use sanskrit_common::errors::*;
+use sanskrit_common::encoding::*;
 
-pub const MODULE:Hash = [105, 243, 229, 53, 200, 64, 3, 27, 49, 54, 36, 239, 181, 230, 104, 138, 141, 146, 154, 30];
 pub const EXT_DATA:&'static dyn External = &Data;
 
-pub fn check_hash() {
-    assert_eq!(format!("{:?}", MODULE), include_str!("../../../sanskrit_test/scripts/out/data.hash"));
+pub fn gen_hash() -> Hash{
+    let input = include_bytes!("../../../sanskrit_test/scripts/out/data.hash");
+    Parser::parse_fully(input,5, &NoCustomAlloc()).unwrap()
 }
 
 pub struct Data;

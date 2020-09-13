@@ -16,7 +16,7 @@ pub enum ResolvedType {
     //A generic import that was not substituted (happens only if it is a top level generic)
     Generic { caps:CapSet, offset:u8, is_phantom:bool },
     //A Projection type capturing the information of a projected type
-    Projection { un_projected: Crc<ResolvedType> },
+    Projection { depth:u8, un_projected: Crc<ResolvedType> },
     //An signature type (can be from same module if Module == This)
     Sig { generic_caps: CapSet, caps: CapSet, module:Crc<ModuleLink>, offset:u8, applies: Vec<Crc<ResolvedType>>},
     //An imported type (can be from same module if Module == This)
@@ -163,6 +163,13 @@ impl Crc<ResolvedType> {
                 un_projected
             },
             _ => self
+        }
+    }
+
+    pub fn get_projection_depth(&self) -> u8 {
+        match **self {
+            ResolvedType::Projection { depth, .. } => depth,
+            _ => 0
         }
     }
 

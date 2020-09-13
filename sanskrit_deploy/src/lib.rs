@@ -24,8 +24,7 @@ use alloc::vec::Vec;
 use sanskrit_common::model::*;
 use sanskrit_core::accounting::Accounting;
 
-//Parses a Data Stream as Module, Validates it and if it checks out deployes it
-pub fn deploy_module<S:Store>(store:&S, accounting:&Accounting, data:Vec<u8>, system_mode_on:bool) -> Result<Hash>{
+pub fn deploy_module<S:Store>(store:&S, accounting:&Accounting, data:Vec<u8>, system_mode_on:bool, auto_commit:bool) -> Result<Hash>{
     //thread::spawn(move || {
     //Check input limitation constraint
     if data.len() > accounting.input_limit {
@@ -41,14 +40,16 @@ pub fn deploy_module<S:Store>(store:&S, accounting:&Accounting, data:Vec<u8>, sy
         validate::validate(&data, store, accounting, module_hash, system_mode_on)?;
         //stores the input
         store.set(StorageClass::Module, module_hash,data)?;
-        store.commit(StorageClass::Module);
+        if auto_commit {
+            store.commit(StorageClass::Module);
+        }
     }
     Ok(module_hash)
     //}).join().unwrap();
 }
 
 //Processes a function used by compiler to check top level transactions
-pub fn deploy_function<S:Store>(store:&S, accounting:&Accounting, data:Vec<u8>) -> Result<Hash>{
+pub fn deploy_function<S:Store>(store:&S, accounting:&Accounting, data:Vec<u8>, auto_commit:bool) -> Result<Hash>{
     //Check input limitation constraint
     if data.len() > accounting.input_limit {
         return error(||"Input is to big")
@@ -63,7 +64,9 @@ pub fn deploy_function<S:Store>(store:&S, accounting:&Accounting, data:Vec<u8>) 
         validate::validate_top_function(&data, store, accounting)?;
         //stores the input
         store.set(StorageClass::Transaction, function_hash, data)?;
-        store.commit(StorageClass::Transaction);
+        if auto_commit {
+            store.commit(StorageClass::Transaction);
+        }
     }
     Ok(function_hash)
 }

@@ -1,5 +1,5 @@
 use model::{ValueSchema, Entry, Adt};
-use sanskrit_common::encoding::{Serializer, Serializable, ParserAllocator, Parser, Parsable, NoCustomAlloc};
+use sanskrit_common::encoding::{Serializer, Serializable, ParserAllocator, Parser, Parsable, VirtualSize};
 use sanskrit_common::errors::*;
 use sanskrit_common::model::SlicePtr;
 use sanskrit_common::arena::VirtualHeapArena;
@@ -10,6 +10,7 @@ pub fn parse_with_schema<'c, 'h, 'b>(schema:ValueSchema<'c>, p:&'c mut Parser<'c
 }
 
 impl<'a> ValueSchema<'a> {
+
     pub fn serialize_value(&self, value:Entry, s:&mut Serializer) -> Result<()> {
         match *self {
             ValueSchema::Adt(ctrs) => {
@@ -44,6 +45,75 @@ impl<'a> ValueSchema<'a> {
             ValueSchema::Signed(8) => unsafe {value.i64}.serialize(s),
             ValueSchema::Signed(16) => unsafe {value.i128}.serialize(s),
             _ => unreachable!()
+        }
+    }
+
+    //note: intended as helper for tools and compilers it is not save to execute during block computation
+    pub fn runtime_size(self, data:&[u8]) -> Result<u16> {
+        let (res,_) = self.runtime_size_intern(data,0)?;
+        Ok(res)
+    }
+
+
+    pub fn max_runtime_size(self) -> Result<u16> {
+        let res = match self {
+            ValueSchema::Adt(ctrs) => {
+                let mut max_field_content_sizes = 0;
+                for ctr in ctrs.iter() {
+                    let mut field_content_sizes = 0;
+                    if !ctr.is_empty() {
+                        for f_schema in ctr.iter(){
+                            field_content_sizes += f_schema.max_runtime_size()? as usize;
+                        }
+                    }
+                    if field_content_sizes > max_field_content_sizes {
+                        max_field_content_sizes = field_content_sizes;
+                    }
+                }
+                Entry::SIZE+max_field_content_sizes
+            },
+            ValueSchema::Data(size) => Entry::SIZE+(size as usize),
+            ValueSchema::Unsigned(_) | ValueSchema::Signed(_) => Entry::SIZE
+        };
+        if res > (u16::max_value() as usize) {
+            error(||"encoding size to big")
+        } else {
+            Ok(res as u16)
+        }
+    }
+
+    fn runtime_size_intern(self, data:&[u8], mut pos:usize) -> Result<(u16,usize)> {
+        let res = match self {
+            ValueSchema::Adt(ctrs) => {
+                //if their is only 1 tag it was omitted
+                let tag = if ctrs.len() != 1 {
+                    data[pos]
+                } else {
+                    0
+                };
+                pos+=1;
+                if tag as usize >= ctrs.len() {
+                    return error(||"Tag of parsed value is invalid")
+                }
+                //if their are zero fields we use the EmptySlice shortcut
+                let ctr =  ctrs[tag as usize];
+                let mut field_content_sizes = 0;
+                if !ctr.is_empty() {
+                    for f_schema in ctr.iter(){
+                        let (size, new_pos) = f_schema.runtime_size_intern(data, pos)?;
+                        pos = new_pos;
+                        field_content_sizes += size
+                    }
+                }
+                (Entry::SIZE+(field_content_sizes as usize),pos)
+            },
+            ValueSchema::Data(size) => (Entry::SIZE+(size as usize),pos+(size as usize)),
+            ValueSchema::Unsigned(size) | ValueSchema::Signed(size) => (Entry::SIZE, pos+(size as usize))
+        };
+        if res.0 > (u16::max_value() as usize) {
+            error(||"encoding size to big")
+        } else {
+            Ok((res.0 as u16, res.1))
         }
     }
 

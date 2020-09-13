@@ -52,7 +52,7 @@ pub enum StorageClass{
 //Helper to calc the key for a storage slot
 pub fn store_hash(data:&[&[u8]]) -> Hash {
     //Make a 20 byte digest hascher
-    let mut context = HashingDomain::Code.get_domain_hasher();
+    let mut context = Hasher::new();
     //push the data into it
     for d in data {
         context.update(*d);

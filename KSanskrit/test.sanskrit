@@ -1,0 +1,3 @@
+module Test {
+ local(call, consume) top data blubb [] {}
+}

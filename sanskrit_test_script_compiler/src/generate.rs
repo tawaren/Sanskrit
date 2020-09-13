@@ -126,10 +126,11 @@ impl OpCode {
                 Ok(ROpCode::Project(t, from_v))
             },
 
-            OpCode::UnProject(ref to_id, ref from_id) => {
+            OpCode::UnProject(ref to_id, ref from_id, ref typ) => {
                 let from_v = env.get_id_pos(&from_id).unwrap();
+                let t = imp.import_typ_ref(&typ)?;
                 env.push_new(to_id.clone());
-                Ok(ROpCode::UnProject(from_v))
+                Ok(ROpCode::UnProject(t, from_v))
             },
 
             OpCode::Fetch(ref to_id, ref from_id) => {

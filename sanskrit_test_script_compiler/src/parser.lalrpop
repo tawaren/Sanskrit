@@ -77,10 +77,9 @@ Case:Case = {
 };
 
 Type:Type = {
-    <main:Ref> "[" <applies:Comma<Type>> "]" => Type{main,applies,is_project:false},
-    <main:Ref> => Type{main,applies:vec![],is_project:false},
-    "%" <main:Ref> "[" <applies:Comma<Type>> "]" => Type{main,applies,is_project:true},
-    "%" <main:Ref> => Type{main,applies:vec![],is_project:true},
+    <p:("%")*> <main:Ref> "[" <applies:Comma<Type>> "]" => Type{main,applies,projections:p.len()},
+    <p:("%")*> <main:Ref> => Type{main,applies:vec![],projections:p.len()},
+
 };
 
 Ref:Ref = {
@@ -101,7 +100,7 @@ OpCode:OpCode = {
     "let" <b:Block> => OpCode::Let(vec![], Box::new(b)),
     <id:Assign> "copy" <var:Id> => OpCode::Copy(id,var),
     <id:Assign> "project" <var:Id> ":" <typ:Type>  => OpCode::Project(id,var,typ),
-    <id:Assign> "unproject" <var:Id>  => OpCode::UnProject(id,var),
+    <id:Assign> "unproject" <var:Id> ":" <typ:Type> => OpCode::UnProject(id,var,typ),
     <id:Assign>  <var:Id> => OpCode::Fetch(id,var),
     <assigs:Assigns> "(" <ids:Comma<Id>> ")" => OpCode::Return(assigs,ids),
     "return" => OpCode::Return(vec![],vec![]),

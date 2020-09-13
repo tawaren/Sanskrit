@@ -1,27 +1,28 @@
 use sanskrit_common::model::*;
-use sanskrit_common::errors::*;
-use sanskrit_common::arena::*;
 use sanskrit_interpreter::model::RuntimeType;
 
-const SYSTEM_MODULE: Hash = [129, 232, 80, 162, 11, 166, 209, 61, 224, 201, 0, 48, 58, 245, 202, 102, 74, 49, 48, 113];
-const ENTRY_OFFSET:u8 = 0;
-const CONTEXT_OFFSET:u8 = 1;
 
-const TXT_HASH_OFFSET:u8 = 0;
-const CODE_HASH_OFFSET:u8 = 1;
-const FULL_HASH_OFFSET:u8 = 2;
-const UNIQUE_ID_OFFSET:u8 = 3;
+pub trait System {
+    fn system_module(&self) -> Hash;
+    fn entry_offset(&self) -> u8;
+    fn context_offset(&self) -> u8;
 
-pub fn is_context(typ:Ptr<RuntimeType>) -> bool {
-    match *typ {
-        RuntimeType::Custom { module:SYSTEM_MODULE, offset:CONTEXT_OFFSET, .. } => true,
-        _ => false
+    fn txt_hash_offset(&self) -> u8;
+    fn code_hash_offset(&self) -> u8;
+    fn full_hash_offset(&self) -> u8;
+    fn unique_id_offset(&self) -> u8;
+
+    fn is_context(&self,typ:Ptr<RuntimeType>) -> bool {
+        match *typ {
+            RuntimeType::Custom { module, offset, .. } => module == self.system_module() && offset == self.context_offset(),
+            _ => false
+        }
     }
-}
 
-pub fn is_entry(typ:Ptr<RuntimeType>) -> bool {
-    match *typ {
-        RuntimeType::Custom { module:SYSTEM_MODULE, offset:ENTRY_OFFSET, .. } => true,
-        _ => false
+    fn is_entry(&self,typ:Ptr<RuntimeType>) -> bool {
+        match *typ {
+            RuntimeType::Custom { module, offset, .. } => module == self.system_module() && offset == self.entry_offset(),
+            _ => false
+        }
     }
 }

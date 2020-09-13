@@ -6,7 +6,6 @@ pub mod efficency;
 use alloc::vec::Vec;
 use sanskrit_common::model::*;
 use sanskrit_common::encoding::*;
-use sanskrit_common::encoding::Serializable;
 use sanskrit_common::errors::*;
 use model::resolved::ResolvedType;
 use utils::Crc;
@@ -91,7 +90,7 @@ pub enum CallableImpl {
 pub struct FunctionComponent {
     #[ByteSize]
     pub byte_size:Option<usize>,
-    pub scope: Accessibility,                 //A Fun has a visibility defining who can call it
+    pub scope:Accessibility,                 //A Fun has a visibility defining who can call it
     pub shared:FunSigShared,
     pub body: CallableImpl
 }
@@ -267,7 +266,7 @@ pub enum OpCode {
     InvokeSig(ValueRef, PermRef, Vec<ValueRef>),                            //Invokes a Signature Value
     TryInvokeSig(ValueRef, PermRef, Vec<(bool, ValueRef)>, Exp, Exp),       //Invokes a Signature Value
     Project(TypeRef, ValueRef),                                             //Produces the Image of the input without consuming it
-    UnProject(ValueRef),                                                    //Removes a layer from a nested Projection: If the inner value is Primitive
+    UnProject(TypeRef, ValueRef),                                           //Removes a layer from a nested Projection: If the inner value is Primitive
     RollBack(Vec<ValueRef>, Vec<TypeRef>)                                   //Aborts the current Transaction, can consume and produce values to please the type checker
 }
 

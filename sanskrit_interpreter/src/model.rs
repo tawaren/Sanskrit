@@ -68,6 +68,7 @@ pub enum OpCode<#[AllocLifetime] 'b> {
     Div(Kind, ValueRef,ValueRef),                                   //Does an arithmetic dividation of two ints (throws on a division by zero)
     Eq(Kind, ValueRef,ValueRef),                                    //Compares two values for equality
     Hash(Kind, ValueRef),                                           //Calculates a plain hash for a data input (not structurally encoded)
+    EcDsaVerify(ValueRef, ValueRef, ValueRef),                      //checks that the signature in last ref signs the msg in first ref and the second is the pk
     Lt(Kind, ValueRef,ValueRef),                                    //Compares two values to decide if one is less than the other
     Gt(Kind, ValueRef,ValueRef),                                    //Compares two values to decide if one is greater than the other
     Lte(Kind, ValueRef,ValueRef),                                   //Compares two values to decide if one is less than or equal the other
@@ -81,6 +82,10 @@ pub enum OpCode<#[AllocLifetime] 'b> {
 
 #[derive(Copy, Clone, Debug, Parsable, Serializable, VirtualSize)]
 pub struct TransactionDescriptor<#[AllocLifetime] 'c> {
+    #[ByteSize]
+    pub byte_size:Option<usize>,
+    #[VirtualSize]
+    pub virt_size:Option<usize>,
     pub gas_cost:u32,
     pub max_stack:u16,
     pub max_frames:u16,
@@ -126,6 +131,7 @@ pub enum RuntimeType<#[AllocLifetime] 'a> {
     },
 
     Projection {
+        depth:u8,
         typ:  Ptr<'a, RuntimeType<'a>>
     },
 

@@ -9,9 +9,9 @@ pub fn generate(n:u8, reuse:bool, overfill:bool, body:bool) -> Vec<Vec<u8>> {
     let mut hashes = Vec::with_capacity(n as usize);
     if !reuse {
         for no in 0..n {
-            let moidule_data = generate_function_module(n,no, reuse, overfill);
-            hashes.push(store_hash(&[&moidule_data]));
-            modules.push(moidule_data)
+            let module_data = generate_function_module(n, no, reuse, overfill);
+            hashes.push(store_hash(&[&module_data]));
+            modules.push(module_data)
         }
     } else {
         let moidule_data = generate_function_module(n,0, reuse, overfill);

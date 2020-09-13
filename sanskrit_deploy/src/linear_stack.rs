@@ -215,7 +215,7 @@ impl<'acc, T:Clone+Eq> LinearStack<'acc, T>  {
         let index = vref.0;
         //ensure that the resulting index will be valid
         if index as usize >= self.stack_depth() {
-            return error(||"Index out of bounds")
+            return error(||"Stack access out of bounds")
         }
         Ok(self.stack_depth() - (index as usize) -1)
     }

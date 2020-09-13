@@ -12,11 +12,11 @@ use environment::Environment;
 use sanskrit_core::model::FunctionComponent;
 use sanskrit_common::store::store_hash;
 use sanskrit_common::encoding::*;
-use itertools::{Itertools, all};
+use itertools::Itertools;
 use parser;
 use std::collections::HashSet;
-use sanskrit_runtime::model::{ParamRef, RetType, Transaction, TransactionBundle, ParamMode, BundleSection, SectionType};
-use sanskrit_common::arena::{Heap, VirtualHeapArena, HeapArena};
+use sanskrit_runtime::model::{ParamRef, RetType, Transaction, TransactionBundle, ParamMode, BundleSection, SectionType, TransactionBundleCore};
+use sanskrit_common::arena::{Heap, HeapArena};
 use hex::decode;
 use sanskrit_runtime::CONFIG;
 use sanskrit_common::hashing::HashingDomain;
@@ -146,12 +146,12 @@ impl<'a> Compiler<'a> {
                 }
 
                 let param_types = params.iter().map(|input| match input {
-                    In::Copy(Key::Plain(id), _, _) => ParamData::Load(ParamMode::Copy, decode(&id.0).unwrap()),
-                    In::Copy(Key::Derived(module, id), _, _) => ParamData::Load(ParamMode::Copy, derive(self,&module, &id.0)),
-                    In::Borrow(Key::Plain(id), _, _) => ParamData::Load(ParamMode::Borrow, decode(&id.0).unwrap()),
-                    In::Borrow(Key::Derived(module, id), _, _) => ParamData::Load(ParamMode::Borrow, derive(self,&module, &id.0)),
-                    In::Consume(Key::Plain(id), _, _) => ParamData::Load(ParamMode::Consume, decode(&id.0).unwrap()),
-                    In::Consume(Key::Derived(module, id), _, _) => ParamData::Load(ParamMode::Consume, derive(self,&module, &id.0)),
+                    In::Copy(Key::Plain(id), _, _) => ParamData::Load(ParamMode::Copy, hash_from_slice(&decode(&id.0).unwrap())),
+                    In::Copy(Key::Derived(module, id), _, _) => ParamData::Load(ParamMode::Copy, hash_from_slice(&derive(self,&module, &id.0))),
+                    In::Borrow(Key::Plain(id), _, _) => ParamData::Load(ParamMode::Borrow, hash_from_slice(&decode(&id.0).unwrap())),
+                    In::Borrow(Key::Derived(module, id), _, _) => ParamData::Load(ParamMode::Borrow, hash_from_slice(&derive(self,&module, &id.0))),
+                    In::Consume(Key::Plain(id), _, _) => ParamData::Load(ParamMode::Consume, hash_from_slice(&decode(&id.0).unwrap())),
+                    In::Consume(Key::Derived(module, id), _, _) => ParamData::Load(ParamMode::Consume,  hash_from_slice(&derive(self,&module, &id.0))),
                     In::Literal(ref data, _, _) => ParamData::Literal(self.serialized_object_from_data(data)),
                     In::Witness(ref data, _, _) => ParamData::Witness(self.serialized_object_from_data(data)),
                     In::Provided(_, _) => ParamData::Provided,
@@ -523,32 +523,37 @@ impl<'a> Compiler<'a> {
             txts: alloc.copy_alloc_slice(&built_txts).unwrap()
         };
 
+        let store_witness = env.empty_storage_witnesses(&alloc);
+        let witness = env.witnesses(&alloc);
+        let witness_size = witness.iter().map(|w|w.len() + 2).sum::<usize>() + 2;  //2 is num wittness / Num Bytes
+        let store_witness_size = store_witness.iter().map(|w|w.map_or(0,|d|d.len()+2)+1).sum::<usize>() + 2;  //2 is num wittness / Num Bytes
+
         let bundle = TransactionBundle {
-            transaction_storage_heap: 10000,
-            param_heap_limit: 10000,
-            stack_elem_limit: 1000,
-            stack_frame_limit: 1000,
-            runtime_heap_limit: 10000,
-            sections: alloc.copy_alloc_slice(&[/*pay_section, */main_section]).unwrap(),
-            descriptors: alloc.copy_alloc_slice(env.descs()).unwrap(),
-            stored: env.values(&alloc),
-            literal: env.literals(&alloc),
-            witness: env.witnesses(&alloc),
+            byte_size: None,
+            core: TransactionBundleCore {
+                byte_size: None,
+                meta:SlicePtr::empty(),
+                deploy: None,
+                transaction_storage_heap: 10000,
+                param_heap_limit: 10000,
+                stack_elem_limit: 1000,
+                stack_frame_limit: 1000,
+                runtime_heap_limit: 10000,
+                sections: alloc.copy_alloc_slice(&[/*pay_section, */main_section]).unwrap(),
+                descriptors: alloc.copy_alloc_slice(env.descs()).unwrap(),
+                stored: env.values(&alloc),
+                literal: env.literals(&alloc),
+                witness_bytes_limit: (witness_size + store_witness_size) as u32,               
+            },
+            witness,
             //todo: fill over state provider runtime extension later: when ready
-            store_witness: env.empty_storage_witnesses(&alloc)
+            store_witness
         };
         Serializer::serialize_fully(&bundle,CONFIG.max_structural_dept).unwrap()
     }
 
 
     fn build_txt<'b>(&self, txt_res:&TransactionCompilationResult, fun:Hash, env:&mut BundleImportBuilder, alloc:&'b HeapArena) -> Transaction<'b> {
-        fn nested_slice<'b, 'h>(data:&[Vec<u8>], alloc:&'b VirtualHeapArena<'h>) -> SlicePtr<'b, SlicePtr<'b, u8>> {
-            let mut builder = alloc.slice_builder(data.len()).unwrap();
-            for d in data {
-                builder.push(alloc.copy_alloc_slice(d).unwrap());
-            }
-            builder.finish()
-        }
 
         let params: Vec<ParamRef> = txt_res.param_types.iter().map(|p|env.param_ref(p)).collect();
 

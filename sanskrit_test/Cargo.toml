@@ -12,6 +12,7 @@ sha2 = "0.7.0"
 rand = "0.6.1"
 wasmi = "0.4.5"
 wasmer-runtime = "0.4.2"
+lazy_static = "1.4.0"
 
 [dependencies.sanskrit_common]
 path = "../sanskrit_common"

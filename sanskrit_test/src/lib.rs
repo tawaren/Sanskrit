@@ -1,7 +1,6 @@
 #![feature(test)]
 #![feature(associated_type_defaults)]
 
-
 extern crate sanskrit_test_script_compiler;
 extern crate sanskrit_deploy;
 extern crate sanskrit_core;
@@ -16,7 +15,10 @@ extern crate rand;
 extern crate test;
 extern crate wasmi;
 extern crate wasmer_runtime;
+#[macro_use]
+extern crate lazy_static;
 
+pub mod externals;
 pub mod script_test;
 pub mod limit_tests;
 pub mod linear_type_stack_test;

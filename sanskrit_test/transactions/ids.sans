@@ -2,6 +2,10 @@ module Ids {
     extType(20) <Copy,Drop,Persist,Value,Unbound> PrivateId;
     public extType(20) <Copy,Drop,Persist,Primitive,Value,Unbound> PublicId;
 
+    public(consume,inspect) private(create) type <Copy,Drop,Value,Unbound> Auth[T] {
+       Ctr(.PublicId, T);
+    };
+
     public extFun moduleId():(pub:.PrivateId);
 
     public extFun privateToPublic(priv:.PrivateId):(pub:.PublicId);
@@ -11,6 +15,8 @@ module Ids {
 
     public extFun eqPub(data1:.PublicId, data2:.PublicId):(res:Bool.Bool);
     public extFun eqPriv(data1:.PrivateId, data2:.PrivateId):(res:Bool.Bool);
+
+    public extFun authenticatedMessage[<Unbound> T](value:T):(auth:.Auth[T]);
 
     public extFun derivePrivateIdPrivate(priv:.PrivateId, priv2:.PrivateId):(priv:.PrivateId);
     public extFun derivePrivateIdPublic(priv:.PrivateId, pub:.PublicId):(priv:.PrivateId);

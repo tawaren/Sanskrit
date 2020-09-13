@@ -8,10 +8,10 @@ extern crate sanskrit_common;
 extern crate sanskrit_derive;
 #[macro_use]
 extern crate alloc;
+extern crate ed25519_dalek;
+extern crate sha2;
 
 pub mod interpreter;
 pub mod model;
 pub mod externals;
 pub mod value_encoding;
-#[macro_use]
-extern crate lazy_static;

@@ -23,11 +23,19 @@ pub fn validate_top_function<S:Store>(data:&[u8], store:&S, accounting:&Accounti
     let resolver = Loader::new_complete(store, &accounting);
     //Prepare the context
     let context = Context::from_top_component(&fun, &resolver)?;
+
+    //let context = match Context::from_top_component(&fun, &resolver)
     //Ensure Transaction specific parts are correct
     validate_transaction(&fun, &context)?;
     //Do the type checking of the code in the function body
     if let CallableImpl::Internal {ref code, ..} = fun.body {
-        TypeCheckerContext::new(accounting, context).type_check_function(&fun, code)?;
+        let mut checker = TypeCheckerContext::<S>::new(accounting, context);
+        /*match checker.type_check_function(&fun, code) {
+            Ok(k) => k,
+            Err(_) => panic!("{:?}", fun),
+        }*/
+        checker.type_check_function(&fun, code)?;
+        checker.report_depth(accounting);
     }
     Ok(())
 }
@@ -88,7 +96,9 @@ pub fn validate<S:Store>(data:&[u8], store:&S, accounting:&Accounting, link:Hash
             validate_function(f, &context, system_mode_on)?;
             //Do the type checking of the code in the function body
             if let CallableImpl::Internal {ref code, ..} = f.body {
-                TypeCheckerContext::new(accounting, context).type_check_function(f, code)?;
+                let mut checker = TypeCheckerContext::<S>::new(accounting, context);
+                checker.type_check_function(f, code)?;
+                checker.report_depth(accounting);
             }
             //Hint the cache that a new Function is available in the current module
             resolver.this_deployed_functions.set(tdf + 1);
@@ -106,7 +116,9 @@ pub fn validate<S:Store>(data:&[u8], store:&S, accounting:&Accounting, link:Hash
             validate_implement(i, &context, system_mode_on)?;
             //Do the type checking of the code in the function body
             if let CallableImpl::Internal {ref code, ..} = i.body {
-                TypeCheckerContext::new(accounting, context).type_check_implement(i, code)?;
+                let mut checker = TypeCheckerContext::<S>::new(accounting, context);
+                checker.type_check_implement(i, code)?;
+                checker.report_depth(accounting);
             }
             //Hint the cache that a new Implement is available in the current module
             resolver.this_deployed_implements.set(tdi+1);

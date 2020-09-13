@@ -1,8 +1,9 @@
 use std::collections::HashSet;
 use std::collections::HashMap;
 use script::Index;
-use sanskrit_runtime::model::{ParamRef, RetType, ParamMode};
+use sanskrit_runtime::model::{RetType, ParamMode};
 use sanskrit_core::model::bitsets::CapSet;
+use sanskrit_common::model::Hash;
 
 pub struct Module {
     pub name: Id,
@@ -36,7 +37,7 @@ pub struct TransactionCompilationResult {
 
 #[derive(Eq, PartialEq, Clone)]
 pub enum ParamData {
-    Load(ParamMode, Vec<u8>),
+    Load(ParamMode, Hash),
     Literal(Vec<u8>),
     Witness(Vec<u8>),
     Provided
@@ -103,7 +104,7 @@ pub struct Generic{
 pub struct Type{
     pub main:Ref,
     pub applies:Vec<Type>,
-    pub is_project:bool,
+    pub projections:usize,
 }
 
 
@@ -138,7 +139,7 @@ pub enum OpCode {
     Copy(Id,Id),
     Return(Vec<Id>, Vec<Id>),
     Project(Id, Id, Type),
-    UnProject(Id, Id),
+    UnProject(Id, Id, Type),
     Fetch(Id,Id),
     Field(Id,Id,Lit,Type),
     CopyField(Id,Id,Lit,Type),

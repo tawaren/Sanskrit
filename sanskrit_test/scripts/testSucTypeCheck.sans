@@ -36,16 +36,17 @@ module TestSucTypeCheck{
         return unpack a:TestSucAdt.Wrapper[%A];
    };
 
-   fun TestFun73[A](a:TestSucAdt.Wrapper[%A]):(c:%A){
+
+   fun TestFun73[A](a:TestSucAdt.Wrapper[%A]):(c:%%A){
         b = project a:%TestSucAdt.Wrapper[%A];
         c = unpack b:%TestSucAdt.Wrapper[%A];
         return c;
    };
 
-   fun TestFun74[A](consume a:%TestSucAdt.Wrapper[A]):(c:%A){
-        b = field[0] a:%TestSucAdt.Wrapper[A];
-        c = project b:%A;
-        return c;
+   fun TestFun74[A](consume a:%TestSucAdt.Wrapper[A]):(c:%%A){
+       b = field[0] a:%TestSucAdt.Wrapper[A];
+       c = project b:%%A;
+       return c;
    };
 
    fun TestFun75[A](consume a:%TestSucAdt.Wrapper[A]):(b:%A){
@@ -56,11 +57,12 @@ module TestSucTypeCheck{
         return project a:%A;
    };
 
-   fun TestFun77[A](a:A):(c:%A){
+   fun TestFun77[A](a:A):(c:%%A){
         b = project a:%A;
-        c = project b:%A;
+        c = project b:%%A;
         return c;
    };
+
 
    fun TestFun10[<Drop, Value, Unbound> A](consume a:TestSucAdt.Option[A], consume b:A):(c:A){
        return switch a:TestSucAdt.Option[A] {

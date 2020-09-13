@@ -27,6 +27,7 @@ pub struct TypeCheckerContext<'b, S:Store + 'b> {
     stack: LinearStack<'b, Crc<ResolvedType>>,   //The current stack layout
     transactional:bool,
     depth:usize,
+    max_depth:usize, //for reporting only
     limit:usize,
 }
 
@@ -39,10 +40,17 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
             stack: LinearStack::new(accounting),
             transactional: false,
             depth: 0,
+            max_depth: 0,
             limit: accounting.nesting_limit
         }
     }
 
+    pub fn report_depth(&self, accounting:&Accounting) {
+        //Define some reused types and capabilities
+        if self.max_depth > accounting.max_nesting.get() {
+            accounting.max_nesting.set(self.max_depth)
+        }
+    }
 
     fn clean_frame(&mut self, results:u8, start:usize) -> Result<()> {
         //how many values are on the stack
@@ -221,6 +229,10 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
         if self.depth > self.limit {
             return error(||"Limit for block nesting reached")
         }
+        //this is only for reporting to figure out max depth by executing
+        if self.depth > self.max_depth {
+            self.max_depth = self.depth
+        }
         //catch the last size
         let mut rets = 0;
         //Type check the opcodes leading up to this Return
@@ -267,7 +279,7 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
             OpCode::CopyField(value, perm, field) => self.field(value, perm, field, FetchMode::Copy),
             OpCode::RollBack(ref consumes, ref produces) => self.rollback(consumes, produces),
             OpCode::Project(typ, val) =>  self.project(typ,val),
-            OpCode::UnProject(val) =>  self.un_project(val),
+            OpCode::UnProject(typ, val) =>  self.un_project(typ, val),
             OpCode::InvokeSig(fun,perm,  ref vals) => self.invoke_sig(fun, perm, vals),
             OpCode::TryInvokeSig(fun,perm,  ref vals, ref suc, ref fail) => self.try_invoke_sig(fun, perm, vals, suc, fail)
 
@@ -326,17 +338,17 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
     fn project(&mut self, typ:TypeRef, value:ValueRef) -> Result<u8> {
         //get the input type
         let v_typ = self.stack.value_of(value)?;
-        //wrap the type into an image
+        //the wrapped type
         let n_typ = typ.fetch(&self.context)?;
-        // project(project(x)) = project(x)
-        if let ResolvedType::Projection{ .. } = *v_typ {
+
+        if let ResolvedType::Projection{ depth, ref un_projected } = *v_typ {
             //check that it is of the right type
-            if n_typ != v_typ {
+            if n_typ.get_target() != un_projected || n_typ.get_projection_depth() != depth+1 {
                 return error(||"Specified type mismatches input type")
             }
-        } else if let ResolvedType::Projection{ ref un_projected, .. } = *n_typ {
+        } else if let ResolvedType::Projection{ depth, ref un_projected } = *n_typ {
             //check that it is of the right type
-            if un_projected != &v_typ {
+            if un_projected != &v_typ || depth != 1{
                 return error(||"Specified type mismatches input type")
             }
         } else {
@@ -348,18 +360,24 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
         Ok(1)
     }
 
-    fn un_project(&mut self, value:ValueRef) -> Result<u8> {
+    fn un_project(&mut self, typ:TypeRef, value:ValueRef) -> Result<u8> {
         //get the input type
         let v_typ = self.stack.value_of(value)?;
+        //the wrapped type
+        let n_typ = typ.fetch(&self.context)?;
         //check that it is a nested image
         match *v_typ  {
-            ResolvedType::Projection {ref un_projected, ..} => {
+            ResolvedType::Projection {depth, ref un_projected, ..} => {
                 assert!(if let ResolvedType::Projection{..} = **un_projected {false} else {true});
+                //check that it is of the right type
+                if n_typ.get_target() != un_projected || n_typ.get_projection_depth() != depth-1 {
+                    return error(||"Specified type mismatches input type")
+                }
                 if !un_projected.get_caps().contains(Capability::Primitive) {
                     error(||"Un-project requires primitive capability for output")
                 } else {
                     //Copy the value on top with another type
-                    self.stack.transform(value, un_projected.clone(),FetchMode::Copy)?;
+                    self.stack.transform(value, n_typ,FetchMode::Copy)?;
                     Ok(1)
                 }
             }
@@ -452,7 +470,7 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
         //get the value typ
         let typ = r_ctr[0 as usize][field as usize].clone();
 
-        if mode != FetchMode::Consume {
+        if mode == FetchMode::Consume {
             //Non-fetched values need the drop capability
             for (idx,field_type) in r_ctr[0 as usize].iter().enumerate() {
                 if idx != field as usize && !field_type.get_caps().contains(Capability::Drop) {
@@ -460,7 +478,7 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
                 }
             }
         } else {
-            //value needs the copy capability
+            //fetched value needs the copy capability
             if !typ.get_caps().contains(Capability::Copy) {
                 return error(||"Copy field requires copy capability for accessed field")
             }
@@ -481,7 +499,7 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
         //Calc the required permission
         let perm_type = match mode {
             Some(_) => Permission::Consume,
-            None => Permission::Inspect,
+             None => Permission::Inspect,
         };
 
         //check that it is of the right type

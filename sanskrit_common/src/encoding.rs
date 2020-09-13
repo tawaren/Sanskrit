@@ -13,6 +13,7 @@ use arena::*;
 pub type EncodingByteOrder = BigEndian;
 
 pub trait ParserAllocator {
+    fn allocated_virtual_bytes(&self) -> usize;
     fn poly_alloc<T:Sized + Copy + VirtualSize>(&self, val: T) -> Result<Ptr<T>>;
     fn poly_slice_builder<T: Sized + Copy + VirtualSize>(&self, len: usize) -> Result<SliceBuilder<T>>;
 }
@@ -20,6 +21,10 @@ pub trait ParserAllocator {
 #[derive(Copy, Clone, Debug)]
 pub struct NoCustomAlloc();
 impl ParserAllocator for NoCustomAlloc {
+    fn allocated_virtual_bytes(&self) -> usize {
+        0
+    }
+
     fn poly_alloc<T: Sized + Copy + VirtualSize>(&self, _val: T) -> Result<Ptr<T>> { unreachable!() }
     fn poly_slice_builder<T: Sized + Copy + VirtualSize>(&self, _len: usize) -> Result<SliceBuilder<T>> {  unreachable!() }
 }
@@ -232,10 +237,9 @@ impl<T:Serializable> Serializable for LargeVec<T>{
     }
 }
 
-
 impl<'a> Parsable<'a> for Hash {
     fn parse<A: ParserAllocator>(p: &mut Parser, _alloc:&'a A) -> Result<Self> {
-        Ok(array_ref!(p.consume_bytes(20)?, 0, 20).to_owned())
+        Ok(hash_from_slice(p.consume_bytes(20)?))
     }
 }
 

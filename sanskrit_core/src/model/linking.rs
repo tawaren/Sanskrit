@@ -318,7 +318,7 @@ impl CallableComponent for ImplementComponent {
             CallableImpl::Internal { ref imports, .. } => match imports.permissions[self.sig.0 as usize] {
                 //Would fail on get type in validate
                 PermissionImport::Callable(_, _) => unreachable!(),
-                PermissionImport::Type(_, ref typRef) => from_ref(typRef),
+                PermissionImport::Type(_, ref typ_ref) => from_ref(typ_ref),
             },
         }
     }

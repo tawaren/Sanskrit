@@ -1,5 +1,5 @@
 use blake2_rfc::blake2b::{Blake2b};
-use model::{Hash, SlicePtr};
+use model::{Hash, SlicePtr, hash_from_slice};
 use errors::*;
 use arena::VirtualHeapArena;
 
@@ -13,7 +13,6 @@ pub enum HashingDomain {
     Derive,
     Object,
     Account,
-    Code,
     Entry
 }
 
@@ -41,7 +40,7 @@ impl Hasher {
         //calc the Hash
         let hash = self.0.finalize();
         //generate a array to the hash
-        array_ref!(hash.as_bytes(),0,20).clone()
+        hash_from_slice(hash.as_bytes())
     }
 }
 
@@ -56,7 +55,6 @@ impl HashingDomain {
             HashingDomain::Derive => 4,
             HashingDomain::Object => 5,
             HashingDomain::Account => 6,
-            HashingDomain::Code => 7,
             HashingDomain::Bundle => 8,
             HashingDomain::Entry => 9,
         }

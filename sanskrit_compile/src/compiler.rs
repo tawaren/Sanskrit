@@ -17,11 +17,11 @@ use sanskrit_core::model::bitsets::*;
 use compacting::Compactor;
 use sanskrit_common::errors::*;
 use sanskrit_core::model::resolved::ResolvedType;
-use sanskrit_common::encoding::{NoCustomAlloc, Serializer, Parser};
+use sanskrit_common::encoding::NoCustomAlloc;
 use sanskrit_interpreter::externals::CompilationExternals;
 use sanskrit_core::utils::Crc;
 use sanskrit_core::accounting::Accounting;
-use sanskrit_common::arena::{HeapArena, Heap};
+use sanskrit_common::arena::HeapArena;
 use limiter::Limiter;
 
 //Entry point that compiles all types and public functions of a module
@@ -80,7 +80,6 @@ fn generate_transaction_descriptor<'b,'h, S:Store,E:CompilationExternals>(fun:&F
         //build the typ
         let r_typ = alloc.alloc(resolved_to_runtime_type(&*typ, alloc)?);
         let desc = alloc.alloc(resolved_to_value_descriptor::<S,E>(&*typ, ctx, alloc)?);
-        let drop =
         returns.push(TxTReturn{
             primitive: typ.get_caps().contains(Capability::Primitive),
             copy: typ.get_caps().contains(Capability::Copy),
@@ -105,6 +104,8 @@ fn generate_transaction_descriptor<'b,'h, S:Store,E:CompilationExternals>(fun:&F
     if ressources.max_frames > u16::max_value() as u32 {return error(||"Required number of frames out of range")}
 
     let desc = TransactionDescriptor {
+        byte_size: None,
+        virt_size: None,
         gas_cost: ressources.max_gas as u32,
         max_stack: ressources.max_manifest_stack as u16,
         max_mem: ressources.max_mem as u16,
@@ -145,9 +146,10 @@ pub fn resolved_to_runtime_type<'b,'h>(typ:&ResolvedType, alloc:&'b HeapArena<'h
         // Sig itself is neither & top wrappers require persist which sig has not
         // If in the future a top type witch does allow a inner Sig is introduced this needs implementation (which is impossible without changing the runtime completely)
         ResolvedType::Sig {..} => unreachable!(),
-        ResolvedType::Projection { ref un_projected, .. } => {
+        ResolvedType::Projection { depth, ref un_projected } => {
             let inner = resolved_to_runtime_type(&**un_projected, alloc)?;
             RuntimeType::Projection {
+                depth,
                 typ:alloc.alloc(inner)
             }
         },

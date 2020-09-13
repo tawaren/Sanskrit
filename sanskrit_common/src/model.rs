@@ -2,11 +2,15 @@ use alloc::vec::Vec;
 use encoding::*;
 use errors::*;
 use core::marker::PhantomData;
-use core::fmt::{Debug, Formatter, Error};
-use core::ops::Deref;
+use core::fmt::Debug;
+use alloc::borrow::ToOwned;
 
 //A Simple 160bit hash
 pub type Hash = [u8;20];
+
+pub fn hash_from_slice(input:&[u8]) -> Hash {
+    array_ref!(input, 0, 20).to_owned()
+}
 
 //Represents a reference to the nTh element on the stack from the top (Bernouli Index)
 #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone, Debug, Parsable, Serializable, VirtualSize)]

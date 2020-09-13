@@ -61,7 +61,9 @@ pub struct Compactor<'b,'h> {
     // block
     block: Vec<ROpCode<'b>>,
     // nesting (Not the same as frames, as we want to be able to eliminate frames, but the nesting is a resource limit)
-    remaining_nesting:usize
+    cur_nesting:usize,
+    nesting_limit:usize,
+    max_nesting:usize
 }
 
 type BranchPoint = (u64,u64,u64,u64);
@@ -183,7 +185,9 @@ impl<'b,'h> Compactor<'b,'h> {
             functions: alloc.slice_builder(functions.len()+1)?,
             alloc,
             block: Vec::new(),
-            remaining_nesting: limiter.max_nesting //will be set for each function
+            max_nesting:0,
+            cur_nesting:0,
+            nesting_limit: limiter.max_nesting //will be set for each function
         };
 
         for fun_cache in functions {
@@ -202,7 +206,7 @@ impl<'b,'h> Compactor<'b,'h> {
             //compact the function
             let (processed, resources) = compactor.process_func::<S,E>(fun_comp.shared.params.len(), body, &new_ctx)?;
             //reset the nesting
-            compactor.remaining_nesting = limiter.max_nesting;
+            compactor.reset_nesting(limiter.max_nesting);
             //find the next free number
             let next_idx = compactor.functions.len();
             //ensure we do not go over the limit
@@ -228,6 +232,8 @@ impl<'b,'h> Compactor<'b,'h> {
         compactor.functions.push(processed);
         //get all functions
         let res = compactor.functions.finish();
+        //record the nesting in case we run for discovery only
+        limiter.max_used_nesting.set(compactor.max_nesting);
         //return the result
         Ok((res,resources))
     }
@@ -245,7 +251,7 @@ impl<'b,'h> Compactor<'b,'h> {
             self.state.push_real()?;
         }
         //compact body
-        let (body, rets) = self.process_exp::<S,E>(&code, ret_point, context)?;
+        let (body, _) = self.process_exp::<S,E>(&code, ret_point, context)?;
         //restore old Stack
         mem::swap(&mut state, &mut &mut self.state);
         //return body & Ressource infos
@@ -279,16 +285,26 @@ impl<'b,'h> Compactor<'b,'h> {
         Ok(())
     }
 
+    fn reset_nesting(&mut self, limit:usize) {
+        self.cur_nesting = 0;
+        self.nesting_limit = limit;
+    }
+
     fn increase_nesting(&mut self) -> Result<()> {
-        if self.remaining_nesting == 0 {
+        if self.cur_nesting >= self.nesting_limit {
             return error(||"Size limit exceeded")
         }
-        self.remaining_nesting -= 1;
+        //increase the nesting
+        self.cur_nesting += 1;
+        //for figuring out max only
+        if self.cur_nesting > self.max_nesting {
+            self.max_nesting = self.cur_nesting
+        }
         Ok(())
     }
 
     fn decrease_nesting(&mut self) {
-        self.remaining_nesting += 1;
+        self.cur_nesting -= 1;
     }
 
     //compacts an expression (block)
@@ -337,7 +353,7 @@ impl<'b,'h> Compactor<'b,'h> {
             OpCode::Move(val) =>  self.copy(val),
             OpCode::Return(ref vals) => self._return(vals),
             OpCode::Project(_,val) => self.copy(val),
-            OpCode::UnProject(val) => self.copy(val),
+            OpCode::UnProject(_, val) => self.copy(val),
             OpCode::Discard(_) => Ok((false, 0)),
             OpCode::DiscardMany(_) => Ok((false, 0)),
             OpCode::Unpack(val, perm) => self.unpack(val,perm,None, context),
@@ -528,7 +544,7 @@ impl<'b,'h> Compactor<'b,'h> {
         let r_perm = perm.fetch(context)?;
         //get the str information
         let ctrs = r_perm.get_ctrs()?;
-        //check if it i a wrapper
+        //check if it is a wrapper
         if ctrs.len() == 1 && ctrs[0].len() == 1 {
             //if a wrapper just push the compile time stack as the elem already is on the runtime stack
             let pos = self.get(vals[0].0 as usize);
@@ -655,7 +671,7 @@ impl<'b,'h> Compactor<'b,'h> {
             self.state.push_alias(pos);
         }
         //proccess the expression
-        let (new_fail, f_rets)  = self.process_exp::<S,E>(fail, ret_point, context)?;
+        let (new_fail, _)  = self.process_exp::<S,E>(fail, ret_point, context)?;
         //finish branching
         self.state.end_branching(branch_point);
         //if the inner is a continuation we need to drop a try frame
@@ -745,7 +761,9 @@ impl<'b,'h> Compactor<'b,'h> {
             if let Some((index,_, resources)) = self.fun_mapping.get(&(module.clone(),offset)) {
                 //adapted values
                 let adapted = self.alloc.iter_alloc_slice(vals.iter().map(|val|self.translate_ref(*val)))?;
-                //account for the ressources
+                //account for the packing of the pre applied values
+                self.state.use_mem(vals.len() as u64 * Entry::SIZE as u64);
+                //account for the resources used when it is called
                 self.state.include_call_resources(*resources);
                 //return the essential info
                 (ROpCode::CreateSig(*index,adapted),gas::sig(impl_comp.params.len()))

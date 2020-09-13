@@ -17,7 +17,8 @@ mod tests {
             process_byte_budget: Cell::new(usize::max_value()),
             stack_elem_budget: Cell::new(usize::max_value()),
             nesting_limit: 10,
-            input_limit: 1000000
+            input_limit: 1000000,
+            max_nesting: Cell::new(0),
         }
     }
 
@@ -46,7 +47,7 @@ mod tests {
         println!("Start Test");
         for d in data {
             let accounting = max_accounting();
-            deploy_module(&s, &accounting, d, false).unwrap();
+            deploy_module(&s, &accounting, d, false, true).unwrap();
             println!("Deployed Module");
             print_accounting(accounting);
         }
@@ -61,7 +62,7 @@ mod tests {
         b.iter(|| {
             let s = BTreeMapStore::new();
             let accounting = max_accounting();
-            deploy_module(&s, &accounting, data[0].clone(), false).unwrap();
+            deploy_module(&s, &accounting, data[0].clone(), false, true).unwrap();
         });
         Ok(())
     }
@@ -74,10 +75,10 @@ mod tests {
         let size = data.len();
         let last_hash = store_hash(&[&data[size-1]]);
         for d in &data[0..(size-1)] {
-            deploy_module(&s, &accounting, d.clone(), false).unwrap();
+            deploy_module(&s, &accounting, d.clone(), false, true).unwrap();
         }
         b.iter(|| {
-            deploy_module(&s, &accounting, data[size-1].clone(), false).unwrap();
+            deploy_module(&s, &accounting, data[size-1].clone(), false, true).unwrap();
             s.delete(StorageClass::Module, &last_hash)
         });
         Ok(())

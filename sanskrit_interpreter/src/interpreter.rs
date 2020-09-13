@@ -1,12 +1,13 @@
 use sanskrit_common::model::*;
 use sanskrit_common::errors::*;
 use model::*;
-use sanskrit_common::encoding::VirtualSize;
 
 use sanskrit_common::hashing::*;
 use sanskrit_common::arena::*;
 use byteorder::{ByteOrder};
 use sanskrit_common::encoding::EncodingByteOrder;
+use ed25519_dalek::{PublicKey, Verifier};
+use ed25519_dalek::ed25519::signature::Signature;
 
 //enum to indicate if a block had a result or an error as return
 #[derive(Copy, Clone, Debug)]
@@ -218,6 +219,7 @@ impl<'transaction,'code,'interpreter,'execution,'heap> ExecutionContext<'transac
             OpCode::Div(kind, op1,op2) => self.div(kind, op1,op2, tail),
             OpCode::Eq(kind, op1,op2) => self.eq(kind, op1,op2, tail),
             OpCode::Hash(kind, op) => self.plain_hash(kind, op, tail),
+            OpCode::EcDsaVerify(op1, op2, op3) => self.ecdsa_verify(op1,op2,op3, tail),
             OpCode::ToData(kind, op) => self.convert_to_data(kind,op, tail),
             OpCode::FromData(kind, op) => self.convert_from_data(kind,op, tail),
             OpCode::Lt(kind, op1,op2) => self.lt(kind, op1,op2, tail),
@@ -694,6 +696,25 @@ impl<'transaction,'code,'interpreter,'execution,'heap> ExecutionContext<'transac
         Ok(Continuation::Next)
     }
 
+    //verifies a signature
+    fn ecdsa_verify(&mut self, ValueRef(msg):ValueRef, ValueRef(pk):ValueRef, ValueRef(sig):ValueRef, tail:bool) -> Result<Continuation<'code>>  {
+        let msg_data = unsafe {self.get(msg as usize)?.data};
+        let pk_data = unsafe {self.get(pk as usize)?.data};
+        let sig_data = unsafe {self.get(sig as usize)?.data};
+
+        let res = match (PublicKey::from_bytes(&pk_data), Signature::from_bytes(&sig_data)) {
+            (Ok(pk), Ok(sig)) => {
+                match pk.verify(&msg_data, &sig) {
+                    Ok(_) => 1,
+                    Err(_) => 0
+                }
+            },
+            _ => 0
+        };
+        //this is false, true would be 1
+        self.get_stack(tail).push(Entry{ adt: Adt(res, SlicePtr::empty())})?;
+        Ok(Continuation::Next)
+    }
     //hashes 2 inputs together
     fn join_hash(&mut self, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef, domain:HashingDomain, tail:bool) -> Result<Continuation<'code>>  {
         let data1 = unsafe {self.get(val1 as usize)?.data};

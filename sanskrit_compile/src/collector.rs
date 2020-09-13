@@ -54,6 +54,7 @@ impl Collector {
                 }
             }
         }
+        limiter.produced_functions.set(col.functions.len());
         Ok(col.functions)
     }
 

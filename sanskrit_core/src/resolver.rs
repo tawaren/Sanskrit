@@ -370,17 +370,18 @@ impl<'b, S:Store + 'b> Context<'b, S> {
         }))
     }
 
-    fn project(&self, inner:&Crc<ResolvedType>) -> Crc<ResolvedType>{
+    fn project(&self, inner:&Crc<ResolvedType>, nesting:u8) -> Crc<ResolvedType>{
         //Resolve the type
-        match **inner {
-            ResolvedType::Projection { .. } => inner.clone(),
-            _ => self.store.dedup_type(ResolvedType::Projection { un_projected:inner.clone() })
-        }
+        let depth = match **inner {
+            ResolvedType::Projection { depth, .. } => depth+nesting,
+            _ => nesting
+        };
+        self.store.dedup_type(ResolvedType::Projection { depth, un_projected:inner.get_target().clone()})
     }
 
     fn resolve_projection_type(&self, inner:TypeRef) -> Result<Crc<ResolvedType>>{
         //get the inner type
-        Ok(self.project(&self.get_type(inner)?))
+        Ok(self.project(&self.get_type(inner)?, 1))
     }
 
     fn resolve_function_callable(&self, module:ModRef, offset:u8,  applies:&[TypeRef]) -> Result<Crc<ResolvedCallable>>{
@@ -497,12 +498,12 @@ impl<'b, S:Store + 'b> Context<'b, S> {
                     DataImpl::External(_) => error(||"Extrnal data does not have ctrs")
                 }
             },
-            ResolvedType::Projection { ref un_projected, .. } => {
+            ResolvedType::Projection { depth, ref un_projected, .. } => {
                 assert!(if let ResolvedType::Projection{..} = **un_projected {false} else {true});
                 //recurses only once (assert checks assumption)
                 let ctrs = self.resolve_ctr_from_type(un_projected)?;
                 Ok(self.store.dedup_ctr(ctrs.iter().map(|cases| cases.iter().map(|field|{
-                    self.project(field)
+                    self.project(field, depth)
                 }).collect()).collect()))
             },
 

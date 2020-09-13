@@ -116,7 +116,7 @@ impl<'a> CodeImportBuilder<'a> {
             builder.type_assoc.insert(Type{
                 main: Ref::Generic(g.name.clone()),
                 applies: vec![],
-                is_project: false
+                projections: 0
             }, TypeRef(i as u8));
         }
 
@@ -146,7 +146,7 @@ impl<'a> CodeImportBuilder<'a> {
             return Ok(self.module_assoc[&id])
         }
         let link = ModuleLink::Remote(self.mapping[&id].hash.unwrap());
-        let pos =if(self.this_module.is_some()){
+        let pos =if self.this_module.is_some(){
             self.modules_import.len()+1
         } else {
             self.modules_import.len()
@@ -265,11 +265,11 @@ impl<'a> CodeImportBuilder<'a> {
         if self.type_assoc.contains_key(typ ) {
             return Ok(self.type_assoc[typ])
         }
-        let r_type = if typ.is_project {
+        let r_type = if typ.projections != 0 {
             let plain = self.import_typ_ref(&Type{
                 main: typ.main.clone(),
                 applies: typ.applies.clone(),
-                is_project: false
+                projections: typ.projections - 1
             })?;
             RType::Projection{typ:plain}
         } else {
@@ -343,7 +343,7 @@ pub struct BundleImportBuilder{
     witness_import:Vec<Vec<u8>>,
     witness_assoc:HashMap<Vec<u8>,u16>,
 
-    value_import:Vec<Vec<u8>>,
+    value_import:Vec<Hash>,
     //this would only be appropriate if we know that it has the same value each time
     //value_assoc:HashMap<Vec<u8>,u16>,
 
@@ -399,7 +399,7 @@ impl BundleImportBuilder {
         pos
     }
 
-    pub fn value_ref(&mut self, val:&Vec<u8>) -> u16{
+    pub fn value_ref(&mut self, val:&Hash) -> u16{
         /* we can not ensure that it has the same witness if id is te same
         if self.value_assoc.contains_key(val) {
             return self.value_assoc[val]
@@ -437,10 +437,10 @@ impl BundleImportBuilder {
         builder.finish()
     }
 
-    pub fn values<'a>(&self, alloc:&'a HeapArena) -> SlicePtr<'a, SlicePtr<'a, u8>>  {
+    pub fn values<'a>(&self, alloc:&'a HeapArena) -> SlicePtr<'a, Hash>  {
         let mut builder = alloc.slice_builder(self.value_import.len()).unwrap();
         for v in &self.value_import {
-            builder.push(alloc.copy_alloc_slice(v).unwrap());
+            builder.push(v.clone());
         }
         builder.finish()
     }

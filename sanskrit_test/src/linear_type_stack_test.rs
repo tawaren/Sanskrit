@@ -19,7 +19,8 @@ mod tests {
             process_byte_budget: Cell::new(usize::max_value()),
             stack_elem_budget: Cell::new(usize::max_value()),
             nesting_limit: 10,
-            input_limit: 1000000
+            input_limit: 1000000,
+            max_nesting: Cell::new(0),
         }
     }
     
@@ -341,7 +342,7 @@ mod tests {
     // "Targeted element lies outside of stack"
 
     #[test]
-    #[should_panic(expected="Index out of bounds")]
+    #[should_panic(expected="Stack access out of bounds")]
     fn reach_outside() {
         let accounting = max_accounting();
         test(&accounting,|stack|{
@@ -351,7 +352,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected="Index out of bounds")]
+    #[should_panic(expected="Stack access out of bounds")]
     fn reach_outside2() {
         let accounting = max_accounting();
         test(&accounting,|stack|{
@@ -362,7 +363,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected="Index out of bounds")]
+    #[should_panic(expected="Stack access out of bounds")]
     fn reach_outside3() {
         let accounting = max_accounting();
         test(&accounting,|stack|{
@@ -374,7 +375,7 @@ mod tests {
 
 
     #[test]
-    #[should_panic(expected="Index out of bounds")]
+    #[should_panic(expected="Stack access out of bounds")]
     fn reach_outside4() {
         let accounting = max_accounting();
         test(&accounting,|stack|{
@@ -384,7 +385,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected="Index out of bounds")]
+    #[should_panic(expected="Stack access out of bounds")]
     fn reach_outside5() {
         let accounting = max_accounting();
         test(&accounting,|stack|{

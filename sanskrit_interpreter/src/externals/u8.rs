@@ -1,15 +1,11 @@
-use sanskrit_common::model::{Hash, SlicePtr, ValueRef};
+use sanskrit_common::model::{SlicePtr, ValueRef};
 use externals::{External, just_gas_and_mem, CompilationResult};
 use sanskrit_common::arena::HeapArena;
 use model::{OpCode, Kind, LitDesc, ValueSchema};
 use sanskrit_common::errors::*;
+use sanskrit_common::encoding::*;
 
-pub const MODULE:Hash = [190, 180, 38, 200, 248, 85, 8, 133, 170, 39, 202, 121, 15, 173, 252, 60, 218, 80, 245, 132];
 pub const EXT_U8:&'static dyn External = &U8;
-
-pub fn check_hash() {
-    assert_eq!(format!("{:?}", MODULE), include_str!("../../../sanskrit_test/scripts/out/intu8.hash"));
-}
 
 pub struct U8;
 impl External for U8{

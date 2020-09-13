@@ -45,8 +45,8 @@ impl PartialEq for ResolvedType {
         match (self,other) {
             (ResolvedType::Generic { offset:off1, .. }, ResolvedType::Generic { offset:off2, .. })
             => off1 == off2,
-            (ResolvedType::Projection { un_projected:typ1, .. }, ResolvedType::Projection { un_projected:typ2, .. })
-            => typ1 == typ2,
+            (ResolvedType::Projection { depth:depth1,  un_projected:typ1, .. }, ResolvedType::Projection { depth:depth2, un_projected:typ2, .. })
+            => typ1 == typ2 && depth1 == depth2,
             (ResolvedType::Sig { module:mod1, offset:off1, applies:applies1, .. }, ResolvedType::Sig { module:mod2, offset:off2, applies:applies2, .. })
             | (ResolvedType::Data { module:mod1, offset:off1, applies:applies1, .. }, ResolvedType::Data { module:mod2, offset:off2, applies:applies2, .. })
             | (ResolvedType::Lit { module:mod1, offset:off1, applies:applies1, .. }, ResolvedType::Lit { module:mod2, offset:off2, applies:applies2, .. })
@@ -68,8 +68,8 @@ impl Ord for ResolvedType {
         match (self,other) {
             (ResolvedType::Generic { offset:off1, .. }, ResolvedType::Generic { offset:off2, .. })
             => off1.cmp(off2),
-            (ResolvedType::Projection { un_projected:typ1, .. }, ResolvedType::Projection { un_projected:typ2, .. })
-            => typ1.cmp(typ2),
+            (ResolvedType::Projection {  depth:depth1, un_projected:typ1, .. }, ResolvedType::Projection {  depth:depth2, un_projected:typ2, .. })
+            => typ1.cmp(typ2).then_with(||depth1.cmp(depth2)),
             (ResolvedType::Sig { module:mod1, offset:off1, applies:applies1, .. }, ResolvedType::Sig { module:mod2, offset:off2, applies:applies2, .. })
             | (ResolvedType::Data { module:mod1, offset:off1, applies:applies1, .. }, ResolvedType::Data { module:mod2, offset:off2, applies:applies2, .. })
             | (ResolvedType::Lit { module:mod1, offset:off1, applies:applies1, .. }, ResolvedType::Lit { module:mod2, offset:off2, applies:applies2, .. })
@@ -99,8 +99,9 @@ impl Hash for ResolvedType {
                 state.write_u8(0);
                 state.write_u8(*offset);
             },
-            ResolvedType::Projection { un_projected, .. } => {
+            ResolvedType::Projection { depth, un_projected, .. } => {
                 state.write_u8(1);
+                state.write_u8(*depth);
                 un_projected.hash(state)
             },
             ResolvedType::Sig { module, offset, applies, .. } => {

@@ -1,0 +1,67 @@
+use parser_model::*;
+use std::str::FromStr;
+
+grammar;
+
+pub Execute:Execute = <name:Id> "(" <params:Comma<Param>> ")" ":" "(" <rets:Comma<Ret>> ")" => Execute{name,params,rets};
+pub Param:ParamInput = {
+    <lit:Lit> => ParamInput::Lit(lit),
+    "sig" "(" <name:Id> ")" => ParamInput::Sig(name),
+    "pk" "(" <name:Id> ")" => ParamInput::Pk(name),
+    "consume" "(" <name:Id> ")" => ParamInput::Consume(name),
+    "read" "(" <name:Id> ")" => ParamInput::Read(name),
+    "copy" "(" <name:Id> ")" => ParamInput::Copy(name),
+    "inject" => ParamInput::Inject,
+    "_" => ParamInput::Inject,
+};
+
+pub Ret:RetInput = {
+    "log" "(" <name:Id> ")" => RetInput::Log(name),
+    "store" "(" <name:Id> ")" => RetInput::Store(name),
+    "drop" => RetInput::Drop,
+    "_" => RetInput::Drop,
+};
+
+Lit:LitInput = {
+    "id" "(" <name:Id> ")" => LitInput::Id(name),
+    "derive" "(" <l1:Lit> ","  <l2:Lit> ")" => LitInput::Derive(Box::new(l1), Box::new(l2)),
+    "data" "(" <value:Hex> ")" => LitInput::Data(value),
+    "union" "[" <tag:U8> "]" "(" <fields:Comma<Lit>> ")" => LitInput::Union(tag, fields),
+    "struct" "(" <fields:Comma<Lit>> ")" => LitInput::Struct(fields),
+    "u8" "(" <num:U8> ")" => LitInput::U8(num),
+    "u16" "(" <num:U16> ")" => LitInput::U16(num),
+    "u32" "(" <num:U32> ")" => LitInput::U32(num),
+    "u64" "(" <num:U64> ")" => LitInput::U64(num),
+    "u128" "(" <num:U128> ")" => LitInput::U128(num),
+    "i8" "(" <num:I8> ")" => LitInput::I8(num),
+    "i16" "(" <num:I16> ")" => LitInput::I16(num),
+    "i32" "(" <num:I32> ")" => LitInput::I32(num),
+    "i64" "(" <num:I64> ")" => LitInput::I64(num),
+    "i128" "(" <num:I128> ")" => LitInput::I128(num),
+};
+
+Id:String = <s:r"[_a-zA-Z][_a-zA-Z0-9]*"> => s.into();
+Hex:String = <s:r"0x[0-9a-fA-F]+"> => s.into();
+
+U8:u8 = <s:Num> => u8::from_str(s).unwrap();
+U16:u16 = <s:Num> => u16::from_str(s).unwrap();
+U32:u32 = <s:Num> => u32::from_str(s).unwrap();
+U64:u64 = <s:Num> => u64::from_str(s).unwrap();
+U128:u128 = <s:Num> => u128::from_str(s).unwrap();
+I8:i8 = <s:Num> => i8::from_str(s).unwrap();
+I16:i16 = <s:Num> => i16::from_str(s).unwrap();
+I32:i32 = <s:Num> => i32::from_str(s).unwrap();
+I64:i64 = <s:Num> => i64::from_str(s).unwrap();
+I128:i128 = <s:Num> => i128::from_str(s).unwrap();
+Num:&'input str = <s:r"(-)?[0-9]+"> => s;
+
+Comma<T>: Vec<T> = {
+    <v:(<T> ",")*> <e:T?> => match e {
+        None => v,
+        Some(e) => {
+            let mut v = v;
+            v.push(e);
+            v
+        }
+    }
+};

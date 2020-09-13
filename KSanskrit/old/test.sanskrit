@@ -1,0 +1,28 @@
+mod Test {
+    error L;
+    adt Option[T]{
+        case None();
+        case Some(T)
+    }
+};
+
+mod Test2 {
+    error Z;
+    error U;
+    capability X[A,C];
+
+    adt Blah[T]{
+        case Uno(X[T,Test.Option[T]] T);
+        case Duo(Test.Option[T]);
+        case Tres(X[Test.Option[T],T] Test.Option[X[T,T] T])
+    };
+
+    risk (Z,Test.L) public function Foo[Q](borrow Test.Option[Q]) -> (Q) {
+        throw Z
+    }
+
+}
+
+eval {
+    return ()
+}

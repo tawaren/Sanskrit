@@ -8,6 +8,8 @@ pub struct Accounting {
     pub store_byte_budget:Cell<usize>,
     pub process_byte_budget:Cell<usize>,
     pub stack_elem_budget:Cell<usize>,
+    //only used for discovering nesting_limit
+    pub max_nesting:Cell<usize>,
     pub nesting_limit:usize,
     pub input_limit:usize,
 }
@@ -32,7 +34,7 @@ impl Accounting {
 
 pub fn checked_subtract(cell:&Cell<usize>, amount:usize) -> Result<()> {
     if cell.get() < amount {
-        error(||"budget exhaused")
+        error(||"budget exhausted")
     } else {
         cell.set(cell.get()-amount);
         Ok(())

@@ -22,7 +22,8 @@ mod tests {
             process_byte_budget: Cell::new(usize::max_value()),
             stack_elem_budget: Cell::new(usize::max_value()),
             nesting_limit: 10,
-            input_limit: 1000000
+            input_limit: 1000000,
+            max_nesting: Cell::new(0),
         }
     }
 
@@ -57,12 +58,12 @@ mod tests {
                 asm.write_all(format!("{:?}",Parser::parse_fully::<Module,NoCustomAlloc>(&r,usize::max_value(), &NoCustomAlloc()).unwrap()).as_bytes()).unwrap();
             }
             println!("Deploying module {:?} of {} Bytes", c_id, r.len());
-            let res = deploy_module(&s, &accounting,r, true)?;
+            let res = deploy_module(&s, &accounting,r, true, true)?;
 
             if c_id == id {
                 let fh_path = out_folder.join(&id.0.to_lowercase()).with_extension("hash");
                 let mut hs = File::create(fh_path).expect("file not found");
-                hs.write_all(format!("{:?}",res).as_bytes()).unwrap();
+                hs.write_all( &Serializer::serialize_fully(&res, 5)?).unwrap();
             }
         }
         Ok(())
@@ -81,7 +82,7 @@ mod tests {
             let s = BTreeMapStore::new();
             let accounting = max_accounting();
             for r in res.clone() {
-                let res = deploy_module(&s, &accounting, r, true).unwrap();
+                let res = deploy_module(&s, &accounting, r, true, true).unwrap();
             }
         });
         Ok(())
@@ -160,6 +161,11 @@ mod tests {
     #[test]
     fn build_int_u128() {
         parse_and_deploy_plain("intU128").unwrap();
+    }
+
+    #[test]
+    fn build_ecdsa() {
+        parse_and_deploy_plain("ecdsa").unwrap();
     }
 
     #[bench]
