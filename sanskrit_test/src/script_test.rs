@@ -47,8 +47,7 @@ mod tests {
         comp.compile_module_tree().unwrap();
         let s = BTreeMapStore::new();
         let accounting = max_accounting();
-        let _res = comp.get_module_results();
-        for (c_id,r) in comp.get_module_results() {
+        for (c_id, sys_mode, r) in comp.get_module_results() {
             if c_id == id {
                 let fb_path = out_folder.join(&id.0.to_lowercase()).with_extension("bin");
                 let mut bin = File::create(fb_path).expect("file not found");
@@ -57,8 +56,8 @@ mod tests {
                 let mut asm = File::create(fa_path).expect("file not found");
                 asm.write_all(format!("{:?}",Parser::parse_fully::<Module,NoCustomAlloc>(&r,usize::max_value(), &NoCustomAlloc()).unwrap()).as_bytes()).unwrap();
             }
-            println!("Deploying module {:?} of {} Bytes", c_id, r.len());
-            let res = deploy_module(&s, &accounting,r, true, true)?;
+            println!("Deploying module {:?} of {} Bytes with system_mode = {}", c_id, r.len(), sys_mode);
+            let res = deploy_module(&s, &accounting,r, sys_mode, true)?;
 
             if c_id == id {
                 let fh_path = out_folder.join(&id.0.to_lowercase()).with_extension("hash");
@@ -77,12 +76,12 @@ mod tests {
         comp.parse_module_tree(id.clone(), system_level+1);
         comp.compile_module_tree().unwrap();
 
-        let res = comp.get_module_results().into_iter().map(|(_,r)|r).collect::<Vec<_>>();
+        let res = comp.get_module_results().into_iter().map(|(_,sys_mode,r)|(sys_mode,r)).collect::<Vec<_>>();
         b.iter(|| {
             let s = BTreeMapStore::new();
             let accounting = max_accounting();
-            for r in res.clone() {
-                deploy_module(&s, &accounting, r, true, true).unwrap();
+            for (sys_mode,r) in res.clone() {
+                deploy_module(&s, &accounting, r, sys_mode, true).unwrap();
             }
         });
         Ok(())

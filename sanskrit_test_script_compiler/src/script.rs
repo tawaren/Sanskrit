@@ -484,11 +484,11 @@ impl<'a> Compiler<'a> {
         Ok(())
     }
 
-    pub fn get_module_results(&self) -> Vec<(Id, Vec<u8>)> {
+    pub fn get_module_results(&self) -> Vec<(Id, bool, Vec<u8>)> {
         self.parsed.iter()
             .filter(|(id,_)|self.compiled.contains_key(id))
             .sorted_by(|m1,m2|m1.1.level.cmp(&m2.1.level))
-            .map(|(id,_)|((*id).clone(), self.compiled[id].clone())).collect()
+            .map(|(id,entry)|((*id).clone(), entry.module.is_system,self.compiled[id].clone())).collect()
     }
 
     pub fn get_functions_to_deploy(&self) -> Vec<Vec<u8>> {

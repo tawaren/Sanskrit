@@ -20,11 +20,7 @@ extern crate lazy_static;
 
 pub mod externals;
 pub mod script_test;
-pub mod limit_tests;
 pub mod linear_type_stack_test;
 mod generator;
 
 pub mod transaction_test;
-
-//#[cfg(test)]
-//pub mod gas_bench;

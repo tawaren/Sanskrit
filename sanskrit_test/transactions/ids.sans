@@ -1,4 +1,4 @@
-module Ids {
+system module Ids {
     extType(20) <Copy,Drop,Persist,Value,Unbound> PrivateId;
     public extType(20) <Copy,Drop,Persist,Primitive,Value,Unbound> PublicId;
 

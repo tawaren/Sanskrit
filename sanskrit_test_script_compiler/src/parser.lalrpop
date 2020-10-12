@@ -4,7 +4,10 @@ use std::str::FromStr;
 
 grammar;
 
-pub Module:Module =  "module" <name:Id> "{" <components:Semi<Component>> "}" => Module{name,components};
+pub Module:Module =  {
+    "module" <name:Id> "{" <components:Semi<Component>> "}" => Module{is_system:false,name,components},
+    "system" "module" <name:Id> "{" <components:Semi<Component>> "}" => Module{is_system:true,name,components},
+};
 
 pub Transactions:Vec<Component> = <components:Semi<Transaction>> => components;
 

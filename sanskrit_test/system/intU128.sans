@@ -1,4 +1,4 @@
-module IntU128 {
+system module IntU128 {
    public extType(16) <Copy,Drop,Persist,Primitive,Value,Unbound> U128;
 
 

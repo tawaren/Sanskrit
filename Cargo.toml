@@ -11,11 +11,7 @@ members = [
         "sanskrit_sled_store",
         "sanskrit_test_script_compiler",
         "sanskrit_test",
-        "sanskrit_test_wasm",
         "sanskrit_local_server",
-        "sanskrit_wasm_deploy",
-        "sanskrit_wasm_deploy_compile",
-        "sanskrit_wasm_compile"
 ]
 
 [profile.release]

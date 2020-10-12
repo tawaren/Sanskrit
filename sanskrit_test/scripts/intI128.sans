@@ -1,4 +1,4 @@
-module IntI128 {
+system module IntI128 {
    public extType(16) <Copy,Drop,Persist,Primitive,Value,Unbound> I128;
 
    public extFun eq(num1:.I128, num2:.I128):(res:Bool.Bool);

@@ -1,4 +1,4 @@
-module IntU16 {
+system module IntU16 {
     public extType(2) <Copy,Drop,Persist,Primitive,Value,Unbound> U16;
 
     public extFun eq(num1:.U16, num2:.U16):(res:Bool.Bool);

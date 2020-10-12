@@ -1,4 +1,4 @@
-module Ecdsa {
+system module Ecdsa {
     public extType(32) <Copy,Drop,Persist,Primitive,Value,Unbound> Pk;
     public extType(64) <Copy,Drop,Persist,Primitive,Value,Unbound> Sig;
 

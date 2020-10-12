@@ -1,4 +1,4 @@
-module IntU32 {
+system module IntU32 {
     public extType(4) <Copy,Drop,Persist,Primitive,Value,Unbound> U32;
 
     public extFun eq(num1:.U32, num2:.U32):(res:Bool.Bool);

@@ -6,6 +6,7 @@ use sanskrit_core::model::bitsets::CapSet;
 use sanskrit_common::model::Hash;
 
 pub struct Module {
+    pub is_system:bool,
     pub name: Id,
     pub components: Vec<Component>,
 }

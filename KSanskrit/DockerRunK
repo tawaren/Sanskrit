@@ -1,1 +1,0 @@
-docker run -it -v C:\Users\marku\Dropbox\Privat\UZH\PhD\code\sankrit_vm\KSanskrit:/sanskrit runtimeverificationinc/kframework-k:ubuntu-bionic-master

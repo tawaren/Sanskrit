@@ -1,4 +1,4 @@
-module System {
+system module System {
 
    public(create) top type <Copy,Drop,Value,Unbound> Entry[<Persist> T]{
         Ctr(Ids.PrivateId,T);

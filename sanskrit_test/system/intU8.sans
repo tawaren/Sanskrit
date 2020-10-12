@@ -1,4 +1,4 @@
-module IntU8 {
+system module IntU8 {
     public extType(1) <Copy,Drop,Persist,Primitive,Value,Unbound> U8;
 
     public extFun eq(num1:.U8, num2:.U8):(res:Bool.Bool);

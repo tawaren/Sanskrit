@@ -1,4 +1,4 @@
-module Data {
+system module Data {
     public extType(1) <Copy,Drop,Persist,Primitive,Value,Unbound> Data1;
     public extType(2) <Copy,Drop,Persist,Primitive,Value,Unbound> Data2;
     public extType(4) <Copy,Drop,Persist,Primitive,Value,Unbound> Data4;

@@ -84,13 +84,15 @@ mod tests {
         let id = Id(id_name.into());
         let folder = current_dir().unwrap().join("transactions");
         let mut comp = Compiler::new(&folder);
+        let system_level = comp.parse_module_tree(Id("system".into()), 0);
         comp.parse_and_compile_transactions(id.clone())?;
         let mod_res = comp.get_module_results();
         let txt_res = comp.get_functions_to_deploy();
         let s = BTreeMapStore::new();
-        for (i,r) in mod_res {
+        for (i,sys_mode, r) in mod_res {
             println!("M: {:?}",i);
-            deploy_module(&s, &accounting, r, true, true)?;
+
+            deploy_module(&s, &accounting, r, sys_mode, true)?;
         }
 
         let mut heap = Heap::new(CONFIG.calc_heap_size(2),2.0);
@@ -137,13 +139,14 @@ mod tests {
         let id = Id(id_name.into());
         let folder = current_dir().unwrap().join("transactions");
         let mut comp = Compiler::new(&folder);
+        let system_level = comp.parse_module_tree(Id("system".into()), 0);
         comp.parse_and_compile_transactions(id.clone())?;
         let mod_res = comp.get_module_results();
         let txt_res = comp.get_functions_to_deploy();
         let s = BTreeMapStore::new();
-        for (i,r) in mod_res {
+        for (i,sys_mode, r) in mod_res {
             println!("M: {:?}",i);
-            deploy_module(&s, &accounting, r, true, true)?;
+            deploy_module(&s, &accounting, r, sys_mode, true)?;
         }
 
         let mut hashes = Vec::with_capacity(txt_res.len());
@@ -546,7 +549,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected="Program threw an error")]
+    #[should_panic(expected="Transaction was rolled back")]
     fn fail_eq() {
         parse_and_compile_and_run("testFailEq").unwrap();
     }

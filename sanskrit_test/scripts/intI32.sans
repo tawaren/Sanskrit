@@ -1,4 +1,4 @@
-module IntI32 {
+system module IntI32 {
     public extType(4) <Copy,Drop,Persist,Primitive,Value,Unbound> I32;
 
     public extFun eq(num1:.I32, num2:.I32):(res:Bool.Bool);

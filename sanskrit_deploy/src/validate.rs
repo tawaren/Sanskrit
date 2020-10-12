@@ -156,8 +156,8 @@ fn validate_adt<S:Store>(adt:&DataComponent, context:&Context<S>, system_mode_on
     }
 
     //check visibility
-    check_visibility_integrity(&adt.create_scope, adt.generics.len())?;
-    check_visibility_integrity(&adt.consume_scope, adt.generics.len())
+    check_accessibility_integrity(&adt.create_scope, adt.generics.len())?;
+    check_accessibility_integrity(&adt.consume_scope, adt.generics.len())
 
 }
 
@@ -177,8 +177,8 @@ fn validate_sig<S:Store>(sig:&SigComponent, ctx:&Context<S>) -> Result<()>{
     check_params_and_returns(&sig.shared.params, &sig.shared.returns, ctx)?;
 
     //check visibility
-    check_visibility_integrity(&sig.call_scope, sig.shared.generics.len())?;
-    check_visibility_integrity(&sig.implement_scope, sig.shared.generics.len())
+    check_accessibility_integrity(&sig.call_scope, sig.shared.generics.len())?;
+    check_accessibility_integrity(&sig.implement_scope, sig.shared.generics.len())
 
 }
 
@@ -189,9 +189,9 @@ fn check_body<S:Store>(fun:&CallableImpl, ctx:&Context<S>, system_mode_on:bool) 
             //Check integret of imports
             check_function_import_integrity(ctx)?;
             //check that the imported functions are visible
-            check_callable_import_visibility(ctx)?;
+            check_callable_import_accessibility(ctx, system_mode_on)?;
             //check permissions
-            check_permission_visibility(ctx)?;
+            check_permission_accessibility(ctx, system_mode_on)?;
         },
     }
     Ok(())
@@ -219,7 +219,7 @@ fn validate_transaction<S:Store>(fun:&FunctionComponent, ctx:&Context<S>) -> Res
     check_txt_params_and_returns(&fun.shared.params, &fun.shared.returns, ctx)?;
 
     //check visibility
-    check_visibility_integrity(&fun.scope, fun.shared.generics.len())
+    check_accessibility_integrity(&fun.scope, fun.shared.generics.len())
 }
 
 //Checks that an function declaration is semantically valid
@@ -237,7 +237,7 @@ fn validate_function<S:Store>(fun:&FunctionComponent, ctx:&Context<S>, system_mo
     check_params_and_returns(&fun.shared.params, &fun.shared.returns, ctx)?;
 
     //check visibility
-    check_visibility_integrity(&fun.scope, fun.shared.generics.len())
+    check_accessibility_integrity(&fun.scope, fun.shared.generics.len())
 }
 
 
@@ -259,7 +259,7 @@ fn validate_implement<S:Store>(imp:&ImplementComponent, ctx:&Context<S>, system_
     check_params_and_returns(&imp.params, &[], ctx)?;
 
     //check visibility
-    check_visibility_integrity(&imp.scope, imp.generics.len())
+    check_accessibility_integrity(&imp.scope, imp.generics.len())
 
 }
 
@@ -422,17 +422,17 @@ fn check_ctr_fields<S:Store>(provided_caps:CapSet, ctrs:&[Case], context:&Contex
 }
 
 //check the functions visibility
-fn check_visibility(comp_vis:&Accessibility, comp_module:&Crc<ModuleLink>, comp_applies:&[Crc<ResolvedType>]) -> Result<()> {
+fn check_access(comp_access:&Accessibility, comp_module:&Crc<ModuleLink>, comp_applies:&[Crc<ResolvedType>], system_mode_on:bool) -> Result<()> {
     //check the functions visibility
-    match comp_vis {
+    match comp_access {
         //public can always be imported
         Accessibility::Global => {},
         //private can only be imported if from the same module
-        Accessibility::Local => if !comp_module.is_local_link() {
+        Accessibility::Local => if !comp_module.is_local_link() && !system_mode_on {
             return error(||"A private permission must be from the current module")
         },
         //Protected can only be imported if the protected types are owned or are declared as protected as well
-        Accessibility::Guarded(ref guards) => {
+        Accessibility::Guarded(ref guards) => if !system_mode_on {
             //check that all protected types are ok
             for &GenRef(index) in guards {
                 //check the ownership protection
@@ -446,7 +446,7 @@ fn check_visibility(comp_vis:&Accessibility, comp_module:&Crc<ModuleLink>, comp_
 }
 
 //Checks the visibility constraints
-fn check_callable_import_visibility<S:Store>(context:&Context<S>) -> Result<()> {
+fn check_callable_import_accessibility<S:Store>(context:&Context<S>, system_mode_on:bool) -> Result<()> {
     //iterate over all imported functions
     for c in context.list_callables() {
         //fetch the function
@@ -457,7 +457,7 @@ fn check_callable_import_visibility<S:Store>(context:&Context<S>) -> Result<()> 
                 //Retrieve the function from the cache
                 let imp_fun_comp = imp_fun_cache.retrieve();
                 //check it
-                check_visibility(&imp_fun_comp.scope, module, &applies)?;
+                check_access(&imp_fun_comp.scope, module, &applies, system_mode_on)?;
             },
 
             ResolvedCallable::Implement  { ref module,offset, ref applies, ..} => {
@@ -466,7 +466,7 @@ fn check_callable_import_visibility<S:Store>(context:&Context<S>) -> Result<()> 
                 //Retrieve the function from the cache
                 let imp_comp = imp_cache.retrieve();
                 //check it
-                check_visibility(&imp_comp.scope, module, &applies)?;
+                check_access(&imp_comp.scope, module, &applies, system_mode_on)?;
             }
         }
     }
@@ -474,7 +474,7 @@ fn check_callable_import_visibility<S:Store>(context:&Context<S>) -> Result<()> 
 }
 
 //Checks the visibility constraints
-fn check_permission_visibility<S:Store>(context:&Context<S>) -> Result<()> {
+fn check_permission_accessibility<S:Store>(context:&Context<S>, system_mode_on:bool) -> Result<()> {
     //iterate over all imported functions
     for p in context.list_perms() {
         //fetch the function
@@ -491,7 +491,7 @@ fn check_permission_visibility<S:Store>(context:&Context<S>) -> Result<()> {
                             //Retrieve the function from the cache
                             let fun = fun_cache.retrieve();
                             //check it
-                            check_visibility(&fun.scope, module, &applies)?;
+                            check_access(&fun.scope, module, &applies, system_mode_on)?;
                         }
                     },
                     ResolvedCallable::Implement {ref module,offset, ref applies,..} => {
@@ -501,7 +501,7 @@ fn check_permission_visibility<S:Store>(context:&Context<S>) -> Result<()> {
                             //Retrieve the function from the cache
                             let imp = imp_cache.retrieve();
                             //check it
-                            check_visibility(&imp.scope, module, &applies)?;
+                            check_access(&imp.scope, module, &applies, system_mode_on)?;
                         }
                     }
                 }
@@ -518,7 +518,7 @@ fn check_permission_visibility<S:Store>(context:&Context<S>) -> Result<()> {
                             //Retrieve the function from the cache
                             let imp_data_comp = imp_data_cache.retrieve();
                             //check it
-                            check_visibility(&imp_data_comp.create_scope, module, &[])?;
+                            check_access(&imp_data_comp.create_scope, module, &[], system_mode_on)?;
                         }
                     },
                     _ =>  return error(||"Create permission must be used on a lit type")
@@ -536,13 +536,13 @@ fn check_permission_visibility<S:Store>(context:&Context<S>) -> Result<()> {
                         let imp_data_comp = imp_data_cache.retrieve();
                         //check it
                         if perm.contains(Permission::Create) {
-                            check_visibility(&imp_data_comp.create_scope, module, &applies)?;
+                            check_access(&imp_data_comp.create_scope, module, &applies, system_mode_on)?;
                         }
                         if perm.contains(Permission::Consume) {
-                            check_visibility(&imp_data_comp.consume_scope, module, &applies)?;
+                            check_access(&imp_data_comp.consume_scope, module, &applies, system_mode_on)?;
                         }
                         if perm.contains(Permission::Inspect) {
-                            check_visibility(&imp_data_comp.inspect_scope, module, &applies)?;
+                            check_access(&imp_data_comp.inspect_scope, module, &applies, system_mode_on)?;
                         }
                     },
                     _ => return error(|| "TypeData permissions must be used on a data type")
@@ -561,10 +561,10 @@ fn check_permission_visibility<S:Store>(context:&Context<S>) -> Result<()> {
                         let imp_sig_comp = imp_sig_cache.retrieve();
                         //check it
                         if perm.contains(Permission::Call) {
-                            check_visibility(&imp_sig_comp.call_scope, module, &applies)?;
+                            check_access(&imp_sig_comp.call_scope, module, &applies, system_mode_on)?;
                         }
                         if perm.contains(Permission::Implement) {
-                            check_visibility(&imp_sig_comp.implement_scope, module, &applies)?;
+                            check_access(&imp_sig_comp.implement_scope, module, &applies, system_mode_on)?;
                         }
                     } ,
                     _ => return error(||"Call permission must be used on a not projected signature type")
@@ -575,7 +575,7 @@ fn check_permission_visibility<S:Store>(context:&Context<S>) -> Result<()> {
     Ok(())
 }
 
-fn check_visibility_integrity(vis:&Accessibility, num_gens:usize) -> Result<()>  {
+fn check_accessibility_integrity(vis:&Accessibility, num_gens:usize) -> Result<()>  {
     match vis {
         Accessibility::Guarded(ref guards) => {
             //check that all protected types are ok
