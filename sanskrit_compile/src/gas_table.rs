@@ -43,7 +43,8 @@ pub mod gas {
         5 + 5*(rets as u64)
     }
 
-    pub fn throw() -> u64 {
+    //todo: do we need to parameterize??
+    pub fn rollback() -> u64 {
         5
     }
 

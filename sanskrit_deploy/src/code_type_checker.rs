@@ -87,6 +87,8 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
         }
         //get the signature
         let sig = r_perm.get_sig()?;
+        //Capture transactional declaration
+        self.transactional = sig.transactional;
         // num params
         let num_params = imp.params.len()+ sig.params.len();
         //Push the capt parameters onto the stack

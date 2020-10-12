@@ -513,41 +513,31 @@ impl<'a> Compiler<'a> {
             txts: SlicePtr::empty(),
         };*/
 
-        //Todo: Compute these costs
         let main_section = BundleSection {
-            typ: SectionType::Custom,
-            entries_loaded: 1000,
-            entries_created: 1000,
-            entries_deleted: 1000,
-            gas_limit: 10000000,
+            typ: SectionType::Essential,
             txts: alloc.copy_alloc_slice(&built_txts).unwrap()
         };
 
-        let store_witness = env.empty_storage_witnesses(&alloc);
-        let witness = env.witnesses(&alloc);
-        let witness_size = witness.iter().map(|w|w.len() + 2).sum::<usize>() + 2;  //2 is num wittness / Num Bytes
-        let store_witness_size = store_witness.iter().map(|w|w.map_or(0,|d|d.len()+2)+1).sum::<usize>() + 2;  //2 is num wittness / Num Bytes
-
+        //Todo: Compute these costs
         let bundle = TransactionBundle {
             byte_size: None,
             core: TransactionBundleCore {
                 byte_size: None,
                 meta:SlicePtr::empty(),
-                deploy: None,
                 transaction_storage_heap: 10000,
                 param_heap_limit: 10000,
                 stack_elem_limit: 1000,
                 stack_frame_limit: 1000,
                 runtime_heap_limit: 10000,
+                essential_gas_cost: 10000000,
+                total_gas_cost: 10000000,
                 sections: alloc.copy_alloc_slice(&[/*pay_section, */main_section]).unwrap(),
                 descriptors: alloc.copy_alloc_slice(env.descs()).unwrap(),
                 stored: env.values(&alloc),
                 literal: env.literals(&alloc),
-                witness_bytes_limit: (witness_size + store_witness_size) as u32,               
+                earliest_block: 0
             },
-            witness,
-            //todo: fill over state provider runtime extension later: when ready
-            store_witness
+            witness: env.witnesses(&alloc)
         };
         Serializer::serialize_fully(&bundle,CONFIG.max_structural_dept).unwrap()
     }

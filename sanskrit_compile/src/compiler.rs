@@ -48,9 +48,6 @@ pub fn compile_transaction<'b, 'h, S:Store, E:CompilationExternals>(transaction_
 
 }
 
-const NO_MODULE: Hash = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-
-
 //generates a function descriptor
 fn generate_transaction_descriptor<'b,'h, S:Store,E:CompilationExternals>(fun:&FunctionComponent, code:&SExp, ctx:&Context<S>, alloc:&'b HeapArena<'h>, limiter:&Limiter) -> Result<TransactionDescriptor<'b>> {
     
@@ -89,8 +86,6 @@ fn generate_transaction_descriptor<'b,'h, S:Store,E:CompilationExternals>(fun:&F
         });
     }
     let returns = returns.finish();
-
-    let module = ctx.store.dedup_module_link(ModuleLink::This(NO_MODULE));
     //do the compaction process
     let (functions,ressources) = Compactor::compact::<S,E>(fun, code,  &ctx.store, alloc, limiter)?;
 

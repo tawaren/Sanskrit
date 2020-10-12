@@ -131,7 +131,7 @@ impl Execute {
     }
 
     pub fn build_param_names(&self) -> Vec<String> {
-        self.params.iter().enumerate().map(|(i,param)|match param{
+        self.params.iter().map(|param|match param{
             ParamInput::Lit(_) => "(lit)".to_string(),
             ParamInput::Sig(name) => name.clone(),
             ParamInput::Pk(name) => name.clone(),

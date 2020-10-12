@@ -1,7 +1,11 @@
 
-/target/
+/target/*
+/.idea/*
+/db/*
+
 **/*.rs.bk
 
 /notes/*
 /sanskrit_compile/src/omptimizer_do_delay_this_far.rs
 /sanskrit_compile/src/SuperCompiler
+

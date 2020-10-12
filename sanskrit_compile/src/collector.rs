@@ -33,7 +33,7 @@ impl Collector {
             functions: Vec::new()
         };
         let ctx = Context::from_top_component(fun,store)?;
-        col.collect_fun_dependencies(&ctx,store)?;
+        col.collect_fun_dependencies(&ctx)?;
         while !col.stack.is_empty() {
             match col.stack.pop().unwrap() {
                 Action::PushDependencies(module, offset) => {
@@ -68,7 +68,7 @@ impl Collector {
                 //get the targets context
                 let new_ctx = Context::from_module_component(fun_comp, &module, true, store)?;
                 self.stack.push(Action::Record(fun_cache));
-                self.collect_fun_dependencies(&new_ctx,store)
+                self.collect_fun_dependencies(&new_ctx)
             },
             //Only internal functions are required in the function graph
              _ => Ok(())
@@ -76,7 +76,7 @@ impl Collector {
 
     }
 
-    fn collect_fun_dependencies<S:Store>(&mut self, ctx:&Context<S>, store:&Loader<S>) -> Result<()> {      //push the post processing
+    fn collect_fun_dependencies<S:Store>(&mut self, ctx:&Context<S>) -> Result<()> {      //push the post processing
         for perm in ctx.list_perms() {
             match **perm {
                 ResolvedPermission::FunSig{ref fun, ref signature, ..} => {

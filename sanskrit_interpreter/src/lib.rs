@@ -6,7 +6,6 @@ extern crate byteorder;
 extern crate sanskrit_common;
 #[macro_use]
 extern crate sanskrit_derive;
-#[macro_use]
 extern crate alloc;
 extern crate ed25519_dalek;
 extern crate sha2;

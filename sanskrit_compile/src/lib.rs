@@ -43,7 +43,7 @@ pub fn compile_function<S:Store, E:CompilationExternals>(store:&S, accounting:&A
 
 pub fn create_descriptor<S:Store, E:CompilationExternals>(store:&S, accounting:&Accounting, limiter:&Limiter, function_hash:Hash) -> Result<(Hash, Vec<u8>)>{
     let heap = Heap::new(10000,4.0);
-    let mut alloc = heap.new_arena(10000);
+    let alloc = heap.new_arena(10000);
     //compiles the content
     let txt_desc = compiler::compile_transaction::<S, E>(&function_hash, store, accounting, limiter, &alloc)?;
     //serializes the content

@@ -13,7 +13,6 @@ extern crate ed25519_dalek;
 extern crate sha2;
 extern crate rand;
 extern crate hex;
-#[macro_use]
 extern crate arrayref;
 extern crate byteorder;
 #[macro_use]
@@ -261,7 +260,7 @@ pub fn main() -> std::io::Result<()> {
     let sys_entry_db = db_folder.join("system_modules").with_extension("db");
     let history = work_dir.join("history").with_extension("txt");
 
-    let mut state = State {
+    let state = State {
         store: SledStore::new(&db_folder),
         //todo: shall this be made persistent as well?
         system: ServerSystem,
@@ -318,7 +317,7 @@ pub fn main() -> std::io::Result<()> {
     }
 
 
-    let mut heap = Heap::new(100000000,2.0);
+    let heap = Heap::new(100000000,2.0);
     let mut full_heap = heap.new_virtual_arena(10000000 as usize);
 
     loop {

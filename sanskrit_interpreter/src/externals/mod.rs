@@ -2,8 +2,6 @@ use sanskrit_common::errors::*;
 use model::{OpCode, ValueSchema};
 use sanskrit_common::model::{Hash, SlicePtr, ValueRef, ModuleLink};
 use sanskrit_common::arena::{HeapArena};
-use sanskrit_common::encoding::*;
-
 
 pub mod i8;
 pub mod i16;

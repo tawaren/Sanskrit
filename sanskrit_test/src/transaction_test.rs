@@ -2,27 +2,25 @@
 #[cfg(test)]
 mod tests {
     use sanskrit_common::errors::*;
-    use sanskrit_test_script_compiler::model::{Id, TransactionCompilationResult};
+    use sanskrit_test_script_compiler::model::Id;
     use sanskrit_deploy::*;
     use sanskrit_compile::*;
     use sanskrit_compile::limiter::*;
     use test::Bencher;
     use sanskrit_memory_store::BTreeMapStore;
     use std::env::current_dir;
-    use sanskrit_common::arena::{Heap, HeapArena, VirtualHeapArena};
+    use sanskrit_common::arena::Heap;
     use sanskrit_test_script_compiler::script::Compiler;
     use sanskrit_core::accounting::Accounting;
     use std::cell::Cell;
     use sanskrit_runtime::{CONFIG, execute, Tracker};
-    use sanskrit_runtime::model::{Transaction, TransactionBundle};
-    use sanskrit_common::encoding::Serializer;
-    use sanskrit_common::model::{Hash, SlicePtr, ValueRef, Ptr};
-    use sanskrit_interpreter::model::ValueSchema;
-    use sanskrit_common::store::{store_hash, StorageClass};
-    use sanskrit_interpreter::externals::External;
+    use sanskrit_common::store::StorageClass;
     use std::fs::File;
     use std::io::{BufReader, BufRead};
     use externals::{ScriptExternals, ScriptSystem};
+    use sanskrit_interpreter::model::{TxTReturn, Entry, TxTParam};
+    use sanskrit_runtime::model::{Transaction, RetType, BundleSection, ParamRef};
+    use sanskrit_common::encoding::Serializer;
 
     fn max_accounting() -> Accounting {
         Accounting {
@@ -45,6 +43,7 @@ mod tests {
         }
     }
 
+    /*
     fn trim_newline(s: &mut String) {
         if s.ends_with('\n') {
             s.pop();
@@ -53,16 +52,29 @@ mod tests {
             }
         }
     }
+    */
 
     struct CheckedLogger{
         expects:Vec<String>
     }
     impl Tracker for CheckedLogger {
-        fn log<'a>(&mut self, data: Vec<u8>) {
-            let expect = self.expects.pop();
-            assert!(expect.is_some(), format!("Found {:?} - But nothing expected", data));
-            assert_eq!(format!("{:?}", data), expect.unwrap());
+        fn section_start(&mut self, _section: &BundleSection) {}
+        fn transaction_start(&mut self, _transaction: &Transaction) {}
+        fn parameter_load(&mut self, _p_ref: &ParamRef, _p_desc: &TxTParam, _value: &Entry) {}
+
+        fn return_value(&mut self, r_typ: &RetType, r_desc: &TxTReturn, value: &Entry) {
+            if *r_typ == RetType::Log {
+                let expect = self.expects.pop();
+                let mut s = Serializer::new(CONFIG.max_structural_dept);
+                r_desc.desc.serialize_value(*value, &mut s).unwrap();
+                let data =  s.extract();
+                assert!(expect.is_some(), format!("Found {:?} - But nothing expected", data));
+                assert_eq!(format!("{:?}",data), expect.unwrap());
+            }
         }
+
+        fn transaction_finish(&mut self, _transaction: &Transaction, _success: bool) {}
+        fn section_finish(&mut self, _section: &BundleSection, _success: bool) {}
     }
 
 
@@ -103,38 +115,20 @@ mod tests {
 
 
         heap = heap.reuse();
-        execute::<_, _, ScriptExternals,_>(&s, &ScriptSystem,&bundle, 0, &heap, &mut checker, false).expect("Execute Failed");
+        execute::<_, _, ScriptExternals,_>(&s, &ScriptSystem,&bundle, 0, &heap, &mut checker).expect("Execute Failed");
         assert_eq!(checker.expects.len(), 0, "Expected more logs");
 
         Ok(())
     }
 
-
-
-
-    struct HeapContainer {
-        pub heap:Option<Heap>
-    }
-
-    impl HeapContainer {
-        fn new(size:usize, convert:f64) -> Self {
-            HeapContainer{
-                heap: Some(Heap::new(size,convert))
-            }
-        }
-
-        fn reuse(&mut self) {
-            let mut heap_r = None;
-            std::mem::swap(&mut self.heap, &mut heap_r);
-            heap_r = Some(heap_r.unwrap().reuse());
-            std::mem::swap(&mut self.heap, &mut heap_r);
-        }
-    }
-
-
     struct NoLogger{}
     impl Tracker for NoLogger {
-        fn log<'a>(&mut self, data: Vec<u8>) {}
+        fn section_start(&mut self, _section: &BundleSection) {}
+        fn transaction_start(&mut self, _transaction: &Transaction) {}
+        fn parameter_load(&mut self, _p_ref: &ParamRef, _p_desc: &TxTParam, _value: &Entry) {}
+        fn return_value(&mut self, _r_typ: &RetType, _r_desc: &TxTReturn, _value: &Entry) {}
+        fn transaction_finish(&mut self, _transaction: &Transaction, _success: bool) {}
+        fn section_finish(&mut self, _section: &BundleSection, _success: bool) {}
     }
 
     fn parse_and_compile_and_run_bench(id_name:&str,b: &mut Bencher) -> Result<()>{
@@ -163,7 +157,7 @@ mod tests {
             let mut heap = Heap::new(CONFIG.calc_heap_size(2),2.0);
             let bundle = comp.create_bundle(&hashes, &heap);
             heap = heap.reuse();
-            execute::<_, _, ScriptExternals, _>(&s, &ScriptSystem,&bundle, 0, &heap,  &mut NoLogger{}, false).expect("Execute Failed");
+            execute::<_, _, ScriptExternals, _>(&s, &ScriptSystem,&bundle, 0, &heap,  &mut NoLogger{}).expect("Execute Failed");
             s.clear_section(StorageClass::EntryHash);
             s.clear_section(StorageClass::EntryValue);
         });
@@ -516,7 +510,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected="provided witness or stored value mismatched expected entry")]
+    #[should_panic(expected="stored value had wrong type")]
     fn load_type_missmatch() {
         parse_and_compile_and_run("testFailLoadWrongType").unwrap();
     }

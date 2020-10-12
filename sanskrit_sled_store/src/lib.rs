@@ -1,6 +1,5 @@
 extern crate sanskrit_common;
 extern crate sled;
-#[macro_use]
 extern crate arrayref;
 extern crate core;
 

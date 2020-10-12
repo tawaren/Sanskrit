@@ -6,7 +6,6 @@ mod tests {
     use sanskrit_memory_store::BTreeMapStore;
     use sanskrit_common::errors::*;
     use sanskrit_common::store::{Store, StorageClass, store_hash};
-    use sanskrit_core::model::Module;
     use sanskrit_core::accounting::Accounting;
     use std::cell::Cell;
 
@@ -57,6 +56,7 @@ mod tests {
         Ok(())
     }
 
+    /*
     fn generate_and_deploy_first_bench(n:u8, b: &mut Bencher) -> Result<()>{
         let data = generate(n, shared(), overfill(), body());
         b.iter(|| {
@@ -66,7 +66,7 @@ mod tests {
         });
         Ok(())
     }
-
+    */
 
     fn generate_and_deploy_last_bench(n:u8, b: &mut Bencher) -> Result<()>{
         let data = generate(n, shared(), overfill(), body());

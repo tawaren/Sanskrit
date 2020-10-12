@@ -511,6 +511,8 @@ impl<'b,'h> Compactor<'b,'h> {
         }
         //generate the runtime code
         self.block.push(ROpCode::Rollback);
+        self.state.use_gas(gas::rollback());
+
         assert!(produces.len() <= u8::max_value() as usize);
         Ok((true,produces.len() as u8))
     }

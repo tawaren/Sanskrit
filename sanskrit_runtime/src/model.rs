@@ -17,6 +17,7 @@ pub struct DeployTransaction<#[AllocLifetime] 'c> {
     pub max_compile_block_nesting:u32,        //todo: shall we hardcode these
 }
 
+
 #[derive(Clone, Debug, Parsable, Serializable, VirtualSize)]
 pub struct TransactionBundleCore<#[AllocLifetime] 'c> {
     #[ByteSize]
@@ -29,9 +30,6 @@ pub struct TransactionBundleCore<#[AllocLifetime] 'c> {
     // This simplifies TXT double inclusion check, as we only need to check TXT_BLOCK_WINDOW blocks back
     //  We check this to ensure TXT_HASHes are unique
     pub earliest_block:u64,
-    //does this deploy a module or transaction?
-    //if so the normal part pays for it
-    pub deploy: Option<DeployTransaction<'c>>,
     //maximum size accepted for params
     pub param_heap_limit: u16,
     //Static execution costs
@@ -39,6 +37,9 @@ pub struct TransactionBundleCore<#[AllocLifetime] 'c> {
     pub stack_elem_limit:u16,
     pub stack_frame_limit:u16,
     pub runtime_heap_limit:u16,
+    //Gas cost
+    pub essential_gas_cost:u64, //Gas cost a miner must spend before he knows if the transaction is valid and pays him
+    pub total_gas_cost:u64,
     //Transaction Sections
     pub sections: SlicePtr<'c, BundleSection<'c>>,
     //Constants
@@ -48,7 +49,8 @@ pub struct TransactionBundleCore<#[AllocLifetime] 'c> {
     //params passed in from the outside
     pub literal: SlicePtr<'c, SlicePtr<'c,u8>>,
     //witness limit (prevents miner to add witnesses to earn more)
-    pub witness_bytes_limit:u32, //todo: maybe just u16?
+    //Todo: These is only needed in Witness Mode which we will abstract away not doing in the beginning
+    //pub witness_bytes_limit:u32, //todo: maybe just u16?
 }
 
 //todo: an intermidiary passing option
@@ -60,20 +62,19 @@ pub struct TransactionBundleCore<#[AllocLifetime] 'c> {
 pub struct TransactionBundle<#[AllocLifetime] 'c> {
     #[ByteSize]
     pub byte_size:Option<usize>,
-    //everithing that is part of the hash
+    //everything that is part of the hash
     pub core: TransactionBundleCore<'c>,
     //witnesses
     pub witness: SlicePtr<'c, SlicePtr<'c,u8>>,                     //witnesses are ignored in the Hash
-    //Todo: Remove the None case <-- it is very usefull for testing keep as long as possible
-    //Todo: Make Witness adaption programm -- store last X values
-    //       Algo: we go over and check and upodate them if we have never
-    pub store_witness: SlicePtr<'c, Option<SlicePtr<'c,u8>>>,       //witnesses are ignored in the Hash
+    //todo: This is only in Witness mode (which we may not use at the start)
+    //      Note: These changes the gas formula??
+    //pub store_witness: SlicePtr<'c, Option<SlicePtr<'c,u8>>>,       //witnesses are ignored in the Hash
 
 }
 
-#[derive(Clone, Copy, Debug, Parsable, Serializable, VirtualSize)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Parsable, Serializable, VirtualSize)]
 pub enum SectionType {
-    Payment,
+    Essential,
     Custom
 }
 
@@ -88,12 +89,6 @@ pub enum DeployType {
 pub struct BundleSection<#[AllocLifetime] 'c> {
     //Section type
     pub typ:SectionType,
-    //Storage costs         -- we later could optimize: load -> delete -> store (as in reality this triggers 1 Load & 1 Write and not 2 writes)
-    pub entries_loaded:u32,
-    pub entries_created:u32,
-    pub entries_deleted:u32,
-    //Execution Cost
-    pub gas_limit: u64,
     //Transactions
     pub txts: SlicePtr<'c, Transaction<'c>>,
 }

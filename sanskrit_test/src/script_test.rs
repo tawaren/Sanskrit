@@ -47,7 +47,7 @@ mod tests {
         comp.compile_module_tree().unwrap();
         let s = BTreeMapStore::new();
         let accounting = max_accounting();
-        let res = comp.get_module_results();
+        let _res = comp.get_module_results();
         for (c_id,r) in comp.get_module_results() {
             if c_id == id {
                 let fb_path = out_folder.join(&id.0.to_lowercase()).with_extension("bin");
@@ -82,7 +82,7 @@ mod tests {
             let s = BTreeMapStore::new();
             let accounting = max_accounting();
             for r in res.clone() {
-                let res = deploy_module(&s, &accounting, r, true, true).unwrap();
+                deploy_module(&s, &accounting, r, true, true).unwrap();
             }
         });
         Ok(())

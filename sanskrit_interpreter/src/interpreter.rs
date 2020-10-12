@@ -101,7 +101,7 @@ impl<'transaction,'code,'interpreter,'execution,'heap> ExecutionContext<'transac
         if self.execute_exp()? {
             Ok(())
         } else {
-            error(||"Program threw an error")
+            error(||"Transaction was rolled back")
         }
     }
 

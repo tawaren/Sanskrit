@@ -251,7 +251,7 @@ impl Serializable for Hash {
 }
 
 impl VirtualSize for Hash {
-    const SIZE: usize = 20;
+    const SIZE: usize = HASH_SIZE;
 }
 
 impl<'a> Parsable<'a> for [u8;32]{

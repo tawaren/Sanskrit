@@ -27,7 +27,7 @@ impl External for Ecdsa{
         }
     }
 
-    fn compile_call<'b, 'h>(&self, fun_idx: u8, params: SlicePtr<'b, ValueRef>, caller: &[u8; 20], alloc: &'b HeapArena<'h>) -> Result<CompilationResult<'b>> {
+    fn compile_call<'b, 'h>(&self, fun_idx: u8, params: SlicePtr<'b, ValueRef>, _caller: &[u8; 20], _alloc: &'b HeapArena<'h>) -> Result<CompilationResult<'b>> {
         match fun_idx {
             //public extFun derivePublicId(pk:.Pk):(pub:.PublicId);
             0 => Ok(just_gas_and_mem(65, Hash::SIZE as u64, OpCode::Hash(Kind::Data, params[0]))),

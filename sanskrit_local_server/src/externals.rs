@@ -5,7 +5,6 @@ use sanskrit_common::model::{ModuleLink, SlicePtr, ValueRef, Hash};
 use sanskrit_common::arena::HeapArena;
 use sanskrit_interpreter::model::ValueSchema;
 use std::collections::BTreeMap;
-use sanskrit_common::encoding::*;
 use sanskrit_interpreter::externals::External;
 use sanskrit_interpreter::*;
 use sanskrit_runtime::system::System;
