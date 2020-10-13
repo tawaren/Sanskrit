@@ -98,18 +98,27 @@ fn handle_data<R:Read>(state: &mut State, reader:&mut R) -> Result<Vec<Hash>>{
             let meta_data_bytes = read_length_prefixed_array(reader)?;
             let data:ModuleNames = Parser::parse_fully(&meta_data_bytes,6,&NoCustomAlloc())?;
             let name = (data.0).0;
-            let sys_id = convert_error(reader.read_u8())?;
-            let bytes = read_length_prefixed_array(reader)?;
-            let hash = state.deploy_module(bytes, true)?;
-            if sys_id as usize >= externals::SYS_MODS.len() {
-               return error(||"unknown system module identifier")
-            }
-            let sys_impl = externals::SYS_MODS[sys_id as usize];
-            sys_impl(hash.clone());
-            convert_error(state.system_entries.insert(&[sys_id], &hash))?;
-            convert_error(state.system_entries.flush())?;
-            let e_hash = encode(&hash);
-            println!("Registered Module {} with Hash {:?} as System Module with Number {:?}",name, e_hash,sys_id);
+            let (hash, e_hash) = if convert_error(reader.read_u8())? != 0 {
+                let sys_id = convert_error(reader.read_u8())?;
+                if sys_id as usize >= externals::SYS_MODS.len() {
+                    return error(||"unknown system module identifier")
+                }
+                let bytes = read_length_prefixed_array(reader)?;
+                let hash = state.deploy_module(bytes, true)?;
+                let sys_impl = externals::SYS_MODS[sys_id as usize];
+                sys_impl(hash.clone());
+                convert_error(state.system_entries.insert(&[sys_id], &hash))?;
+                convert_error(state.system_entries.flush())?;
+                let e_hash = encode(&hash);
+                println!("Registered System Module {} with Hash {:?} with System Number {:?}",name, e_hash,sys_id);
+                (hash, e_hash)
+            } else {
+                let bytes = read_length_prefixed_array(reader)?;
+                let hash = state.deploy_module(bytes, true)?;
+                let e_hash = encode(&hash);
+                println!("Registered System Module {} with Hash {:?}",name, e_hash);
+                (hash, e_hash)
+            };
             println!("Mapping Module with hash {:?} to name {}", e_hash,&name);
             convert_error(state.tracking.data_names.insert(hash.clone(),meta_data_bytes))?;
             convert_error(state.module_name_mapping.insert(name,&hash.clone()))?;
