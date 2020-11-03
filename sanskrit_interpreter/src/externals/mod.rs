@@ -1,7 +1,7 @@
 use sanskrit_common::errors::*;
-use model::{OpCode, ValueSchema};
+use model::{OpCode, ValueSchema, Entry, Kind};
 use sanskrit_common::model::{Hash, SlicePtr, ValueRef, ModuleLink};
-use sanskrit_common::arena::{HeapArena};
+use sanskrit_common::arena::{HeapArena, HeapStack, VirtualHeapArena};
 
 pub mod i8;
 pub mod i16;
@@ -16,6 +16,8 @@ pub mod u128;
 pub mod data;
 pub mod ids;
 pub mod eddsa;
+pub mod _unsafe;
+pub mod crypto;
 
 pub trait External:Sync{
     fn compile_lit<'b,'h>(&self, data_idx: u8, data:SlicePtr<'b,u8>, caller: &Hash, alloc:&'b HeapArena<'h>) -> Result<CompilationResult<'b>>;
@@ -24,17 +26,39 @@ pub trait External:Sync{
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
-pub struct CallResources {
-    pub max_gas:u64,
-    pub max_mem:u64,
-    pub max_manifest_stack: u32,
-    pub max_frames: u32,
+pub struct ExpResources {
+    pub gas:u64,
+    pub mem:u64,
+    pub manifest_stack: u32,
+    pub frames: u32,
+}
+
+impl ExpResources {
+    pub fn empty() -> Self {
+        ExpResources {
+            gas: 0,
+            mem: 0,
+            manifest_stack: 0,
+            frames: 0
+        }
+    }
 }
 
 pub enum CompilationResult<'b> {
-    OpCodeResult(CallResources, OpCode<'b>),
+    OpCodeResult(ExpResources, OpCode<'b>),
     ReorderResult(SlicePtr<'b,u8>)
+}
 
+pub trait ExecutionInterface<'interpreter, 'transaction, 'heap> {
+    fn get(&self, idx: usize) -> Result<Entry<'transaction>>;
+    fn get_stack(&mut self, tail: bool) -> &mut HeapStack<'interpreter, Entry<'transaction>>;
+    fn get_heap(&self) -> &'transaction VirtualHeapArena<'heap>;
+    fn process_entry_slice<R: Sized, F: FnOnce(&[u8]) -> R>(kind: Kind, op1: Entry<'transaction>, proc: F) -> R;
+}
+
+pub trait RuntimeExternals {
+    fn typed_system_call<'interpreter, 'transaction:'interpreter, 'heap:'transaction, I:ExecutionInterface<'interpreter, 'transaction, 'heap>>(interface:&mut I, id:u8, kind:Kind, values: &[ValueRef], tail:bool) -> Result<()>;
+    fn system_call<'interpreter, 'transaction:'interpreter, 'heap:'transaction, I:ExecutionInterface<'interpreter, 'transaction, 'heap>>(interface:&mut I, id:u8, values: &[ValueRef], tail:bool) -> Result<()>;
 }
 
 pub trait CompilationExternals {
@@ -44,5 +68,5 @@ pub trait CompilationExternals {
 }
 
 pub fn just_gas_and_mem(gas:u64, mem:u64, code:OpCode) -> CompilationResult{
-    CompilationResult::OpCodeResult(CallResources{ max_gas: gas, max_mem: mem, max_manifest_stack: 0, max_frames: 0 }, code)
+    CompilationResult::OpCodeResult(ExpResources { gas, mem, manifest_stack: 0, frames: 0 }, code)
 }

@@ -21,7 +21,7 @@ use sanskrit_common::store::*;
 use core::mem;
 use sanskrit_common::arena::*;
 use gas_table::gas;
-use sanskrit_interpreter::externals::{CompilationExternals, CallResources, CompilationResult};
+use sanskrit_interpreter::externals::{CompilationExternals, ExpResources, CompilationResult};
 use sanskrit_core::utils::Crc;
 use sanskrit_common::encoding::VirtualSize;
 use collector::Collector;
@@ -53,7 +53,7 @@ pub struct Compactor<'b,'h> {
     //state
     state:State,
     //all the embedded functions and where to find them at runtime
-    fun_mapping:BTreeMap<(Crc<ModuleLink>,u8),(u16,u8,CallResources)>,
+    fun_mapping:BTreeMap<(Crc<ModuleLink>,u8),(u16,u8,ExpResources)>,
     //the code of all the embedded function
     functions:SliceBuilder<'b,Ptr<'b,RExp<'b>>>,
     //allocator
@@ -128,21 +128,33 @@ impl State {
         }
     }
 
-    fn extract_call_resources(self) -> CallResources {
-        CallResources {
-            max_gas: self.max_gas,
-            max_mem: self.max_mem,
-            max_manifest_stack: self.max_manifest_stack,
-            max_frames: self.max_frames,
+    fn extract_call_resources(self) -> ExpResources {
+        ExpResources {
+            gas: self.max_gas,
+            mem: self.max_mem,
+            manifest_stack: self.max_manifest_stack,
+            frames: self.max_frames,
         }
     }
 
-    fn include_call_resources(&mut self, res:CallResources) {
-        self.use_gas(res.max_gas);
-        self.use_mem(res.max_mem);
-        self.max_manifest_stack = self.max_manifest_stack.max(self.manifested_stack + res.max_manifest_stack);
-        self.max_frames = self.max_frames.max(self.frames + res.max_frames)
+    fn include_call_resources(&mut self, res:ExpResources, mult:u64) {
+        self.use_gas(mult*res.gas);
+        self.use_mem(mult*res.mem);
+        self.max_frames = self.max_frames.max(self.frames + res.frames);
+        self.max_manifest_stack = self.max_manifest_stack.max(self.manifested_stack + res.manifest_stack);
+
     }
+
+    fn include_tail_call_resources(&mut self, frame_start:u32, res:ExpResources, mult:u64) {
+        self.use_gas(mult*res.gas);
+        self.use_mem(mult*res.mem);
+        //-1 as we can reuse the current frame
+        self.max_frames = self.max_frames.max(self.frames -1 + res.frames);
+        //res.manifest_stack + frame_start is the manifested_stack of the tail_call (without the current frames elements)
+        self.max_manifest_stack = self.max_manifest_stack.max(self.manifested_stack.max(res.manifest_stack + frame_start));
+
+    }
+
 
     fn start_branching(&mut self) -> BranchPoint {
         let res = (self.gas, self.max_gas, self.mem, self.max_mem);
@@ -176,7 +188,7 @@ impl State {
 }
 
 impl<'b,'h> Compactor<'b,'h> {
-    pub fn compact<S:Store,E:CompilationExternals>(fun:&FunctionComponent, body:&Exp, store:&Loader<S>, alloc:&'b HeapArena<'h>, limiter:&Limiter) -> Result<(SlicePtr<'b,Ptr<'b,RExp<'b>>>, CallResources)> {
+    pub fn compact<S:Store,CE:CompilationExternals>(fun:&FunctionComponent, body:&Exp, store:&Loader<S>, alloc:&'b HeapArena<'h>, limiter:&Limiter) -> Result<(SlicePtr<'b,Ptr<'b,RExp<'b>>>, ExpResources)> {
         let functions = Collector::collect(fun,store,limiter)?;
 
         let mut compactor = Compactor {
@@ -204,7 +216,7 @@ impl<'b,'h> Compactor<'b,'h> {
             };
 
             //compact the function
-            let (processed, resources) = compactor.process_func::<S,E>(fun_comp.shared.params.len(), body, &new_ctx)?;
+            let (processed, resources) = compactor.process_func::<_,CE>(fun_comp.shared.params.len(), body, &new_ctx)?;
             //reset the nesting
             compactor.reset_nesting(limiter.max_nesting);
             //find the next free number
@@ -227,7 +239,7 @@ impl<'b,'h> Compactor<'b,'h> {
         //get the top context
         let top_context = Context::from_top_component(fun, store)?;
         //compact the top function
-        let (processed, resources) = compactor.process_func::<S,E>(fun.shared.params.len(), body, &top_context)?;
+        let (processed, resources) = compactor.process_func::<_,CE>(fun.shared.params.len(), body, &top_context)?;
         //fill the slot with the compacted function
         compactor.functions.push(processed);
         //get all functions
@@ -240,7 +252,7 @@ impl<'b,'h> Compactor<'b,'h> {
 
 
     //compacts a function
-    fn process_func<S:Store,E:CompilationExternals>(&mut self, num_params:usize, code:&Exp, context:&Context<S>) -> Result<(Ptr<'b,RExp<'b>>,CallResources)> {
+    fn process_func<S:Store,CE:CompilationExternals>(&mut self, num_params:usize, code:&Exp, context:&Context<S>) -> Result<(Ptr<'b,RExp<'b>>,ExpResources)> {
         //Prepare a new Stack (Save old one)
         let mut state = State::new();
         mem::swap(&mut self.state, &mut state);
@@ -251,7 +263,7 @@ impl<'b,'h> Compactor<'b,'h> {
             self.state.push_real()?;
         }
         //compact body
-        let (body, _) = self.process_exp::<S,E>(&code, ret_point, context)?;
+        let (body, _) = self.process_exp::<_,CE>(&code, ret_point, context, None)?;
         //restore old Stack
         mem::swap(&mut state, &mut &mut self.state);
         //return body & Ressource infos
@@ -261,7 +273,7 @@ impl<'b,'h> Compactor<'b,'h> {
     fn manifest_stack(&mut self, actual_elems:i16, expected_elems:u8) -> Result<()> {
         //flag that check if manifest is needed
         let mut require_manifest = actual_elems != expected_elems as i16;
-        //the return transform paam
+        //the return transform param
         let mut rets = self.alloc.slice_builder(expected_elems as usize)?;
         //go over each manifest
         for i in 0..expected_elems {
@@ -308,22 +320,29 @@ impl<'b,'h> Compactor<'b,'h> {
     }
 
     //compacts an expression (block)
-    fn process_exp<S:Store,E:CompilationExternals>(&mut self, exp:&Exp, ret_point:ReturnPoint, context:&Context<S>) -> Result<(Ptr<'b,RExp<'b>>, u8)>{
+    fn process_exp<S:Store,CE:CompilationExternals>(&mut self, exp:&Exp, ret_point:ReturnPoint, context:&Context<S>, tail_info:Option<u32>) -> Result<(Ptr<'b,RExp<'b>>, u8)>{
         // add the frame
-        self.state.add_frame();
+        if tail_info.is_none() {self.state.add_frame();}
         self.increase_nesting()?;
         //in case of a return we need to find out which opcodes we can eliminate
         let old_opcodes = mem::replace(&mut self.block, Vec::with_capacity(exp.0.len()));
         let mut actual_rets = -1;
-        let mut expect_rets = 0;
-        for code in exp.0.iter() {
+        let iter = &mut exp.0.iter();
+        let len = iter.len();
+        //Process all but last
+        for code in iter.take(len - 1) {
             //process the opcode
-            let (manifest, rets) = self.process_opcode::<S,E>(code, context)?;
-            expect_rets = rets;
-            if manifest {
-                actual_rets = rets as i16;
-            }
+            let (manifest, rets) = self.process_opcode::<_,CE>(code, context, None)?;
+            if manifest { actual_rets = rets as i16; }
         }
+        //process the last one special (needs adapted tail_info if None it becomes this expressions start)
+        let (manifest, expect_rets) = self.process_opcode::<_,CE>(iter.next().unwrap(), context, tail_info.or(Some(ret_point.0)))?;
+        //Note: If !manifest then tail_info was ignored anyways (as all actual calls return true for manifest)
+        //      Conclusion: If we used tail info for optimisation then actual_rets == expect_rets & The returned elems are on top of the stack already
+        //                  Thus self.manifest_stack will not produce a return opcode
+        if manifest { actual_rets = expect_rets as i16; }
+
+
         //manifest the result of the last Opcode if necessary
         //Note: this is needed as the end of the block requires the values on top of the runtime stack but we may have optimized them away
         self.manifest_stack(actual_rets, expect_rets)?;
@@ -337,18 +356,18 @@ impl<'b,'h> Compactor<'b,'h> {
             self.state.push_real()?;
         }
         // drop the frame
-        self.state.drop_frame();
+        if tail_info.is_none() {self.state.drop_frame();}
         self.decrease_nesting();
         //Generate and return the optimized Expression
         Ok((self.alloc.alloc(RExp(codes)), expect_rets))
     }
 
     //compact or even eliminate an opcode
-    pub fn process_opcode<S:Store,E:CompilationExternals>(&mut self, opcode:&OpCode, context:&Context<S>) -> Result<(bool,u8)> {
+    pub fn process_opcode<S:Store,CE:CompilationExternals>(&mut self, opcode:&OpCode, context:&Context<S>, tail_info:Option<u32>) -> Result<(bool,u8)> {
         //delegate each opcode to a dedicated function
         match *opcode {
-            OpCode::Lit(ref data, perm) => self.lit::<S,E>(data, perm, context),
-            OpCode::Let(ref exp) => self.let_::<S,E>(exp, context),
+            OpCode::Lit(ref data, perm) => self.lit::<_,CE>(data, perm, context),
+            OpCode::Let(ref exp) => self.let_::<_,CE>(exp, context, tail_info),
             OpCode::Copy(val) => self.copy(val),
             OpCode::Move(val) =>  self.copy(val),
             OpCode::Return(ref vals) => self._return(vals),
@@ -360,21 +379,30 @@ impl<'b,'h> Compactor<'b,'h> {
             OpCode::CopyUnpack(val, perm) => self.unpack(val,perm,None, context),
             OpCode::Field(val, perm, field) => self.get_field(val, perm, field, context),
             OpCode::CopyField(val, perm, field) => self.get_field(val,perm,field, context),
-            OpCode::Inspect(val, perm, ref exps) => self.switch::<S,E>(val, perm, exps, context),
-            OpCode::Switch(val, perm, ref exps) => self.switch::<S,E>(val, perm, exps, context),
-            OpCode::CopySwitch(val, perm, ref exps) => self.switch::<S,E>(val, perm, exps, context),
+            OpCode::Inspect(val, perm, ref exps) => self.switch::<_,CE>(val, perm, exps, context, tail_info),
+            OpCode::Switch(val, perm, ref exps) => self.switch::<_,CE>(val, perm, exps, context, tail_info),
+            OpCode::CopySwitch(val, perm, ref exps) => self.switch::<_,CE>(val, perm, exps, context, tail_info),
             OpCode::Pack(perm, tag, ref values) => self.pack(perm, tag,values, context),
             OpCode::CopyPack(perm, tag, ref values) => self.pack(perm, tag,values, context),
             OpCode::Invoke(perm, ref values) =>  match **perm.fetch(context)?.get_fun()? {
-                ResolvedCallable::Function{ref module, offset, ..} => self.invoke_fun::<S,E>(module,offset,values,context),
-                ResolvedCallable::Implement{ref module, offset, ..} => self.create_sig::<S,E>(module,offset,values,context),
+                ResolvedCallable::Function{ref module, offset, ..} => self.invoke_fun::<_,CE>(module,offset,values, context, tail_info),
+                ResolvedCallable::Implement{ref module, offset, ..} => self.create_sig(module,offset,values, context),
             },
             OpCode::TryInvoke(perm, ref values, ref succ, ref fail) =>  match **perm.fetch(context)?.get_fun()? {
-                ResolvedCallable::Function{ref module, offset, ..} => self.try_invoke_fun::<S,E>(module,offset,values, succ, fail,context),
+                ResolvedCallable::Function{ref module, offset, ..} => self.try_invoke_fun::<_,CE>(module,offset,values, succ, fail, context, tail_info),
                 _ => unreachable!()
             },
+            OpCode::RepeatedInvoke(reps, perm, ref values, cond, abort_tag) => match **perm.fetch(context)?.get_fun()? {
+                ResolvedCallable::Function{ref module, offset, ..} => self.invoke_repeated_fun(module,offset,values, cond, abort_tag, reps, context, tail_info),
+                _ => unreachable!()
+            }
+            OpCode::RepeatedTryInvoke(reps, perm , ref values, cond, abort_tag, ref succ, ref fail) => match **perm.fetch(context)?.get_fun()? {
+                ResolvedCallable::Function{ref module, offset, ..} => self.try_invoke_repeated_fun::<_,CE>(module,offset,values, cond, abort_tag, reps, succ, fail, context, tail_info),
+                _ => unreachable!()
+            }
+
             OpCode::InvokeSig(targ, perm, ref values) => self.invoke_sig(targ, perm,values,context),
-            OpCode::TryInvokeSig(targ, perm, ref values, ref succ, ref fail) => self.try_invoke_sig::<S,E>(targ,perm,values,succ,fail, context),
+            OpCode::TryInvokeSig(targ, perm, ref values, ref succ, ref fail) => self.try_invoke_sig::<_,CE>(targ,perm,values,succ,fail, context, tail_info),
             OpCode::RollBack(_, ref produce) => self.rollback(produce),
         }
     }
@@ -398,7 +426,7 @@ impl<'b,'h> Compactor<'b,'h> {
         ValueRef(n_index as u16)
     }
 
-    fn lit<S:Store, E:CompilationExternals>(&mut self, data:&LargeVec<u8>, perm:PermRef, context:&Context<S>) -> Result<(bool,u8)> {
+    fn lit<S:Store, CE:CompilationExternals>(&mut self, data:&LargeVec<u8>, perm:PermRef, context:&Context<S>) -> Result<(bool,u8)> {
         //Extract the kind of lit. This increase runtime rep but speeds up arithmetic
         let r_typ = perm.fetch(context)?.get_type()?.clone();
         if let ResolvedType::Lit {ref module, offset, ..} = *r_typ {
@@ -415,7 +443,7 @@ impl<'b,'h> Compactor<'b,'h> {
                     let caller = ModRef(0).fetch(&context)?.to_hash();
 
                     //compile
-                    let (costs, code) = match  E::compile_lit(&*module, offset, self.alloc.copy_alloc_slice(&data.0)?, &caller, &self.alloc)? {
+                    let (costs, code) = match  CE::compile_lit(&*module, offset, self.alloc.copy_alloc_slice(&data.0)?, &caller, &self.alloc)? {
                         //indicates that this is a no-op
                         CompilationResult::ReorderResult(new_order) => {
                             assert_eq!(new_order.len(), 0);
@@ -424,7 +452,7 @@ impl<'b,'h> Compactor<'b,'h> {
                         CompilationResult::OpCodeResult(res,code) => (res,code),
                     };
                     //process the lit gas
-                    self.state.include_call_resources(costs);
+                    self.state.include_call_resources(costs, 1);
                     //create the runtime op
                     self.block.push(code)
                 }
@@ -435,13 +463,13 @@ impl<'b,'h> Compactor<'b,'h> {
         Ok((true,1))
     }
 
-    fn let_<S:Store,E:CompilationExternals>(&mut self, exp:&Exp, context:&Context<S>) -> Result<(bool,u8)> {
+    fn let_<S:Store,CE:CompilationExternals>(&mut self, exp:&Exp, context:&Context<S>, tail_info:Option<u32>) -> Result<(bool,u8)> {
         //cost
         self.state.use_gas(gas::_let());
         //capture current stack positions
         let ret_point = self.state.return_point();
         //process the nested expression
-        let (n_exp, rets) = self.process_exp::<S,E>(exp, ret_point, context)?;
+        let (n_exp, rets) = self.process_exp::<_,CE>(exp, ret_point, context, tail_info)?;
         //generate the let
         self.block.push(ROpCode::Let(n_exp));
         Ok((true,rets))
@@ -570,7 +598,7 @@ impl<'b,'h> Compactor<'b,'h> {
         }
     }
 
-    fn switch<S:Store,E:CompilationExternals>(&mut self, val:ValueRef, perm:PermRef, exps:&[Exp], context:&Context<S>) -> Result<(bool,u8)> {
+    fn switch<S:Store,CE:CompilationExternals>(&mut self, val:ValueRef, perm:PermRef, exps:&[Exp], context:&Context<S>, tail_info:Option<u32>) -> Result<(bool,u8)> {
         //fetch the perm
         let r_perm = perm.fetch(context)?;
         //get the str information
@@ -581,7 +609,7 @@ impl<'b,'h> Compactor<'b,'h> {
             let pos = self.get(val.0 as usize);
             self.state.push_alias(pos);
             //just emit the single branch
-            self.let_::<S,E>(&exps[0], context)
+            self.let_::<_,CE>(&exps[0], context, tail_info)
         } else {
             //account for the gas of the switch
             self.state.use_gas(gas::switch());
@@ -607,7 +635,7 @@ impl<'b,'h> Compactor<'b,'h> {
                     self.state.push_real()?
                 }
                 //process the branch body
-                let (n_exp, b_rets) = self.process_exp::<S,E>(exp, ret_point, context)?;
+                let (n_exp, b_rets) = self.process_exp::<_,CE>(exp, ret_point, context, tail_info)?;
                 rets = b_rets;
                 //push the exp
                 new_exps.push(n_exp);
@@ -629,11 +657,8 @@ impl<'b,'h> Compactor<'b,'h> {
         }
     }
 
-
-
-
-    fn invoke_fun<S:Store,E:CompilationExternals>(&mut self, module:&Crc<ModuleLink>, offset:u8, vals:&[ValueRef], context:&Context<S>) -> Result<(bool,u8)> {
-        match self.invoke_core::<S,E>(module,offset,vals,context)? {
+    fn invoke_fun<S:Store,CE:CompilationExternals>(&mut self, module:&Crc<ModuleLink>, offset:u8, vals:&[ValueRef], context:&Context<S>, tail_info:Option<u32>) -> Result<(bool,u8)> {
+        match self.invoke_core::<_,CE>(module,offset,vals,context,tail_info)? {
             (Some(code), rets) => {
                 //push all the results to both stacks
                 for _ in 0..rets{
@@ -648,7 +673,23 @@ impl<'b,'h> Compactor<'b,'h> {
         }
     }
 
-    fn try<S:Store,E:CompilationExternals>(&mut self, code:ROpCode<'b>, rets:u8, vals:&[(bool,ValueRef)], succ:&Exp, fail:&Exp, context:&Context<S>) -> Result<(bool,u8)> {
+    fn invoke_repeated_fun<S:Store>(&mut self, module:&Crc<ModuleLink>, offset:u8, vals:&[ValueRef], cond:u8, abort_tag:u8, reps:u8,  context:&Context<S>, tail_info:Option<u32>) -> Result<(bool,u8)> {
+        match self.invoke_repeated_core(module,offset,vals,cond, abort_tag, reps, context,tail_info)? {
+            (Some(code), rets) => {
+                //push all the results to both stacks
+                for _ in 0..rets{
+                    //its result of a primitive allocs a Object (some do also alloc Data, this is in the corresponding ones)
+                    self.state.push_real()?;
+                }
+                //generate the runtime code
+                self.block.push(code);
+                Ok((true,rets))
+            },
+            (None, rets) => Ok((false,rets))
+        }
+    }
+
+    fn try<S:Store,CE:CompilationExternals>(&mut self, code:ROpCode<'b>, rets:u8, vals:&[(bool,ValueRef)], succ:&Exp, fail:&Exp, context:&Context<S>, tail_info:Option<u32>) -> Result<(bool,u8)> {
         //if the inner is a continuation we need to push a try frame
         if is_continuation(&code) {self.state.add_frame()}
         //capture the stack
@@ -661,7 +702,7 @@ impl<'b,'h> Compactor<'b,'h> {
             self.state.push_real()?;
         }
         //proccess the expression
-        let (new_succ, s_rets) = self.process_exp::<S,E>(succ, ret_point, context)?;
+        let (new_succ, s_rets) = self.process_exp::<_,CE>(succ, ret_point, context, tail_info)?;
         //ready for the next branch if their is one or not is irrelevant
         self.state.next_branch();
         //eliminate the stack effects of the previous branch
@@ -673,7 +714,7 @@ impl<'b,'h> Compactor<'b,'h> {
             self.state.push_alias(pos);
         }
         //proccess the expression
-        let (new_fail, _)  = self.process_exp::<S,E>(fail, ret_point, context)?;
+        let (new_fail, _)  = self.process_exp::<_,CE>(fail, ret_point, context, tail_info)?;
         //finish branching
         self.state.end_branching(branch_point);
         //if the inner is a continuation we need to drop a try frame
@@ -684,16 +725,26 @@ impl<'b,'h> Compactor<'b,'h> {
         Ok((true,s_rets))
     }
 
-    fn try_invoke_fun<S:Store,E:CompilationExternals>(&mut self, module:&Crc<ModuleLink>, offset:u8, vals:&[(bool,ValueRef)], succ:&Exp, fail:&Exp, context:&Context<S>) -> Result<(bool,u8)> {
+    fn try_invoke_fun<S:Store,CE:CompilationExternals>(&mut self, module:&Crc<ModuleLink>, offset:u8, vals:&[(bool,ValueRef)], succ:&Exp, fail:&Exp, context:&Context<S>, tail_info:Option<u32>) -> Result<(bool,u8)> {
         let plain_vals:Vec<_> = vals.iter().map(|(_,v)|*v).collect();
-        match self.invoke_core::<S,E>(module,offset,&plain_vals,context)? {
-            (Some(code), rets) => self.try::<S,E>(code,rets,vals,succ,fail,context),
+        match self.invoke_core::<_,CE>(module,offset,&plain_vals, context, None)? {
+            (Some(code), rets) => self.try::<_,CE>(code,rets,vals,succ,fail, context, tail_info),
             //call was eliminated so we can just continue with the success
-            (None, _) => self.let_::<S,E>(succ, context)
+            (None, _) => self.let_::<_,CE>(succ, context, tail_info)
         }
     }
 
-    fn invoke_core<S:Store,E:CompilationExternals>(&mut self, module:&Crc<ModuleLink>, offset:u8, vals:&[ValueRef], context:&Context<S>) -> Result<(Option<ROpCode<'b>>, u8)> {
+    fn try_invoke_repeated_fun<S:Store,CE:CompilationExternals>(&mut self, module:&Crc<ModuleLink>, offset:u8, vals:&[(bool,ValueRef)], cond:u8, abort_tag:u8, reps:u8, succ:&Exp, fail:&Exp, context:&Context<S>, tail_info:Option<u32>) -> Result<(bool,u8)> {
+        let plain_vals:Vec<_> = vals.iter().map(|(_,v)|*v).collect();
+        match self.invoke_repeated_core(module,offset,&plain_vals,cond, abort_tag, reps, context, None)? {
+            (Some(code), rets) => self.try::<_,CE>(code,rets,vals,succ,fail,context, tail_info),
+            //call was eliminated so we can just continue with the success
+            (None, _) => self.let_::<_,CE>(succ, context, tail_info)
+        }
+    }
+
+
+    fn invoke_core<S:Store,CE:CompilationExternals>(&mut self, module:&Crc<ModuleLink>, offset:u8, vals:&[ValueRef], context:&Context<S>, tail_info:Option<u32>) -> Result<(Option<ROpCode<'b>>, u8)> {
         //load the called function from the store
         let fun_cache = context.store.get_component::<FunctionComponent>(&*module, offset)?;
         let fun_comp = fun_cache.retrieve();
@@ -709,7 +760,7 @@ impl<'b,'h> Compactor<'b,'h> {
                 //caller fetch
                 let caller = ModRef(0).fetch(&context)?.to_hash();
                 //compile
-                let (costs, code) = match E::compile_call(&*module, offset, adapted, &caller, &self.alloc)? {
+                let (costs, code) = match CE::compile_call(&*module, offset, adapted, &caller, &self.alloc)? {
                     //indicates that this is a no-op
                     CompilationResult::ReorderResult(new_order) => {
                         //fetch the aliases
@@ -723,9 +774,8 @@ impl<'b,'h> Compactor<'b,'h> {
                     }
                     CompilationResult::OpCodeResult(res,code) => (res,code),
                 };
-
                 //account for the ressources
-                self.state.include_call_resources(costs);
+                self.state.include_call_resources(costs, 1);
                 //return the essential info
                 (code,fun_comp.shared.returns.len() as u8,gas::call(fun_comp.shared.params.len()))
             },
@@ -733,7 +783,10 @@ impl<'b,'h> Compactor<'b,'h> {
                 //extract the module Hash (needed by emit & context)
                 if let Some((index,rets, resources)) = self.fun_mapping.get(&(module.clone(),offset)) {
                     //account for the ressources
-                    self.state.include_call_resources(*resources);
+                    match tail_info {
+                        Some(frame_start) => self.state.include_tail_call_resources(frame_start,*resources, 1),
+                        None =>  self.state.include_call_resources(*resources,1)
+                    }
                     //return the essential info
                     (ROpCode::Invoke(*index,adapted),*rets,gas::call(fun_comp.shared.params.len()))
                 } else {
@@ -747,7 +800,42 @@ impl<'b,'h> Compactor<'b,'h> {
     }
 
 
-    fn create_sig<S:Store,E:CompilationExternals>(&mut self, module:&Crc<ModuleLink>, offset:u8, vals:&[ValueRef], context:&Context<S>) -> Result<(bool,u8)> {
+    fn invoke_repeated_core<S:Store>(&mut self, module:&Crc<ModuleLink>, offset:u8, vals:&[ValueRef], cond:u8, abort_tag:u8, reps:u8, context:&Context<S>, tail_info:Option<u32>) -> Result<(Option<ROpCode<'b>>, u8)> {
+        //load the called function from the store
+        let fun_cache = context.store.get_component::<FunctionComponent>(&*module, offset)?;
+        let fun_comp = fun_cache.retrieve();
+        //if the function does not have an impact omit it (no returns & no risk will not change anything)
+        if fun_comp.shared.returns.is_empty() && !fun_comp.shared.transactional{
+            return Ok((None,0))
+        }
+        //adapted values
+        let adapted = self.alloc.iter_alloc_slice(vals.iter().map(|val|self.translate_ref(*val)))?;
+        let cond_ref = ValueRef((adapted.len() as u16) - cond as u16 - 1);
+
+        //produce it
+        let (code, rets, cost) = match fun_comp.body {
+            CallableImpl::External => unimplemented!(),
+            CallableImpl::Internal { .. } => {
+                //extract the module Hash (needed by emit & context)
+                if let Some((index,rets, resources)) = self.fun_mapping.get(&(module.clone(),offset)) {
+                    //account for the ressources
+                    match tail_info {
+                        Some(frame_start) => self.state.include_tail_call_resources(frame_start,*resources, reps as u64),
+                        None =>  self.state.include_call_resources(*resources, reps as u64)
+                    }
+                    //return the essential info
+                    (ROpCode::RepeatedInvoke(*index,adapted, cond_ref, Tag(abort_tag),reps),*rets,gas::repeated_call(fun_comp.shared.params.len(), reps as u64))
+                } else {
+                    unreachable!()
+                }
+            }
+        };
+
+        self.state.use_gas(cost);
+        Ok((Some(code),rets))
+    }
+
+    fn create_sig<S:Store>(&mut self, module:&Crc<ModuleLink>, offset:u8, vals:&[ValueRef], context:&Context<S>) -> Result<(bool,u8)> {
         //load the called function from the store
         let impl_cache = context.store.get_component::<ImplementComponent>(&*module, offset)?;
         let impl_comp = impl_cache.retrieve();
@@ -766,7 +854,7 @@ impl<'b,'h> Compactor<'b,'h> {
                 //account for the packing of the pre applied values
                 self.state.use_mem(vals.len() as u64 * Entry::SIZE as u64);
                 //account for the resources used when it is called
-                self.state.include_call_resources(*resources);
+                self.state.include_call_resources(*resources, 1);
                 //return the essential info
                 (ROpCode::CreateSig(*index,adapted),gas::sig(impl_comp.params.len()))
             } else {
@@ -797,7 +885,7 @@ impl<'b,'h> Compactor<'b,'h> {
         //use gas
         self.state.use_gas(gas::call(sig.params.len()));
         //generate the runtime code
-        Ok(Some((ROpCode::InvokeSig(target_adapted, adapted),sig.returns.len() as u8)))
+        Ok(Some((ROpCode::InvokeSig(*target_adapted, adapted),sig.returns.len() as u8)))
     }
 
     fn invoke_sig<S:Store>(&mut self, target:ValueRef, perm:PermRef, vals:&[ValueRef], context:&Context<S>) -> Result<(bool,u8)> {
@@ -815,11 +903,11 @@ impl<'b,'h> Compactor<'b,'h> {
         }
     }
 
-    fn try_invoke_sig<S:Store, E:CompilationExternals>(&mut self, target:ValueRef, perm:PermRef, vals:&[(bool,ValueRef)], succ:&Exp, fail:&Exp, context:&Context<S>) -> Result<(bool,u8)> {
+    fn try_invoke_sig<S:Store, CE:CompilationExternals>(&mut self, target:ValueRef, perm:PermRef, vals:&[(bool,ValueRef)], succ:&Exp, fail:&Exp, context:&Context<S>, tail_info:Option<u32>) -> Result<(bool,u8)> {
         let plain_vals:Vec<_> = vals.iter().map(|(_,v)|*v).collect();
         match self.invoke_sig_core(target,perm,&plain_vals,context)?{
-            Some((code, rets)) => self.try::<S,E>(code,rets, vals, succ,fail, context),
-            None => self.let_::<S,E>(succ, context)
+            Some((code, rets)) => self.try::<_,CE>(code,rets, vals, succ,fail, context, tail_info),
+            None => self.let_::<_,CE>(succ, context, tail_info)
         }
     }
 

@@ -167,6 +167,11 @@ mod tests {
         parse_and_deploy_plain("ecdsa").unwrap();
     }
 
+    #[test]
+    fn build_unsafe() {
+        parse_and_deploy_plain("unsafe").unwrap();
+    }
+
     #[bench]
     fn build_diff_adts_bench_deploy(b: &mut Bencher) {
         parse_and_deploy_bench("testSucAdt", b).unwrap();

@@ -15,7 +15,7 @@ use sanskrit_common::encoding::*;
 use itertools::Itertools;
 use parser;
 use std::collections::HashSet;
-use sanskrit_runtime::model::{ParamRef, RetType, Transaction, TransactionBundle, ParamMode, BundleSection, SectionType, TransactionBundleCore};
+use sanskrit_runtime::model::{ParamRef, RetType, Transaction, ParamMode, BundleSection, SectionType, TransactionBundleCore, BaseTransactionBundle};
 use sanskrit_common::arena::{Heap, HeapArena};
 use hex::decode;
 use sanskrit_runtime::CONFIG;
@@ -519,12 +519,12 @@ impl<'a> Compiler<'a> {
         };
 
         //Todo: Compute these costs
-        let bundle = TransactionBundle {
+        let bundle = BaseTransactionBundle {
             byte_size: None,
             core: TransactionBundleCore {
                 byte_size: None,
                 meta:SlicePtr::empty(),
-                transaction_storage_heap: 10000,
+                transaction_heap_limit: 10000,
                 param_heap_limit: 10000,
                 stack_elem_limit: 1000,
                 stack_frame_limit: 1000,
@@ -535,7 +535,8 @@ impl<'a> Compiler<'a> {
                 descriptors: alloc.copy_alloc_slice(env.descs()).unwrap(),
                 stored: env.values(&alloc),
                 literal: env.literals(&alloc),
-                earliest_block: 0
+                earliest_block: 0,
+                scratch_pad_limit:255
             },
             witness: env.witnesses(&alloc)
         };

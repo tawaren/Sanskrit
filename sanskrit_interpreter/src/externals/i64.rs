@@ -51,7 +51,7 @@ impl External for I64{
             //public extFun fromData(data:Data.Data8):(res:.I64);
             14 => just_gas_and_mem(18, 0, OpCode::FromData(Kind::I64,params[0])),
             //public extFun hash(num:.I64):(res:Data.Data20);
-            15 => just_gas_and_mem(65, 20, OpCode::Hash(Kind::I64, params[0])),
+            15 => just_gas_and_mem(65, 20, OpCode::TypedSysInvoke(0, Kind::I64, params)),
             _ => return error(||"External call is not defined")
         })
     }

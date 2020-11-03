@@ -30,7 +30,7 @@ impl External for Ecdsa{
     fn compile_call<'b, 'h>(&self, fun_idx: u8, params: SlicePtr<'b, ValueRef>, _caller: &[u8; 20], _alloc: &'b HeapArena<'h>) -> Result<CompilationResult<'b>> {
         match fun_idx {
             //public extFun derivePublicId(pk:.Pk):(pub:.PublicId);
-            0 => Ok(just_gas_and_mem(65, Hash::SIZE as u64, OpCode::Hash(Kind::Data, params[0]))),
+            0 => Ok(just_gas_and_mem(65, Hash::SIZE as u64, OpCode::TypedSysInvoke(0, Kind::Data, params))),
             /*public extFun verify1(msg:Data.Data1, pk:.Pk, sig:.Sig):(res:Bool.Bool);
               public extFun verify2(msg:Data.Data2, pk:.Pk, sig:.Sig):(res:Bool.Bool);
               public extFun verify4(msg:Data.Data4, pk:.Pk, sig:.Sig):(res:Bool.Bool);
@@ -43,7 +43,7 @@ impl External for Ecdsa{
               public extFun verify32(msg:Data.Data32, pk:.Pk, sig:.Sig):(res:Bool.Bool);
             */
             //Todo: measure this it is guessed based on ethereum gas costs for similar operations
-            _ => Ok(just_gas_and_mem(4500, 0, OpCode::EcDsaVerify(params[0], params[1], params[2])))
+            _ => Ok(just_gas_and_mem(4500, 0, OpCode::SysInvoke(1, params))),
 
         }
     }

@@ -39,12 +39,11 @@ use sanskrit_common::errors::*;
 
 use std::net::TcpListener;
 use byteorder::{ NetworkEndian, ReadBytesExt, WriteBytesExt};
-use manager::{State, TrackingState, ExecutionState, ModuleNames};
+use manager::{State, TrackingState, ExecutionState, ModuleNames, Tx};
 use std::io::{Read, Write};
 use std::error::Error;
 use sanskrit_common::model::{Hash, hash_from_slice};
 use hex::encode;
-use externals::ServerSystem;
 use std::sync::{Mutex, Arc};
 use rustyline::Editor;
 use rustyline::error::ReadlineError;
@@ -52,6 +51,10 @@ use parser_model::Execute;
 use sanskrit_common::arena::{Heap, VirtualHeapArena};
 use sanskrit_interpreter::model::Entry;
 use sanskrit_common::encoding::{VirtualSize, Parser, NoCustomAlloc};
+use std::collections::BTreeSet;
+use std::cell::{RefCell, Cell};
+use std::rc::Rc;
+use sanskrit_common::store::StorageClass;
 
 pub const MODULE_COMMAND:u8 = 0;
 pub const TRANSACTION_COMMAND:u8 = 1;
@@ -140,115 +143,160 @@ fn handle_data<R:Read>(state: &mut State, reader:&mut R) -> Result<Vec<Hash>>{
     }
 }
 
-
-fn process_line(rl:&mut Editor<()>, shared_state:Arc<Mutex<State>>, full_heap:&VirtualHeapArena) -> Result<bool>{
-    let readline = rl.readline(">> ");
-    match readline {
-        Ok(line) => {
-            rl.add_history_entry(&line);
-            let (command, input) = match line.trim().find(|c:char| c.is_whitespace()) {
-                None => (line.chars().filter(|c| !c.is_whitespace()).collect::<String>().to_lowercase(), "".to_owned()),
-                Some(pos) => match line.split_at(pos){
-                    (c,d) => (c.trim().to_lowercase(), d.trim().to_owned())
-                },
-            };
-
-            match command.to_lowercase().as_ref() {
-                //executes a transaction
-                "execute" | "exec" =>  match parser::ExecuteParser::new().parse(&input) {
-                    Ok(txt) => {
-                        let txt:Execute = txt;
-                        let mut local_state =   convert_error(shared_state.lock())?;
-                        local_state.tracking.exec_state = ExecutionState::new(
-                            txt.build_param_names(),
-                            txt.build_return_names()
-                        );
-
-                        let hash = txt.txt_hash(&mut local_state)?;
-                        let params = txt.build_params(&mut local_state)?;
-                        let returns = txt.build_returns();
-                        local_state.execute_transaction(&hash, &params, &returns)?;
-                        if local_state.tracking.exec_state.success{
-                            println!("transaction execution successful")
-                        } else {
-                            println!("transaction execution was rolled back")
-                        }
-                    },
-                    Err(err) => {
-                        println!("{:?}", err);
-                    },
-                },
-                //prints account infos (creates it if it does not exist)
-                "account" => {
-                    let kp =   convert_error(shared_state.lock())?.get_account(&input)?;
-                    println!("0x{}",encode(kp.public.to_bytes()))
-                },
-                "accounts" =>  for (name, kp) in convert_error(shared_state.lock())?.get_accounts()? {
-                    println!("{} -> 0x{}",name,encode(kp.public.to_bytes()))
-                },
-
-                "transactions" =>  for name in convert_error(shared_state.lock())?.get_transactions()? {
-                    println!("{}",name)
-                },
-
-                "transaction" =>   {
-                    let mut local_state = convert_error(shared_state.lock())?;
-                    let txt = local_state.get_transaction(&input, full_heap)?;
-                    println!("size: {} bytes",txt.byte_size.unwrap());
-                    println!("virtual size: {} bytes",txt.virt_size.unwrap());
-                    println!("max consumed memory: {} bytes",txt.max_mem);
-                    println!("max stack slots: {} ({} bytes)",txt.max_stack, (txt.max_stack as usize) * Entry::SIZE);
-                    println!("max frame slots: {} (~{} bytes)",txt.max_frames, (txt.max_frames as usize) * (5*8));
-                    println!("gas cost: {}",txt.gas_cost);
-                    println!("num params: {}",txt.params.len());
-                    println!("num returns: {}",txt.returns.len());
-                    println!("num nested functions: {}",txt.functions.len());
-                },
-
-                "modules" => for name in convert_error(shared_state.lock())?.get_modules()? {
-                    println!("{}",name)
-                },
-
-                "module" =>   {
-                    let mut local_state = convert_error(shared_state.lock())?;
-                    let txt = local_state.get_module(&input, full_heap)?;
-                    println!("size: {} bytes",txt.byte_size.unwrap());
-                    println!("num data types: {}",txt.data.len());
-                    println!("num signature types: {}",txt.sigs.len());
-                    println!("num functions: {}",txt.functions.len());
-                    println!("num implementations: {}",txt.implements.len());
-                },
-
-                "elems" =>  for (name, data) in convert_error(shared_state.lock())?.get_elems()? {
-                    println!("{} -> 0x{}",name,data)
-                }
-
-                "elem" => {
-                    let mut local_state = convert_error(shared_state.lock())?;
-                    let elem = local_state.get_elem(&input)?;
-                    println!("{}",elem)
-                }
-
-                x if x.len() != 0 =>  println!("Unknown Command"),
-                _ => { }
-            }
-        },
-        Err(ReadlineError::Interrupted) => {
-            println!("CTRL-C");
-            return Ok(false)
-        },
-        Err(ReadlineError::Eof) => {
-            println!("CTRL-D");
-            return Ok(false)
-        },
-        Err(err) => {
-            println!("Error: {:?}", err);
-            return Ok(false)
-        }
-    }
-    Ok(true)
+enum ProcRes {
+    End,
+    Continue,
+    Switch(Box<LineProcessor>)
 }
 
+
+fn extract_command(line:String) -> (String,String) {
+    match line.trim().find(|c:char| c.is_whitespace()) {
+        None => (line.chars().filter(|c| !c.is_whitespace()).collect::<String>().to_lowercase(), "".to_owned()),
+        Some(pos) => match line.split_at(pos){
+            (c,d) => (c.trim().to_lowercase(), d.trim().to_owned())
+        },
+    }
+}
+
+fn process_txt_line(input:String, shared_state:Arc<Mutex<State>>, mut bindings: &mut BTreeSet<String>) -> Result<Tx> {
+    let txt:Execute = convert_error(parser::ExecuteParser::new().parse(&input))?;
+    let mut local_state =   convert_error(shared_state.lock())?;
+    txt.build_param_names(&mut local_state);
+    txt.build_return_names(&mut local_state);
+    let desc = txt.txt_hash(&mut local_state)?;
+    let returns = txt.build_returns(&mut bindings);
+    let params = txt.build_params(&mut local_state, &bindings)?;
+    Ok(Tx { desc, params, returns })
+}
+
+type LineProcessor = dyn Fn(String, &VirtualHeapArena) -> Result<ProcRes>;
+
+fn process_line(line:String, shared_state:Arc<Mutex<State>>, full_heap:&VirtualHeapArena) -> Result<ProcRes>{
+    let (command, input) = extract_command(line);
+
+    //Todo: Make multi transaction version
+    match command.to_lowercase().as_ref() {
+        "bundle" => {
+            let state = Rc::new(RefCell::new((BTreeSet::new(),Vec::new())));
+            {
+                let mut local_state =  convert_error(shared_state.lock())?;
+                local_state.tracking.exec_state = ExecutionState::new();
+            }
+            return Ok(ProcRes::Switch(Box::new(move |line:String, _|process_bundle_line(line,state.clone(), shared_state.clone()))))
+        },
+
+        //executes a transaction
+        "execute" | "exec" =>  {
+            let mut bindings:BTreeSet<String> = BTreeSet::new();
+            {
+                let mut local_state =  convert_error(shared_state.lock())?;
+                local_state.tracking.exec_state = ExecutionState::new();
+            }
+            match process_txt_line(input, shared_state.clone(), &mut bindings) {
+                Ok(tx) => {
+                    let mut local_state =  convert_error(shared_state.lock())?;
+                    local_state.execute_transaction(&[tx])?;
+                    if local_state.tracking.exec_state.success{
+                        println!("transaction execution successful")
+                    } else {
+                        println!("transaction execution was rolled back")
+                    }
+                }
+                Err(err) => {
+                    println!("{:?}", err);
+                }
+            }
+        },
+        //prints account infos (creates it if it does not exist)
+        "account" => {
+            let kp =   convert_error(shared_state.lock())?.get_account(&input)?;
+            println!("0x{}",encode(kp.public.to_bytes()))
+        },
+        "accounts" =>  for (name, kp) in convert_error(shared_state.lock())?.get_accounts()? {
+            println!("{} -> 0x{}",name,encode(kp.public.to_bytes()))
+        },
+
+        "transactions" =>  for name in convert_error(shared_state.lock())?.get_transactions()? {
+            println!("{}",name)
+        },
+
+        "transaction" =>   {
+            let mut local_state = convert_error(shared_state.lock())?;
+            let txt = local_state.get_transaction(&input, full_heap)?;
+            println!("size: {} bytes",txt.byte_size.unwrap());
+            println!("virtual size: {} bytes",txt.virt_size.unwrap());
+            println!("max consumed memory: {} bytes",txt.max_mem);
+            println!("max stack slots: {} ({} bytes)",txt.max_stack, (txt.max_stack as usize) * Entry::SIZE);
+            println!("max frame slots: {} (~{} bytes)",txt.max_frames, (txt.max_frames as usize) * (5*8));
+            println!("gas cost: {}",txt.gas_cost);
+            println!("num params: {}",txt.params.len());
+            println!("num returns: {}",txt.returns.len());
+            println!("num nested functions: {}",txt.functions.len());
+        },
+
+        "modules" => for name in convert_error(shared_state.lock())?.get_modules()? {
+            println!("{}",name)
+        },
+
+        "module" =>   {
+            let mut local_state = convert_error(shared_state.lock())?;
+            let txt = local_state.get_module(&input, full_heap)?;
+            println!("size: {} bytes",txt.byte_size.unwrap());
+            println!("num data types: {}",txt.data.len());
+            println!("num signature types: {}",txt.sigs.len());
+            println!("num functions: {}",txt.functions.len());
+            println!("num implementations: {}",txt.implements.len());
+        },
+
+        "elems" =>  for (name, data) in convert_error(shared_state.lock())?.get_elems()? {
+            println!("{} -> 0x{}",name,data)
+        }
+
+        "elem" => {
+            let mut local_state = convert_error(shared_state.lock())?;
+            let elem = local_state.get_elem(&input)?;
+            println!("{}",elem)
+        }
+
+        "exit" => return Ok(ProcRes::End),
+
+        x if x.len() != 0 =>  println!("Unknown Command"),
+        _ => { }
+    }
+    Ok(ProcRes::Continue)
+}
+
+
+fn process_bundle_line(line:String, bundle_state:Rc<RefCell<(BTreeSet<String>,Vec<Tx>)>>, shared_state:Arc<Mutex<State>>) -> Result<ProcRes> {
+    let (command, input) = extract_command(line);
+    match command.to_lowercase().as_ref() {
+        "abort" => return Ok(ProcRes::End),
+        "transaction" | "txt" => {
+            let (ref mut bindings, ref mut txts) = *bundle_state.borrow_mut();
+            match process_txt_line(input, shared_state.clone(), bindings) {
+                Ok(tx) => txts.push(tx),
+                Err(err) => {
+                    println!("{:?}", err);
+                }
+            }
+        },
+        "execute" | "exec" | "end" => {
+            let mut local_state =  convert_error(shared_state.lock())?;
+            let (_, ref txts) = *bundle_state.borrow_mut();
+            local_state.execute_transaction(&txts)?;
+            if local_state.tracking.exec_state.success{
+                println!("transaction bundle execution successful")
+            } else {
+                println!("transaction bundle execution was rolled back")
+            }
+            return Ok(ProcRes::End)
+        }
+        x if x.len() != 0 =>  println!("Unknown Command"),
+        _ => { }
+    }
+    Ok(ProcRes::Continue)
+}
 
 
 pub fn main() -> std::io::Result<()> {
@@ -267,22 +315,28 @@ pub fn main() -> std::io::Result<()> {
     let data_tracker_db = db_folder.join("data_tracker").with_extension("db");
     let data_names_tracker_db = db_folder.join("data_name_tracker").with_extension("db");
     let sys_entry_db = db_folder.join("system_modules").with_extension("db");
+    let meta_db = db_folder.join("meta_data").with_extension("db");
+
     let history = work_dir.join("history").with_extension("txt");
 
+    let mut auto_flushes = BTreeSet::new();
+    auto_flushes.insert(StorageClass::Transaction);
+    auto_flushes.insert(StorageClass::Module);
+    auto_flushes.insert(StorageClass::Descriptor);
+
     let state = State {
-        store: SledStore::new(&db_folder),
-        //todo: shall this be made persistent as well?
-        system: ServerSystem,
+        store: SledStore::new(&db_folder, auto_flushes),
         accounts:sled::open(account_db)?,
         system_entries:sled::open(sys_entry_db)?,
         module_name_mapping:sled::open(module_name_db)?,
         transaction_name_mapping:sled::open(transaction_name_db)?,
         tracking: TrackingState {
-            exec_state: ExecutionState::new(vec![], vec![]),
+            exec_state: ExecutionState::new(),
             active_elems:sled::open(elem_tracker_db)?,
             element_data:sled::open(data_tracker_db)?,
             data_names:sled::open(data_names_tracker_db)?,
-        }
+        },
+        meta_data:sled::open(meta_db)?,
     };
 
     for entry in state.system_entries.iter() {
@@ -300,7 +354,6 @@ pub fn main() -> std::io::Result<()> {
     // accept connections and process them serially
     println!("Started Local VM");
     thread::spawn(move || {
-        //todo: do this in seperate thread and use this one for console reading?
         let listener = TcpListener::bind("127.0.0.1:6000").unwrap();
         for stream_res in listener.incoming() {
             let mut stream = stream_res.unwrap();
@@ -329,13 +382,41 @@ pub fn main() -> std::io::Result<()> {
     let heap = Heap::new(100000000,2.0);
     let mut full_heap = heap.new_virtual_arena(10000000 as usize);
 
+    let mut processor:Box<LineProcessor> = Box::new(move |line:String, heap:&VirtualHeapArena|process_line(line, shared_state.clone(), &heap));
+    let mut stack:Vec<Box<LineProcessor>> = Vec::new();
+
     loop {
-        match process_line(&mut rl, shared_state.clone(), &full_heap) {
-            Ok(false) => break,
-            Ok(true) => {},
-            Err(err) => {
-                println!("Processing input resulted in error: {}", error_to_string(&err));
+        match rl.readline(">> ") {
+            Ok(line) => {
+                rl.add_history_entry(&line);
+                match processor(line, &full_heap) {
+                    Err(err) => {
+                        println!("Error: {:?}", err);
+                        continue
+                    }
+                    Ok(ProcRes::End) if stack.is_empty() => break,
+                    Ok(ProcRes::End) => {
+                        processor = stack.pop().unwrap()
+                    },
+                    Ok(ProcRes::Continue) => {},
+                    Ok(ProcRes::Switch(proc)) => {
+                        stack.push(processor);
+                        processor = proc
+                    }
+                }
+            }
+            Err(ReadlineError::Interrupted) => {
+                println!("CTRL-C");
+                break
             },
+            Err(ReadlineError::Eof) => {
+                println!("CTRL-D");
+                break
+            },
+            Err(err) => {
+                println!("Error: {:?}", err);
+                break
+            }
         }
         full_heap = full_heap.reuse();
         rl.save_history(&history).unwrap();

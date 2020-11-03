@@ -17,9 +17,9 @@ system module IntI32 {
     public extFun xor(num1:.I32, num2:.I32):(res:.I32);
     public extFun not(num1:.I32):(res:.I32);
 
-    public extFun toData(num:.I32):(res:Data.Data4);
+    public extFun toData(NUM:.I32):(res:Data.Data4);
     public extFun fromData(data:Data.Data4):(res:.I32);
 
-    public extFun hash(num:.I32):(res:Data.Data20);
+    public extFun hash(NUM:.I32):(res:Data.Data20);
 
 }

@@ -275,7 +275,9 @@ impl<'a> CodeImportBuilder<'a> {
         } else {
             let r_appl = typ.applies.iter().map(|t|self.import_typ_ref(t)).collect::<Result<_,_>>()?;
             match typ.main{
-                Ref::Generic(_) => unimplemented!(),
+                Ref::Generic(ref id) => {
+                    return Ok(TypeRef(self.generics.iter().position(|g|g.name == *id).unwrap() as u8))
+                },
                 Ref::This(ref id) => {
                     let offset = self.this_module.unwrap().index[id].elem_index as u8;
                     RType::Data{

@@ -1,8 +1,0 @@
-signed(T) transaction {
-    token = call Token.empty[#0x665ade2b78e9dfd4c47d1b1df584d7a785836e15.0]();
-    idxData = lit 0x01:$data;
-    index = call Helper.createIndex(idxData);
-    purse = pack Purse.Purse[T,#0x665ade2b78e9dfd4c47d1b1df584d7a785836e15.0]#Purse(index,token);
-    store purse;
-};
-

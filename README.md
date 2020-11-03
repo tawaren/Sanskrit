@@ -64,7 +64,7 @@ A type parameter can be marked phantom and in that case it can not be used as a 
 
 ### Capabilities
 The type system of Sanskrit is powerful enough to provide a capability-based access control system that has near zero runtime overhead and allows to check access control during compilation and thus code accessing values or calling functions, that it is not allowed to does not compile.
-These is achieved in two ways: First a values in Sanskrit can be scarce they can be used as access token. This kind of Capability is called a Dynamic capability.
+These is achieved in two ways: First a values in Sanskrit can be scarce they can be used as access token. This KIND of Capability is called a Dynamic capability.
 Second a function can be declared as protected by one of its generic arguments and then can only be called by code from a module that declares the type used when callung the function.
 This is called a static capability.
 

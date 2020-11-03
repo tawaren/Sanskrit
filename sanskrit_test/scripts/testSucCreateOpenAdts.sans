@@ -7,11 +7,11 @@ module TestSucCreateOpenAdts {
         return pack TestSucOpenAdt.Wrapper[T]#Ctr(t);
     };
 
-    public fun CreateImageWrapper[T](consume t:%T):(res: %TestSucOpenAdt.Wrapper[T]) {
+    public fun CreateImageWrapper[<Value> T](consume t:%T):(res: %TestSucOpenAdt.Wrapper[T]) {
         return pack %TestSucOpenAdt.Wrapper[T]#Ctr(t);
     };
 
-    public fun CreateWrapperImage[T](consume t:%T):(res: TestSucOpenAdt.Wrapper[%T]) {
+    public fun CreateWrapperImage[<Value> T](consume t:%T):(res: TestSucOpenAdt.Wrapper[%T]) {
         return pack TestSucOpenAdt.Wrapper[%T]#Ctr(t);
     };
 

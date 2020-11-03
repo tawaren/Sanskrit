@@ -51,7 +51,7 @@ impl External for I8 {
             //public extFun fromData(data:Data.Data1):(res:.I8);
             14 => just_gas_and_mem(18, 0, OpCode::FromData(Kind::I8,params[0])),
             //public extFun hash(num:.I8):(res:Data.Data20);
-            15 => just_gas_and_mem(65, 20, OpCode::Hash(Kind::I8, params[0])),
+            15 => just_gas_and_mem(65, 20, OpCode::TypedSysInvoke(0, Kind::I8, params)),
             _ => return error(||"External call is not defined")
         })
     }

@@ -51,7 +51,7 @@ impl External for U128{
             //public extFun fromData(data:Data.Data16):(res:.U128);
             14 => just_gas_and_mem(18, 0, OpCode::FromData(Kind::U128,params[0])),
             //public extFun hash(num:.U128):(res:Data.Data20);
-            15 => just_gas_and_mem(65, 20, OpCode::Hash(Kind::U128, params[0])),
+            15 => just_gas_and_mem(65, 20, OpCode::TypedSysInvoke(0, Kind::U128, params)),
             _ => return error(||"External call is not defined")
         })
     }

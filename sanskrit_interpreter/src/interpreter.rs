@@ -2,19 +2,21 @@ use sanskrit_common::model::*;
 use sanskrit_common::errors::*;
 use model::*;
 
-use sanskrit_common::hashing::*;
 use sanskrit_common::arena::*;
 use byteorder::{ByteOrder};
 use sanskrit_common::encoding::EncodingByteOrder;
-use ed25519_dalek::{PublicKey, Verifier};
-use ed25519_dalek::ed25519::signature::Signature;
+use externals::{ExecutionInterface, RuntimeExternals};
 
 //enum to indicate if a block had a result or an error as return
 #[derive(Copy, Clone, Debug)]
 pub enum Continuation<'code> {
     Next,
-    Cont(&'code Exp<'code>, usize),
+    Cont(&'code Exp<'code>, usize, bool),
     TryCont(&'code Exp<'code>, &'code Exp<'code>, &'code Exp<'code>, usize),
+    //These are called Call instead of cont as these always are isolated frames with no access to parent
+    // In theory we could differ the cont as well over an isolated flag, which would allow tail call optim
+    RepCall(&'code Exp<'code>, usize, ValueRef, Tag, u8),
+    RepTryCall(&'code Exp<'code>, &'code Exp<'code>, &'code Exp<'code>, usize, ValueRef, Tag, u8),
     Rollback,
 }
 
@@ -23,13 +25,20 @@ pub enum Frame<'code> {
     Continuation{
         exp:&'code Exp<'code>,
         pos:usize,
-        stack_height:usize
+        stack_height:usize,
     },
     Try {
         succ:&'code Exp<'code>,
         fail:&'code Exp<'code>,
         stack_height:usize,
         prev:Option<usize>
+    },
+    Repeat {
+        exp:&'code Exp<'code>,
+        stack_height:usize,
+        cond_value:ValueRef,
+        abort_tag:Tag,
+        counter:u8
     }
 }
 
@@ -61,9 +70,80 @@ pub fn create_lit_object<'transaction, 'heap>(data:&[u8], typ:LitDesc, alloc:&'t
     })
 }
 
+impl <'transaction,'code,'interpreter,'execution,'heap> ExecutionInterface<'interpreter, 'transaction, 'heap> for ExecutionContext<'transaction,'code,'interpreter, 'execution,'heap> {
+    //helper to get stack elems
+    fn get(&self, idx: usize) -> Result<Entry<'transaction>> {
+        //calc the pos
+        let pos = self.stack.len() - idx - 1;
+        //get the elem
+        Ok(*self.stack.get(pos)?)
+    }
+
+    //helper to get the correct stack (return or normal)
+    fn get_stack(&mut self, tail:bool) -> &mut HeapStack<'interpreter, Entry<'transaction> > {
+        if tail {
+            self.return_stack
+        } else {
+            self.stack
+        }
+    }
+
+    fn get_heap(&self) -> &'transaction VirtualHeapArena<'heap>{
+        self.alloc
+    }
+
+    fn process_entry_slice<R:Sized,F:FnOnce(&[u8]) -> R>(kind:Kind, op1:Entry<'transaction>, proc:F) -> R {
+        match kind {
+            Kind::I8 => proc(&[unsafe {op1.i8} as u8]),
+            Kind::U8 => proc(&[unsafe {op1.u8}]),
+            Kind::I16 => {
+                let mut input = [0; 2];
+                EncodingByteOrder::write_i16(&mut input, unsafe {op1.i16});
+                proc(&input)
+            },
+            Kind::U16 =>  {
+                let mut input = [0; 2];
+                EncodingByteOrder::write_u16(&mut input, unsafe {op1.u16});
+                proc(&input)
+            },
+            Kind::I32 => {
+                let mut input = [0; 4];
+                EncodingByteOrder::write_i32(&mut input, unsafe {op1.i32});
+                proc(&input)
+            },
+            Kind::U32 => {
+                let mut input = [0; 4];
+                EncodingByteOrder::write_u32(&mut input, unsafe {op1.u32});
+                proc(&input)
+            },
+            Kind::I64 => {
+                let mut input = [0; 8];
+                EncodingByteOrder::write_i64(&mut input, unsafe {op1.i64});
+                proc(&input)
+            },
+            Kind::U64 => {
+                let mut input = [0; 8];
+                EncodingByteOrder::write_u64(&mut input, unsafe {op1.u64});
+                proc(&input)
+            },
+            Kind::I128 => {
+                let mut input = [0; 16];
+                EncodingByteOrder::write_i128(&mut input, unsafe {op1.i128});
+                proc(&input)
+            },
+            Kind::U128 => {
+                let mut input = [0; 16];
+                EncodingByteOrder::write_u128(&mut input, unsafe {op1.u128});
+                proc(&input)
+            },
+            Kind::Data => proc(unsafe {&op1.data})
+        }
+    }
+}
+
 impl<'transaction,'code,'interpreter,'execution,'heap> ExecutionContext<'transaction,'code,'interpreter, 'execution,'heap> {
     //Creates a new Empty context
-    pub fn interpret(
+    pub fn interpret<Ext:RuntimeExternals>(
         functions: &'code [Ptr<'code,Exp<'code>>],
         stack:&'execution mut HeapStack<'interpreter,Entry<'transaction>>,
         frames:&'execution mut HeapStack<'interpreter,Frame<'code>>,
@@ -79,18 +159,14 @@ impl<'transaction,'code,'interpreter,'execution,'heap> ExecutionContext<'transac
             return_stack,
             try_ptr:None,
         };
-        context.execute_function((functions.len()-1) as u16)
+        context.execute_function::<Ext>((functions.len()-1) as u16)
     }
 
     //TExecutes a function in the current context
-    fn execute_function(mut self, fun_idx: u16) -> Result<()> {
+    fn execute_function<Ext:RuntimeExternals>(mut self, fun_idx: u16) -> Result<()> {
         //Cost: constant
         //assert params are on Stack for now
         let code = &self.functions[fun_idx as usize];
-
-        if self.frames.len() == 3 {
-            panic!("{:?}", self.frames);
-        }
 
         self.frames.push(Frame::Continuation {
             exp: &code,
@@ -98,7 +174,7 @@ impl<'transaction,'code,'interpreter,'execution,'heap> ExecutionContext<'transac
             stack_height: 0
         })?;
 
-        if self.execute_exp()? {
+        if self.execute_exp::<Ext>()? {
             Ok(())
         } else {
             error(||"Transaction was rolled back")
@@ -106,106 +182,182 @@ impl<'transaction,'code,'interpreter,'execution,'heap> ExecutionContext<'transac
     }
 
     //Type checks an expression in the current context
-    fn execute_exp(&mut self) -> Result<bool> {
+    fn execute_exp<Ext:RuntimeExternals>(&mut self) -> Result<bool> {
         'outer: loop {
             match self.frames.pop() {
-                Some(Frame::Continuation { mut exp, mut pos, mut stack_height }) => {
-                    'direct: loop {
-                        //let Frame { exp, pos, stack_height } = cur;
-                        //Cost: relative to vals.len() |opCode will measure seperately| -- sub stack push will be accounted on push
-                        //process each opcode
-                        while exp.0.len() > pos {
-                            pos+=1;
-                            let tail = exp.0.len() == pos;
+                Some(Frame::Continuation { exp, mut pos, stack_height }) => {
+                    //let Frame { exp, pos, stack_height } = cur;
+                    //Cost: relative to vals.len() |opCode will measure seperately| -- sub stack push will be accounted on push
+                    //process each opcode
+                    'main: while exp.0.len() > pos {
+                        pos+=1;
+                        let tail = exp.0.len() == pos;
 
-                            match self.execute_op_code(&exp.0[pos-1], tail)? {
-                                Continuation::Next => {},
-                                Continuation::Cont(n_exp,n_stack_hight) => {
-                                    //Re-push the current Frame if we still need it later omn
-                                    if !tail {
-                                        self.frames.push(Frame::Continuation { exp, pos, stack_height })?;
-                                        //we need only to revert to new stack height as the pushed frame will revert the rest
-                                        stack_height = n_stack_hight;
-                                    }
-                                    //Replace the current Frame with the new one
-                                    exp = n_exp;
-                                    pos = 0;
-                                    //Process the new Frame
-                                    continue 'direct;
-                                },
-                                Continuation::TryCont(n_exp, succ, fail,n_stack_hight) => {
-                                    //Re-push the current Frame if we still need it later omn
-                                    if !tail {
-                                        self.frames.push(Frame::Continuation { exp, pos, stack_height })?;
-                                        //we need only to revert to new stack height as the pushed frame will revert the rest
-                                        stack_height = n_stack_hight;
-                                    }
-                                    //Push a try Frame
-                                    self.frames.push(Frame::Try { succ, fail, stack_height:n_stack_hight,  prev:self.try_ptr})?;
-                                    self.try_ptr = Some(self.frames.len());
-                                    //Replace the current Frame with the new one
-                                    exp = n_exp;
-                                    pos = 0;
-                                    //Process the new Frame
-                                    continue 'direct;
-                                },
-                                Continuation::Rollback => {
-                                    //Check if we shall abort or rollback
-                                    match self.try_ptr {
-                                        None => return Ok(false),
-                                        Some(try_ptr) => {
-                                            //reset frames
-                                            self.frames.rewind_to(try_ptr)?;
-                                            if let Some(Frame::Try { fail, stack_height, prev, .. }) = self.frames.pop() {
-                                                //reset the stack
-                                                self.stack.rewind_to(stack_height)?;
-                                                //push the failure as continuation
-                                                self.frames.push(Frame::Continuation { exp:fail, pos:0, stack_height })?;
-                                                //recover the previous try pointer
-                                                self.try_ptr = prev;
-                                            } else {
-                                                unreachable!()
-                                            }
-                                        },
+                        match self.execute_op_code::<Ext>(&exp.0[pos-1], tail)? {
+                            Continuation::Next => {},
+                            Continuation::Cont(n_exp, n_stack_height, isolated) => {
+                                if !tail {
+                                    //Re-push the current Frame if we still need it later on
+                                    self.frames.push(Frame::Continuation { exp, pos, stack_height })?;
+                                    //Push the new Frame
+                                    self.frames.push(Frame::Continuation { exp:n_exp, pos:0, stack_height:n_stack_height })?;
+                                    //Execute the new Frame
+                                    continue 'outer;
+                                } else {
+                                    //Push the new Frame
+                                    self.frames.push(Frame::Continuation { exp:n_exp, pos:0, stack_height })?;
+                                    //Execute the new Frame
+                                    if isolated {
+                                        //we no longer need the current - args are on return
+                                        break 'main;
+                                    } else {
+                                        //we still need the current stack - args are on stack
+                                        continue 'outer;
                                     }
                                 }
                             }
+                            Continuation::RepCall(n_exp, n_stack_height, cond_value, abort_tag, counter) => {
+                                if !tail {
+                                    //Re-push the current Frame if we still need it later on
+                                    self.frames.push(Frame::Continuation { exp, pos, stack_height })?;
+                                    //Push the new repeat frame
+                                    self.frames.push(Frame::Repeat { exp:n_exp, stack_height: n_stack_height, cond_value, abort_tag, counter})?;
+                                    //Execute the new repeat frame (params are already on the stack)
+                                    continue 'outer;
+                                } else {
+                                    //Push the new repeat frame
+                                    self.frames.push(Frame::Repeat { exp:n_exp, stack_height, cond_value, abort_tag, counter})?;
+                                    //Execute the new repeat frame (ensure the old stack is cleaned first -- that is why we use break 'inner)
+                                    break 'main;
+                                }
+                            }
+                            Continuation::TryCont(n_exp, succ, fail, n_stack_height) => {
+                                if !tail {
+                                    //Re-push the current Frame if we still need it later omn
+                                    self.frames.push(Frame::Continuation { exp, pos, stack_height })?;
+                                    //we only revert to new stack height as the pushed continue frame will revert the rest
+                                    self.frames.push(Frame::Try { succ, fail, stack_height:n_stack_height,  prev:self.try_ptr})?;
+                                    //Set the try_ptr in case of a rollback
+                                    self.try_ptr = Some(self.frames.len());
+                                    //Push the new Frame
+                                    self.frames.push(Frame::Continuation { exp:n_exp, pos:0, stack_height:n_stack_height })?;
+                                    //Execute the new Frame
+                                    continue 'outer;
+                                } else {
+                                    //Push a try Frame
+                                    self.frames.push(Frame::Try { succ, fail, stack_height,  prev:self.try_ptr})?;
+                                    //Set the try_ptr in case of a rollback
+                                    self.try_ptr = Some(self.frames.len());
+                                    //Execute the new Frame
+                                    self.frames.push(Frame::Continuation { exp:n_exp, pos:0, stack_height:n_stack_height })?;
+                                    //Execute the new Frame
+                                    // Note: Try executes the try body with tail == false so the args are always on the stack
+                                    continue 'outer;
+                                }
+                            }
+                            Continuation::RepTryCall(n_exp, succ, fail, n_stack_height, cond_value, abort_tag, counter) => {
+                                if !tail {
+                                    //Re-push the current Frame if we still need it later on
+                                    self.frames.push(Frame::Continuation { exp, pos, stack_height })?;
+                                    //we only revert to new stack height as the pushed continue frame will revert the rest
+                                    self.frames.push(Frame::Try { succ, fail, stack_height:n_stack_height,  prev:self.try_ptr})?;
+                                    //Set the try_ptr in case of a rollback
+                                    self.try_ptr = Some(self.frames.len());
+                                    //Push the new repeat frame
+                                    self.frames.push(Frame::Repeat { exp:n_exp, stack_height:n_stack_height, cond_value, abort_tag, counter})?;
+                                    //Execute the new repeat frame (params are already on the stack)
+                                    continue 'outer;
+                                } else {
+                                    //Push a try Frame
+                                    self.frames.push(Frame::Try { succ, fail, stack_height,  prev:self.try_ptr})?;
+                                    //Set the try_ptr in case of a rollback
+                                    self.try_ptr = Some(self.frames.len());
+                                    //Push the new repeat frame
+                                    self.frames.push(Frame::Repeat { exp:n_exp, stack_height: n_stack_height, cond_value, abort_tag, counter})?;
+                                    //Execute the new Frame
+                                    // Note: Try executes the try body with tail == false so the args are always on the stack
+                                    continue 'outer;
+                                }
+                            }
+                            Continuation::Rollback => {
+                                if !self.execute_rollback()? {
+                                    return Ok(false)
+                                }
+                            }
                         }
-
-                        //reset the stack
-                        self.stack.rewind_to(stack_height)?;
-
-                        //push the returned elems (empties return_stack)
-                        self.stack.transfer_from(self.return_stack)?;
-
-                        break;
                     }
+
+                    //reset the stack
+                    self.stack.rewind_to(stack_height)?;
+
+                    //push the returned elems (empties return_stack)
+                    self.stack.transfer_from(self.return_stack)?;
                 },
                 Some(Frame::Try { succ, stack_height, prev, .. }) => {
                     self.frames.push(Frame::Continuation { exp:succ, pos:0, stack_height })?;
                     self.try_ptr = prev;
+                },
+                Some(Frame::Repeat {exp, stack_height, cond_value:ValueRef(idx), abort_tag, counter}) => {
+                    let cond_elem = self.get(idx as usize)?;
+                    let tag = unsafe {cond_elem.adt.0};
+                    //do we need more repetitions?
+                    if tag != abort_tag.0 {
+                        //can we do more iterations?
+                        if counter != 0 {
+                            //Re-push ourself
+                            self.frames.push(Frame::Repeat { exp, stack_height, cond_value:ValueRef(idx), abort_tag, counter: counter -1})?;
+                            //Push the next iteration
+                            self.frames.push(Frame::Continuation { exp, pos: 0, stack_height })?;
+                        } else {
+                            if !self.execute_rollback()? {
+                                return Ok(false)
+                            }
+                        }
+                    }
                 }
                 None => return Ok(true)
             }
         }
     }
 
+    fn execute_rollback(&mut self) -> Result<bool> {
+        match self.try_ptr {
+            None => Ok(false),
+            Some(try_ptr) => {
+                //reset frames
+                self.frames.rewind_to(try_ptr)?;
+                if let Some(Frame::Try { fail, stack_height, prev, .. }) = self.frames.pop() {
+                    //reset the stack
+                    self.stack.rewind_to(stack_height)?;
+                    //push the failure as continuation
+                    self.frames.push(Frame::Continuation { exp:fail, pos:0, stack_height })?;
+                    //recover the previous try pointer
+                    self.try_ptr = prev;
+                } else {
+                    unreachable!()
+                }
+                Ok(true)
+            },
+        }
+    }
+
     //The heavy lifter that type checks op code
-    fn execute_op_code(&mut self, code: &'code OpCode, tail:bool) -> Result<Continuation<'code>> {
+    fn execute_op_code<Ext:RuntimeExternals>(&mut self, code: &'code OpCode, tail:bool) -> Result<Continuation<'code>> {
         //Branch on the opcode type and check it
         match *code {
             OpCode::Void => self.void(tail),
             OpCode::Data(data) => self.lit(&data, tail),
             OpCode::SpecialLit(ref data, desc) => self.special_lit(data,desc, tail),
-            OpCode::Let(ref bind) => self.let_(bind),
+            OpCode::Let(ref bind) => self.let_(bind, tail),
             OpCode::Unpack(value) => self.unpack(value, tail),
             OpCode::Get(value, field) => self.get_field(value, field, tail),
-            OpCode::Switch(value, ref cases) => self.switch(value, cases),
+            OpCode::Switch(value, ref cases) => self.switch(value, cases, tail),
             OpCode::Pack(tag, values) => self.pack(tag, &values, tail),
             OpCode::CreateSig(func,values) => self.create_sig(func, &values, tail),
-            OpCode::InvokeSig(func_val, values)  => self.invoke_sig(*func_val, &values),
-            OpCode::Invoke(func, values) => self.invoke(func, &values),
-            OpCode::Try(ref code,ref succ, ref fail) => self.try(code, succ, fail),
+            OpCode::InvokeSig(func_val, values)  => self.invoke_sig(func_val, &values, tail),
+            OpCode::Invoke(func, values) => self.invoke(func, &values, tail),
+            OpCode::RepeatedInvoke(func, values, cond_value, abort_tag, max_reps) => self.repeat(func, &values, cond_value, abort_tag, max_reps, tail),
+            OpCode::Try(ref code,ref succ, ref fail) => self.try::<Ext>(code, succ, fail, tail),
             OpCode::Rollback => Ok(Continuation::Rollback),
             OpCode::Return(ref vals) => self._return(vals, tail),
             OpCode::And(kind, op1,op2) => self.and(kind,op1,op2, tail),
@@ -218,25 +370,14 @@ impl<'transaction,'code,'interpreter,'execution,'heap> ExecutionContext<'transac
             OpCode::Mul(kind, op1,op2) => self.mul(kind, op1,op2, tail),
             OpCode::Div(kind, op1,op2) => self.div(kind, op1,op2, tail),
             OpCode::Eq(kind, op1,op2) => self.eq(kind, op1,op2, tail),
-            OpCode::Hash(kind, op) => self.plain_hash(kind, op, tail),
-            OpCode::EcDsaVerify(op1, op2, op3) => self.ecdsa_verify(op1,op2,op3, tail),
             OpCode::ToData(kind, op) => self.convert_to_data(kind,op, tail),
             OpCode::FromData(kind, op) => self.convert_from_data(kind,op, tail),
             OpCode::Lt(kind, op1,op2) => self.lt(kind, op1,op2, tail),
             OpCode::Gt(kind, op1,op2) => self.gt(kind, op1,op2, tail),
             OpCode::Lte(kind, op1,op2) => self.lte(kind, op1,op2, tail),
             OpCode::Gte(kind, op1,op2) => self.gte(kind, op1,op2, tail),
-            OpCode::Derive(op1,op2) => self.join_hash(op1, op2, HashingDomain::Derive, tail),
-        }
-    }
-
-
-    //helper to get the correct stack (return or normal)
-    fn get_stack(&mut self, tail:bool) -> &mut HeapStack<'interpreter, Entry<'transaction> > {
-        if tail {
-            self.return_stack
-        } else {
-            self.stack
+            OpCode::SysInvoke(id, ref vals) => self.sys_call::<Ext>(id, vals, tail),
+            OpCode::TypedSysInvoke(id, kind, ref vals) => self.kinded_sys_call::<Ext>(id, kind, vals, tail),
         }
     }
 
@@ -272,27 +413,20 @@ impl<'transaction,'code,'interpreter,'execution,'heap> ExecutionContext<'transac
 
     //_ as let is keyword
     // process an EXp isolated
-    fn let_(&mut self, bind: &'code Exp) -> Result<Continuation<'code>> {
+    fn let_(&mut self, bind: &'code Exp, _tail:bool) -> Result<Continuation<'code>> {
         //Cost: constant
         //fetch the height
         let stack_height = self.stack.len();
         //execute the block
-        Ok(Continuation::Cont(bind, stack_height))
-    }
-
-    //helper to get stack elems
-    fn get(&self, idx: usize) -> Result<Entry<'transaction>> {
-        //calc the pos
-        let pos = self.stack.len() - idx - 1;
-        //get the elem
-        Ok(*self.stack.get(pos)?)
+        Ok(Continuation::Cont(bind, stack_height, false))
     }
 
     //unpacks an adt
     fn unpack(&mut self, ValueRef(idx): ValueRef, tail:bool) -> Result<Continuation<'code>> {
+
         //Cost: relative to: elems.len()
         //get the input
-        let Adt(_, fields) = unsafe { self.get(idx as usize)?.adt };
+        let Adt(tag, fields) = unsafe { self.get(idx as usize)?.adt };
         //must be an adt (static guarantee)
         //push each field
         let stack = self.get_stack(tail);
@@ -315,7 +449,7 @@ impl<'transaction,'code,'interpreter,'execution,'heap> ExecutionContext<'transac
     }
 
     //branch based on constructor
-    fn switch(&mut self, ValueRef(idx): ValueRef, cases: &'code [Ptr<'code,Exp<'code>>]) -> Result<Continuation<'code>> {
+    fn switch(&mut self, ValueRef(idx): ValueRef, cases: &'code [Ptr<'code,Exp<'code>>], _tail:bool) -> Result<Continuation<'code>> {
         //Cost: relative to: elems.len()
         //get the input
         let Adt(tag, fields) = unsafe { self.get(idx as usize)?.adt };
@@ -328,7 +462,7 @@ impl<'transaction,'code,'interpreter,'execution,'heap> ExecutionContext<'transac
         }
 
         //execute the right branch
-        Ok(Continuation::Cont(&cases[tag as usize], stack_height))
+        Ok(Continuation::Cont(&cases[tag as usize], stack_height, false))
     }
 
     //packs an adt
@@ -362,7 +496,7 @@ impl<'transaction,'code,'interpreter,'execution,'heap> ExecutionContext<'transac
     }
 
     //call a sig function
-    fn invoke_sig(&mut self, ValueRef(fun_val): ValueRef, values: &[ValueRef]) -> Result<Continuation<'code>> {
+    fn invoke_sig(&mut self, ValueRef(fun_val): ValueRef, values: &[ValueRef], tail:bool) -> Result<Continuation<'code>> {
         //get the target
         let Func(index, captures) = unsafe {self.get(fun_val as usize)?.func};
         //must be a function pointer (static guarantee)
@@ -374,19 +508,24 @@ impl<'transaction,'code,'interpreter,'execution,'heap> ExecutionContext<'transac
         //push the captured arguments
         assert!(values.len()+captures.len() <= u16::max_value() as usize);
         for elem in captures.iter() {
-            self.stack.push(*elem)?;
+            self.get_stack(tail).push(*elem)?;
         }
         //push the provided arguments
         for (i,ValueRef(idx)) in values.iter().enumerate() {
-            let elem = self.get(*idx as usize+(i+captures.len()))?; //i+captures.len() counteracts the already pushed elements
-            self.stack.push(elem)?;
+            let elem = if tail {
+                self.get(*idx as usize)?
+            } else {
+                self.get(*idx as usize+(i+captures.len()))? //i+captures.len() counteracts the already pushed elements
+            };
+            self.get_stack(tail).push(elem)?;
+
         }
         //Execute the function
-        Ok(Continuation::Cont(fun_code, stack_height))
+        Ok(Continuation::Cont(fun_code, stack_height, true))
     }
 
     //call a function
-    fn invoke(&mut self, fun_idx: u16, values: &[ValueRef]) -> Result<Continuation<'code>> {
+    fn invoke(&mut self, fun_idx: u16, values: &[ValueRef], tail:bool) -> Result<Continuation<'code>> {
         //Cost: relative to: values.len()
         //Non-Native
         //get the code
@@ -396,29 +535,60 @@ impl<'transaction,'code,'interpreter,'execution,'heap> ExecutionContext<'transac
         //push the arguments
         assert!(values.len() <= u16::max_value() as usize);
         for (i,ValueRef(idx)) in values.iter().enumerate() {
-            let elem = self.get(*idx as usize+i)?; //i counteracts the already pushed elements
-            self.stack.push(elem)?;
+            let elem = if tail {
+                self.get(*idx as usize)?
+            } else {
+                self.get(*idx as usize+i)? //i counteracts the already pushed elements
+            };
+            self.get_stack(tail).push(elem)?;
         }
         //Execute the function
-        Ok(Continuation::Cont(fun_code, stack_height))
+        Ok(Continuation::Cont(fun_code, stack_height, true))
     }
 
-    fn try(&mut self,  try:&'code OpCode, succ: &'code Exp, fail: &'code Exp) -> Result<Continuation<'code>> {
+    fn repeat(&mut self, fun_idx: u16, values: &[ValueRef], cond_value:ValueRef, abort_tag:Tag, max_reps:u8, tail:bool) -> Result<Continuation<'code>> {
+        //Cost: relative to: values.len()
+        //Non-Native
+        //get the code
+        let fun_code: &Exp = &self.functions[fun_idx as usize];
+        //fetch the height
+        let stack_height = self.stack.len();
+        //push the arguments
+        assert!(values.len() <= u16::max_value() as usize);
+        for (i,ValueRef(idx)) in values.iter().enumerate() {
+            let elem = if tail {
+                self.get(*idx as usize)?
+            } else {
+                self.get(*idx as usize+i)? //i counteracts the already pushed elements
+            };
+            self.get_stack(tail).push(elem)?;
+        }
+        //Execute the function
+        Ok(Continuation::RepCall(fun_code, stack_height, cond_value, abort_tag, max_reps))
+    }
+
+    fn try<Ext:RuntimeExternals>(&mut self,  try:&'code OpCode, succ: &'code Exp, fail: &'code Exp, _tail:bool) -> Result<Continuation<'code>> {
         //fetch the height
         let stack_height = self.stack.len();
         //Execute the try code
-        match self.execute_op_code(try, false)? {
+        match self.execute_op_code::<Ext>(try, false)? {
             //it succeeded so continue with the success case
-            Continuation::Next => Ok(Continuation::Cont(succ, stack_height)), //This is nice as it allows to make adds & muls & ... morte efficently even with try
+            Continuation::Next => Ok(Continuation::Cont(succ, stack_height, false)), //This is nice as it allows to make adds & muls & ... more efficently even with try
             //it failed so continue with the failure case
-            Continuation::Rollback => Ok(Continuation::Cont(fail, stack_height)), //This is nice as it allows to make adds & muls & ... morte efficently even with try
+            Continuation::Rollback => Ok(Continuation::Cont(fail, stack_height, false)), //This is nice as it allows to make adds & muls & ... more efficently even with try
             //it is a nested block so remember the try
-            Continuation::Cont(n_exp,n_stack_height) => {
+            Continuation::Cont(n_exp,n_stack_height, _isolated) => {
                 assert_eq!(n_stack_height,stack_height);
                 Ok(Continuation::TryCont(n_exp,succ,fail,stack_height))
             },
+            Continuation::RepCall(n_exp, n_stack_height, cond_value, abort_tag, max_reps) => {
+                assert_eq!(n_stack_height,stack_height);
+                Ok(Continuation::RepTryCall(n_exp, succ, fail, stack_height, cond_value, abort_tag, max_reps))
+            }
+
             //Not yet supported. Needs to be supported if we have inlining optimization
-            Continuation::TryCont(_,_,_,_) => error(||"Directly nested tries are nut yet supports")
+            Continuation::TryCont(_,_,_,_) => error(||"Directly nested tries are not yet supports"),
+            Continuation::RepTryCall(_, _, _, _, _, _, _) => error(||"Directly nested tries are not yet supports"),
         }
     }
 
@@ -681,53 +851,13 @@ impl<'transaction,'code,'interpreter,'execution,'heap> ExecutionContext<'transac
         Ok(Continuation::Next)
     }
 
-    //a non recursive, non-structural variant that just hashes the data input -- it has no collision guarantees
-    // This is never used to generate collision free hashes like unique, singleton, indexes etc...
-    fn plain_hash(&mut self, kind:Kind, ValueRef(val):ValueRef, tail:bool) -> Result<Continuation<'code>> {
-        let op1 = self.get(val as usize)?;
-        //Plain is an exception and allowed to be called with no domain as it is always used as data
-        let mut context = Hasher::new();
-        //fill the hash
-        Self::process_entry_slice(kind,op1, |data| context.update(data));
-        //calc the Hash
-        let hash_data = context.alloc_finalize(&self.alloc)?;
-        //get ownership and return
-        self.get_stack(tail).push(Entry{data:hash_data})?;
+    fn sys_call<Ext:RuntimeExternals>(&mut self, id:u8, vals:&[ValueRef], tail:bool) -> Result<Continuation<'code>>  {
+        Ext::system_call(self,id, vals, tail)?;
         Ok(Continuation::Next)
     }
 
-    //verifies a signature
-    fn ecdsa_verify(&mut self, ValueRef(msg):ValueRef, ValueRef(pk):ValueRef, ValueRef(sig):ValueRef, tail:bool) -> Result<Continuation<'code>>  {
-        let msg_data = unsafe {self.get(msg as usize)?.data};
-        let pk_data = unsafe {self.get(pk as usize)?.data};
-        let sig_data = unsafe {self.get(sig as usize)?.data};
-
-        let res = match (PublicKey::from_bytes(&pk_data), Signature::from_bytes(&sig_data)) {
-            (Ok(pk), Ok(sig)) => {
-                match pk.verify(&msg_data, &sig) {
-                    Ok(_) => 1,
-                    Err(_) => 0
-                }
-            },
-            _ => 0
-        };
-        //this is false, true would be 1
-        self.get_stack(tail).push(Entry{ adt: Adt(res, SlicePtr::empty())})?;
-        Ok(Continuation::Next)
-    }
-    //hashes 2 inputs together
-    fn join_hash(&mut self, ValueRef(val1):ValueRef, ValueRef(val2):ValueRef, domain:HashingDomain, tail:bool) -> Result<Continuation<'code>>  {
-        let data1 = unsafe {self.get(val1 as usize)?.data};
-        let data2 = unsafe {self.get(val2 as usize)?.data};
-        let mut context = domain.get_domain_hasher();
-        //fill the hash with first value
-        context.update(&data1);
-        //fill the hash with second value
-        context.update(&data2);
-        //calc the Hash
-        let hash_data = context.alloc_finalize(&self.alloc)?;
-        //get ownership and return
-        self.get_stack(tail).push(Entry{data:hash_data})?;
+    fn kinded_sys_call<Ext:RuntimeExternals>(&mut self, id:u8, kind:Kind, vals:&[ValueRef], tail:bool) -> Result<Continuation<'code>>  {
+        Ext::typed_system_call(self,id,kind, vals, tail)?;
         Ok(Continuation::Next)
     }
 
@@ -813,54 +943,6 @@ impl<'transaction,'code,'interpreter,'execution,'heap> ExecutionContext<'transac
 
     fn entry_to_data(&mut self, kind:Kind, op1:Entry<'transaction>) -> Result<SlicePtr<'transaction, u8>> {
         Self::process_entry_slice(kind,op1, |s| self.alloc.copy_alloc_slice(s))
-    }
-
-    fn process_entry_slice<R:Sized,F:FnOnce(&[u8]) -> R>(kind:Kind, op1:Entry<'transaction>, proc:F) -> R {
-        match kind {
-            Kind::I8 => proc(&[unsafe {op1.i8} as u8]),
-            Kind::U8 => proc(&[unsafe {op1.u8}]),
-            Kind::I16 => {
-                let mut input = [0; 2];
-                EncodingByteOrder::write_i16(&mut input, unsafe {op1.i16});
-                proc(&input)
-            },
-            Kind::U16 =>  {
-                let mut input = [0; 2];
-                EncodingByteOrder::write_u16(&mut input, unsafe {op1.u16});
-                proc(&input)
-            },
-            Kind::I32 => {
-                let mut input = [0; 4];
-                EncodingByteOrder::write_i32(&mut input, unsafe {op1.i32});
-                proc(&input)
-            },
-            Kind::U32 => {
-                let mut input = [0; 4];
-                EncodingByteOrder::write_u32(&mut input, unsafe {op1.u32});
-                proc(&input)
-            },
-            Kind::I64 => {
-                let mut input = [0; 8];
-                EncodingByteOrder::write_i64(&mut input, unsafe {op1.i64});
-                proc(&input)
-            },
-            Kind::U64 => {
-                let mut input = [0; 8];
-                EncodingByteOrder::write_u64(&mut input, unsafe {op1.u64});
-                proc(&input)
-            },
-            Kind::I128 => {
-                let mut input = [0; 16];
-                EncodingByteOrder::write_i128(&mut input, unsafe {op1.i128});
-                proc(&input)
-            },
-            Kind::U128 => {
-                let mut input = [0; 16];
-                EncodingByteOrder::write_u128(&mut input, unsafe {op1.u128});
-                proc(&input)
-            },
-            Kind::Data => proc(unsafe {&op1.data})
-        }
     }
 
     fn data_to_entry(&mut self, kind:Kind, op1:SlicePtr<'transaction, u8>) -> Entry<'transaction> {

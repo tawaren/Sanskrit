@@ -1,28 +1,19 @@
-use sanskrit_common::model::*;
-use sanskrit_interpreter::model::RuntimeType;
+use sanskrit_interpreter::externals::{RuntimeExternals, CompilationExternals};
+use sanskrit_common::store::Store;
+use verify::TransactionVerificationContext;
+use compute::TransactionExecutionContext;
+use TransactionBundle;
+use sanskrit_common::encoding::ParserAllocator;
+use sanskrit_common::errors::*;
 
 
-pub trait System {
-    fn system_module(&self) -> Hash;
-    fn entry_offset(&self) -> u8;
-    fn context_offset(&self) -> u8;
+pub trait SystemContext<'c> {
+    type CE:CompilationExternals;
+    type RE:RuntimeExternals;
+    type S:Store;
+    type B: TransactionBundle;
+    type VC:TransactionVerificationContext<Self::S, Self::B>;
+    type EC:TransactionExecutionContext<Self::S, Self::B>;
 
-    fn txt_hash_offset(&self) -> u8;
-    fn code_hash_offset(&self) -> u8;
-    fn full_hash_offset(&self) -> u8;
-    fn unique_id_offset(&self) -> u8;
-
-    fn is_context(&self,typ:Ptr<RuntimeType>) -> bool {
-        match *typ {
-            RuntimeType::Custom { module, offset, .. } => module == self.system_module() && offset == self.context_offset(),
-            _ => false
-        }
-    }
-
-    fn is_entry(&self,typ:Ptr<RuntimeType>) -> bool {
-        match *typ {
-            RuntimeType::Custom { module, offset, .. } => module == self.system_module() && offset == self.entry_offset(),
-            _ => false
-        }
-    }
+    fn parse_bundle<A: ParserAllocator>(data:&[u8], alloc:&'c A) -> Result<Self::B>;
 }

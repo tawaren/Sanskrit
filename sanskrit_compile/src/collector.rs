@@ -16,7 +16,7 @@ pub enum Action {
 }
 
 pub struct Collector {
-    //depth first search sack
+    //depth first search stack
     stack:Vec<Action>,
     //all the embedded functions and where to find them at runtime
     recorded_funs:BTreeSet<(Crc<ModuleLink>,u8)>,

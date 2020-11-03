@@ -13,7 +13,7 @@ mod tests {
     use sanskrit_test_script_compiler::script::Compiler;
     use sanskrit_core::accounting::Accounting;
     use std::cell::Cell;
-    use sanskrit_runtime::{CONFIG, execute, Tracker};
+    use sanskrit_runtime::{CONFIG, execute, Tracker, Context};
     use sanskrit_common::store::StorageClass;
     use std::fs::File;
     use std::io::{BufReader, BufRead};
@@ -21,6 +21,7 @@ mod tests {
     use sanskrit_interpreter::model::{TxTReturn, Entry, TxTParam};
     use sanskrit_runtime::model::{Transaction, RetType, BundleSection, ParamRef};
     use sanskrit_common::encoding::Serializer;
+    use sanskrit_runtime::system::SystemContext;
 
     fn max_accounting() -> Accounting {
         Accounting {
@@ -84,7 +85,7 @@ mod tests {
         let id = Id(id_name.into());
         let folder = current_dir().unwrap().join("transactions");
         let mut comp = Compiler::new(&folder);
-        let system_level = comp.parse_module_tree(Id("system".into()), 0);
+        comp.parse_module_tree(Id("system".into()), 0);
         comp.parse_and_compile_transactions(id.clone())?;
         let mod_res = comp.get_module_results();
         let txt_res = comp.get_functions_to_deploy();
@@ -110,14 +111,20 @@ mod tests {
         let mut hashes = Vec::with_capacity(txt_res.len());
         for t in txt_res {
             let fun_id = deploy_function(&s, &accounting, t.clone(), true)?;
-            hashes.push(compile_function::<BTreeMapStore,ScriptExternals>(&s, &accounting, &limiter,fun_id, true)?.0);
+            hashes.push(compile_function::<_,ScriptExternals>(&s, &accounting, &limiter,fun_id, true)?.0);
         }
 
         let bundle = comp.create_bundle(&hashes, &heap);
 
 
         heap = heap.reuse();
-        execute::<_, _, ScriptExternals,_>(&s, &ScriptSystem,&bundle, 0, &heap, &mut checker).expect("Execute Failed");
+        let txt_bundle_alloc = heap.new_virtual_arena(CONFIG.max_transaction_memory);
+        let txt_bundle= ScriptSystem::parse_bundle(&bundle,&txt_bundle_alloc)?;
+        let ctx = Context {
+            store: &s,
+            txt_bundle: &txt_bundle
+        };
+        execute::<_,ScriptSystem>(ctx, 0, &heap, &mut checker).expect("Execute Failed");
         assert_eq!(checker.expects.len(), 0, "Expected more logs");
 
         Ok(())
@@ -139,7 +146,7 @@ mod tests {
         let id = Id(id_name.into());
         let folder = current_dir().unwrap().join("transactions");
         let mut comp = Compiler::new(&folder);
-        let system_level = comp.parse_module_tree(Id("system".into()), 0);
+        comp.parse_module_tree(Id("system".into()), 0);
         comp.parse_and_compile_transactions(id.clone())?;
         let mod_res = comp.get_module_results();
         let txt_res = comp.get_functions_to_deploy();
@@ -152,7 +159,7 @@ mod tests {
         let mut hashes = Vec::with_capacity(txt_res.len());
         for t in txt_res {
             let fun_id = deploy_function(&s, &accounting, t.clone(), true)?;
-            hashes.push(compile_function::<BTreeMapStore,ScriptExternals>(&s, &accounting, &limiter,fun_id, true)?.0);
+            hashes.push(compile_function::<_,ScriptExternals>(&s, &accounting, &limiter,fun_id, true)?.0);
         }
 
 
@@ -160,7 +167,13 @@ mod tests {
             let mut heap = Heap::new(CONFIG.calc_heap_size(2),2.0);
             let bundle = comp.create_bundle(&hashes, &heap);
             heap = heap.reuse();
-            execute::<_, _, ScriptExternals, _>(&s, &ScriptSystem,&bundle, 0, &heap,  &mut NoLogger{}).expect("Execute Failed");
+            let txt_bundle_alloc = heap.new_virtual_arena(CONFIG.max_transaction_memory);
+            let txt_bundle= ScriptSystem::parse_bundle(&bundle,&txt_bundle_alloc).unwrap();
+            let ctx = Context {
+                store: &s,
+                txt_bundle: &txt_bundle
+            };
+            execute::<_,ScriptSystem>(ctx, 0, &heap, &mut NoLogger{}).expect("Execute Failed");
             s.clear_section(StorageClass::EntryHash);
             s.clear_section(StorageClass::EntryValue);
         });

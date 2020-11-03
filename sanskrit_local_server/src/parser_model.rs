@@ -5,6 +5,7 @@ use sanskrit_common::encoding::{Serializable, Serializer};
 use hex::decode;
 use convert_error;
 use sanskrit_common::hashing::HashingDomain;
+use std::collections::BTreeSet;
 
 #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Clone, Debug)]
 pub struct Execute{
@@ -28,6 +29,7 @@ pub enum ParamInput {
 pub enum RetInput {
     Log(String),
     Store(String),
+    Assign(String),
     Drop
 }
 
@@ -59,7 +61,7 @@ impl Execute {
         }
     }
 
-    pub fn build_params(&self, state:&State) -> Result<Vec<Param>> {
+    pub fn build_params(&self, state:&State, local_bindings:&BTreeSet<String>) -> Result<Vec<Param>> {
 
         fn derive(main:&[u8], derive:&[u8], s:&mut Serializer) {
             let mut context = HashingDomain::Derive.get_domain_hasher();
@@ -111,18 +113,31 @@ impl Execute {
                 ParamInput::Lit(input) => Param::Lit(build_top_lit(input,state)?),
                 ParamInput::Sig(name) => Param::Sig(name.clone()),
                 ParamInput::Pk(name) => Param::Pk(name.clone()),
-                ParamInput::Consume(key) => Param::Consume(match convert_error(state.tracking.active_elems.get(key))? {
-                    None => return error(||"Transaction name unknown"),
-                    Some(h) => hash_from_slice(&h),
-                }),
-                ParamInput::Read(key) => Param::Borrow(match convert_error(state.tracking.active_elems.get(key))?{
-                    None => return error(||"Transaction name unknown"),
-                    Some(h) => hash_from_slice(&h),
-                }),
-                ParamInput::Copy(key) => Param::Copy(match convert_error(state.tracking.active_elems.get(key))?{
-                    None => return error(||"Transaction name unknown"),
-                    Some(h) => hash_from_slice(&h),
-                }),
+                ParamInput::Consume(key) => if local_bindings.contains(key) {
+                    Param::LocalConsume(key.clone())
+                } else {
+                    Param::Consume(match convert_error(state.tracking.active_elems.get(key))? {
+                        None => return error(||"Element name unknown"),
+                        Some(h) => hash_from_slice(&h),
+                    })
+                },
+
+                ParamInput::Read(key) => if local_bindings.contains(key) {
+                    Param::LocalBorrow(key.clone())
+                } else {
+                    Param::Borrow(match convert_error(state.tracking.active_elems.get(key))?{
+                        None => return error(||"Element name unknown"),
+                        Some(h) => hash_from_slice(&h),
+                    })
+                },
+                ParamInput::Copy(key) => if local_bindings.contains(key) {
+                    Param::LocalCopy(key.clone())
+                } else {
+                    Param::Copy(match convert_error(state.tracking.active_elems.get(key))?{
+                        None => return error(||"Element name unknown"),
+                        Some(h) => hash_from_slice(&h),
+                    })
+                },
                 ParamInput::Inject => Param::Provided,
             })
         }
@@ -130,32 +145,40 @@ impl Execute {
         Ok(res)
     }
 
-    pub fn build_param_names(&self) -> Vec<String> {
-        self.params.iter().map(|param|match param{
-            ParamInput::Lit(_) => "(lit)".to_string(),
-            ParamInput::Sig(name) => name.clone(),
-            ParamInput::Pk(name) => name.clone(),
-            ParamInput::Consume(name) => name.clone(),
-            ParamInput::Read(name) => name.clone(),
-            ParamInput::Copy(name) => name.clone(),
-            ParamInput::Inject => "(injected)".to_string()
-        }).rev().collect()
-    }
-
-    pub fn build_returns(&self) -> Vec<Ret> {
+    pub fn build_returns(&self, bindings:&mut BTreeSet<String>) -> Vec<Ret> {
         self.rets.iter().map(|ret|match ret{
             RetInput::Log(_) => Ret::Log,
             RetInput::Store(_) => Ret::Elem,
             RetInput::Drop => Ret::Drop,
+            RetInput::Assign(name) => {
+                bindings.insert(name.clone());
+                Ret::Assign(name.clone())
+            }
         }).collect()
     }
 
-    pub fn build_return_names(&self) -> Vec<String> {
-        self.rets.iter().map(|ret|match ret{
-            RetInput::Log(name) => name.clone(),
-            RetInput::Store(name) => name.clone(),
-            RetInput::Drop => "".to_owned(),
-        }).rev().collect()
+    pub fn build_param_names(&self, state:&mut State) {
+        for param in &self.params {
+            state.tracking.exec_state.param_names.push_back(match param{
+                ParamInput::Lit(_) => "(lit)".to_string(),
+                ParamInput::Sig(name) => name.clone(),
+                ParamInput::Pk(name) => name.clone(),
+                ParamInput::Consume(name) => name.clone(),
+                ParamInput::Read(name) => name.clone(),
+                ParamInput::Copy(name) => name.clone(),
+                ParamInput::Inject => "(injected)".to_string()
+            })
+        }
     }
 
+    pub fn build_return_names(&self,state:&mut State) {
+        for ret in &self.rets {
+            state.tracking.exec_state.return_names.push_back(match ret{
+                RetInput::Log(name) => name.clone(),
+                RetInput::Store(name) => name.clone(),
+                RetInput::Assign(name) => name.clone(),
+                RetInput::Drop => "".to_owned(),
+            })
+        }
+    }
 }

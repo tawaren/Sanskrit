@@ -17,9 +17,9 @@ system module IntU8 {
     public extFun xor(num1:.U8, num2:.U8):(res:.U8);
     public extFun not(num1:.U8):(res:.U8);
 
-    public extFun toData(num:.U8):(res:Data.Data1);
+    public extFun toData(NUM:.U8):(res:Data.Data1);
     public extFun fromData(data:Data.Data1):(res:.U8);
 
-    public extFun hash(num:.U8):(res:Data.Data20);
+    public extFun hash(NUM:.U8):(res:Data.Data20);
 
 }

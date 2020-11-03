@@ -1,6 +1,7 @@
 use sanskrit_common::model::*;
 use sanskrit_common::encoding::*;
 use sanskrit_common::errors::*;
+use TransactionBundle;
 
 #[derive(Clone, Debug, Parsable, Serializable, VirtualSize)]
 pub struct DeployTransaction<#[AllocLifetime] 'c> {
@@ -32,8 +33,9 @@ pub struct TransactionBundleCore<#[AllocLifetime] 'c> {
     pub earliest_block:u64,
     //maximum size accepted for params
     pub param_heap_limit: u16,
+    pub scratch_pad_limit: u8,
     //Static execution costs
-    pub transaction_storage_heap: u16,
+    pub transaction_heap_limit: u16,
     pub stack_elem_limit:u16,
     pub stack_frame_limit:u16,
     pub runtime_heap_limit:u16,
@@ -48,9 +50,6 @@ pub struct TransactionBundleCore<#[AllocLifetime] 'c> {
     pub stored: SlicePtr<'c, Hash>,
     //params passed in from the outside
     pub literal: SlicePtr<'c, SlicePtr<'c,u8>>,
-    //witness limit (prevents miner to add witnesses to earn more)
-    //Todo: These is only needed in Witness Mode which we will abstract away not doing in the beginning
-    //pub witness_bytes_limit:u32, //todo: maybe just u16?
 }
 
 //todo: an intermidiary passing option
@@ -59,17 +58,18 @@ pub struct TransactionBundleCore<#[AllocLifetime] 'c> {
 //       it contains: Type|TypeRef for managing them between borders
 //A set of transactions
 #[derive(Clone, Debug, Parsable, Serializable, VirtualSize)]
-pub struct TransactionBundle<#[AllocLifetime] 'c> {
+pub struct BaseTransactionBundle<#[AllocLifetime] 'c> {
     #[ByteSize]
     pub byte_size:Option<usize>,
     //everything that is part of the hash
     pub core: TransactionBundleCore<'c>,
     //witnesses
     pub witness: SlicePtr<'c, SlicePtr<'c,u8>>,                     //witnesses are ignored in the Hash
-    //todo: This is only in Witness mode (which we may not use at the start)
-    //      Note: These changes the gas formula??
-    //pub store_witness: SlicePtr<'c, Option<SlicePtr<'c,u8>>>,       //witnesses are ignored in the Hash
+}
 
+pub struct BundleWithHash<'c>{
+    pub txt_bundle:BaseTransactionBundle<'c>,
+    pub bundle_hash:Hash,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Parsable, Serializable, VirtualSize)]
@@ -116,7 +116,7 @@ pub enum ParamMode {
 #[derive(Copy, Eq, PartialEq, Clone, Parsable, Serializable, VirtualSize, Debug)]
 pub enum ParamRef {
     Load(ParamMode, u16),
-    //Fetch(ParamMode, u16),
+    Fetch(ParamMode, u8),
     Literal(u16),
     Witness(u16),
     Provided
@@ -125,7 +125,56 @@ pub enum ParamRef {
 #[derive(Copy, Eq, PartialEq, Clone, Parsable, Serializable, VirtualSize, Debug)]
 pub enum RetType {
     Store,
-    //Put(u16),
+    Put(u8),
     Drop,
     Log
+}
+
+
+impl<'c> TransactionBundle  for BundleWithHash<'c>  {
+    fn byte_size(&self) -> usize {
+        self.txt_bundle.byte_size.unwrap()
+    }
+    fn earliest_block(&self) -> u64 {
+        self.txt_bundle.core.earliest_block
+    }
+    fn param_heap_limit(&self) -> u16 {
+        self.txt_bundle.core.param_heap_limit
+    }
+    fn transaction_heap_limit(&self) -> u16 {
+        self.txt_bundle.core.transaction_heap_limit
+    }
+    fn stack_elem_limit(&self) -> u16 {
+        self.txt_bundle.core.stack_elem_limit
+    }
+    fn stack_frame_limit(&self) -> u16 {
+        self.txt_bundle.core.stack_frame_limit
+    }
+    fn runtime_heap_limit(&self) -> u16 {
+        self.txt_bundle.core.runtime_heap_limit
+    }
+    fn essential_gas_cost(&self) -> u64 {
+        self.txt_bundle.core.essential_gas_cost
+    }
+    fn total_gas_cost(&self) -> u64 {
+        self.txt_bundle.core.total_gas_cost
+    }
+    fn sections(&self) -> SlicePtr<BundleSection> {
+        self.txt_bundle.core.sections
+    }
+    fn descriptors(&self) -> SlicePtr<Hash> {
+        self.txt_bundle.core.descriptors
+    }
+    fn scratch_pad_slots(&self) -> u8 { self.txt_bundle.core.scratch_pad_limit }
+
+    fn stored(&self) -> SlicePtr<Hash> {
+        self.txt_bundle.core.stored
+    }
+    fn literal(&self) -> SlicePtr<SlicePtr<u8>> {
+        self.txt_bundle.core.literal
+    }
+    fn witness(&self) -> SlicePtr<SlicePtr<u8>> {
+        self.txt_bundle.witness
+    }
+
 }

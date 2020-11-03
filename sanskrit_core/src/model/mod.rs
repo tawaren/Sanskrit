@@ -245,28 +245,30 @@ pub struct Exp(pub LargeVec<OpCode>);
 //      Never remove them even if they can be constructed on the fly (like it would be the case for Project)
 #[derive(Debug, Parsable, Serializable)]
 pub enum OpCode {
-    Lit(LargeVec<u8>, PermRef),                                             //A opcode that produces a literal
-    Let(Exp),                                                               //A Subsope that computes some values and returns them (intermidiary values are removed)
-    Copy(ValueRef),                                                         //Copies a value (Needs Copy Cap)
-    Move(ValueRef),                                                         //Moves a value onto the top of the stack (allows to move it into a branch)
-    Return(Vec<ValueRef>),
-    Discard(ValueRef),                                                      //Releases a Borrow and unlocks the borrowed elements or drops a value with Drop capability
-    DiscardMany(Vec<ValueRef>),                                             //As discard but many elements
-    CopyUnpack(ValueRef, PermRef),                                          //Copies a value to produce its fields (single Ctr only) (Needs Inspect Cap)
-    Unpack(ValueRef, PermRef),                                              //Consumes a value to produce its fields (single Ctr only) (Needs Consume Cap)
-    CopyField(ValueRef, PermRef, u8),                                       //<-- requires Inspect & Field to have Copy
-    Field(ValueRef, PermRef, u8),                                           //<-- requires Consume & others to have Drop
-    CopySwitch(ValueRef, PermRef, Vec<Exp>),                                //Branches on a type that has multiple ctrs where each branch corresponds to 1 Ctr (Does an implicit CopyUnpack)
-    Switch(ValueRef, PermRef, Vec<Exp>),                                    //Branches on a type that has multiple ctrs where each branch corresponds to 1 Ctr (Does an implicit Unpack)
-    Inspect(ValueRef, PermRef, Vec<Exp>),                                   //Branches on a type that has multiple ctrs where each branch corresponds to 1 Ctr (Does an a special read only unpack)
-    CopyPack(PermRef, Tag, Vec<ValueRef>),                                  //Generates a value for a multi ctr mutli field type by coping the inputs (requieres copy cap for them)
-    Pack(PermRef, Tag, Vec<ValueRef>),                                      //Generates a value for a multi ctr mutli field type
-    Invoke(PermRef, Vec<ValueRef>),                                         //Invokes a Callable
-    TryInvoke(PermRef, Vec<(bool, ValueRef)>, Exp, Exp),                    //Invokes a Callable and handles failures
-    InvokeSig(ValueRef, PermRef, Vec<ValueRef>),                            //Invokes a Signature Value
-    TryInvokeSig(ValueRef, PermRef, Vec<(bool, ValueRef)>, Exp, Exp),       //Invokes a Signature Value
-    Project(TypeRef, ValueRef),                                             //Produces the Image of the input without consuming it
-    UnProject(TypeRef, ValueRef),                                           //Removes a layer from a nested Projection: If the inner value is Primitive
-    RollBack(Vec<ValueRef>, Vec<TypeRef>)                                   //Aborts the current Transaction, can consume and produce values to please the type checker
+    /*0*/Lit(LargeVec<u8>, PermRef),                                             //A opcode that produces a literal
+    /*1*/Let(Exp),                                                               //A Subsope that computes some values and returns them (intermidiary values are removed)
+    /*2*/Copy(ValueRef),                                                         //Copies a value (Needs Copy Cap)
+    /*3*/Move(ValueRef),                                                         //Moves a value onto the top of the stack (allows to move it into a branch)
+    /*4*/Return(Vec<ValueRef>),
+    /*5*/Discard(ValueRef),                                                      //Releases a Borrow and unlocks the borrowed elements or drops a value with Drop capability
+    /*6*/DiscardMany(Vec<ValueRef>),                                             //As discard but many elements
+    /*7*/CopyUnpack(ValueRef, PermRef),                                          //Copies a value to produce its fields (single Ctr only) (Needs Inspect Cap)
+    /*8*/Unpack(ValueRef, PermRef),                                              //Consumes a value to produce its fields (single Ctr only) (Needs Consume Cap)
+    /*9*/CopyField(ValueRef, PermRef, u8),                                       //<-- requires Inspect & Field to have Copy
+    /*10*/Field(ValueRef, PermRef, u8),                                          //<-- requires Consume & others to have Drop
+    /*11*/CopySwitch(ValueRef, PermRef, Vec<Exp>),                               //Branches on a type that has multiple ctrs where each branch corresponds to 1 Ctr (Does an implicit CopyUnpack)
+    /*12*/Switch(ValueRef, PermRef, Vec<Exp>),                                   //Branches on a type that has multiple ctrs where each branch corresponds to 1 Ctr (Does an implicit Unpack)
+    /*13*/Inspect(ValueRef, PermRef, Vec<Exp>),                                  //Branches on a type that has multiple ctrs where each branch corresponds to 1 Ctr (Does an a special read only unpack)
+    /*14*/CopyPack(PermRef, Tag, Vec<ValueRef>),                                 //Generates a value for a multi ctr mutli field type by coping the inputs (requieres copy cap for them)
+    /*15*/Pack(PermRef, Tag, Vec<ValueRef>),                                     //Generates a value for a multi ctr mutli field type
+    /*16*/Invoke(PermRef, Vec<ValueRef>),                                        //Invokes a Callable
+    /*17*/TryInvoke(PermRef, Vec<(bool, ValueRef)>, Exp, Exp),                   //Invokes a Callable and handles failures
+    /*18*/InvokeSig(ValueRef, PermRef, Vec<ValueRef>),                           //Invokes a Signature Value
+    /*19*/TryInvokeSig(ValueRef, PermRef, Vec<(bool, ValueRef)>, Exp, Exp),      //Invokes a Signature Value
+    /*20*/RepeatedInvoke(u8, PermRef, Vec<ValueRef>, u8, u8),
+    /*21*/RepeatedTryInvoke(u8, PermRef, Vec<(bool, ValueRef)>, u8, u8, Exp, Exp),
+    /*22*/Project(TypeRef, ValueRef),                                            //Produces the Image of the input without consuming it
+    /*23*/UnProject(TypeRef, ValueRef),                                          //Removes a layer from a nested Projection: If the inner value is Primitive
+    /*24*/RollBack(Vec<ValueRef>, Vec<TypeRef>)                                  //Aborts the current Transaction, can consume and produce values to please the type checker
 }
 

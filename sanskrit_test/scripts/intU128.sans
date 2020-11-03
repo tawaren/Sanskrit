@@ -18,9 +18,9 @@ system module IntU128 {
    public extFun xor(num1:.U128, num2:.U128):(res:.U128);
    public extFun not(num1:.U128):(res:.U128);
 
-   public extFun toData(num:.U128):(res:Data.Data16);
+   public extFun toData(NUM:.U128):(res:Data.Data16);
    public extFun fromData(data:Data.Data16):(res:.U128);
 
-   public extFun hash(num:.U128):(res:Data.Data20);
+   public extFun hash(NUM:.U128):(res:Data.Data20);
 
 }

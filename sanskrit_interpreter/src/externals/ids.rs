@@ -11,6 +11,7 @@ pub struct Ids;
 impl External for Ids{
     /*
     extType(20) <Copy,Drop,Persist,Value,Unbound> PrivateId;
+    //current external also support PrivateId = project(PrivateId)
     public(create) extType(20) <Copy,Drop,Persist,Value,Unbound> PublicId;
     */
     fn compile_lit<'b, 'h>(&self, _data_idx: u8, data: SlicePtr<'b, u8>, _caller: &[u8; 20], _alloc: &'b HeapArena<'h>) -> Result<CompilationResult<'b>> {
@@ -73,7 +74,7 @@ impl External for Ids{
             public extFun derivePublicId28(pub:.PublicId, data:Data.Data28):(pub:.PublicId);
             public extFun derivePublicId32(pub:.PublicId, data:Data.Data32):(pub:.PublicId);
             */
-            _=>  Ok(just_gas_and_mem(70, Hash::SIZE as u64, OpCode::Derive(params[0], params[1]))),
+            _=> Ok(just_gas_and_mem(70, Hash::SIZE as u64, OpCode::SysInvoke(0, params))),
         }
     }
 }

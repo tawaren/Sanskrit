@@ -51,7 +51,7 @@ impl External for U32{
             //public extFun fromData(data:Data.Data4):(res:.U32);
             14 => just_gas_and_mem(18, 0, OpCode::FromData(Kind::U32,params[0])),
             //public extFun hash(num:.U32):(res:Data.Data20);
-            15 => just_gas_and_mem(65, 20, OpCode::Hash(Kind::U32, params[0])),
+            15 => just_gas_and_mem(65, 20, OpCode::TypedSysInvoke(0, Kind::U32, params)),
             _ => return error(||"External call is not defined")
         })
     }

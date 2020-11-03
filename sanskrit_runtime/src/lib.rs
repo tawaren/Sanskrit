@@ -18,19 +18,16 @@ extern crate alloc;
 
 use sanskrit_common::store::{Store, StorageClass};
 use sanskrit_common::errors::*;
-use sanskrit_common::encoding::{VirtualSize, Parser, ParserAllocator};
-use model::{Transaction, ParamRef, RetType, BundleSection, TransactionBundle, DeployTransaction, DeployType};
+use sanskrit_common::encoding::{Parser, ParserAllocator};
+use model::{Transaction, ParamRef, RetType, BundleSection, DeployTransaction, DeployType};
 use sanskrit_common::arena::*;
 use sanskrit_interpreter::model::{Entry, TxTParam, TxTReturn, TransactionDescriptor};
 
-use system::System;
-use sanskrit_interpreter::externals::CompilationExternals;
-use verify::{verify_repeated, verify_once};
-use compute::execute_once;
-use sanskrit_common::model::Hash;
+use system::SystemContext;
+use verify::{verify_repeated, verify_once, TransactionVerificationContext};
+use compute::{execute_once, TransactionExecutionContext};
+use sanskrit_common::model::{Hash, SlicePtr};
 use sanskrit_interpreter::interpreter::Frame;
-use sanskrit_common::hashing::HashingDomain;
-use direct_stored::{StatefulEntryStoreAccounter, StatefulEntryStoreExecutor};
 use sanskrit_core::accounting::Accounting;
 use core::cell::Cell;
 use sanskrit_deploy::{deploy_module, deploy_function};
@@ -56,34 +53,42 @@ impl DataProcessingCost {
 }
 
 //TODO: Measure, these are guessed
+//Try to get approximately: 1000000 = 1ms / 1000gas == 1us / 1gas == 1ns (Use My Lenovo as referenz)
+// We need to remeasure the primitives
 pub const STORE_LOAD_COST: DataProcessingCost = DataProcessingCost {
-    cost_constant:  200 - Hash::SIZE as u64,
-    cost_multiplier: 1,
-    cost_divider: 1
-};
-
-pub const STORE_WRITE_COST: DataProcessingCost = DataProcessingCost {
-    cost_constant:  2000 - Hash::SIZE as u64,
+    cost_constant:  20000,
     cost_multiplier: 10,
     cost_divider: 1
 };
 
+pub const STORE_WRITE_COST: DataProcessingCost = DataProcessingCost {
+    cost_constant:  20000,
+    cost_multiplier: 50,
+    cost_divider: 1
+};
+
 pub const STORE_LOAD_AND_ENCODE_COST: DataProcessingCost = DataProcessingCost {
-    cost_constant:  200 - Hash::SIZE as u64,
-    cost_multiplier: 6,
+    cost_constant:  2000,
+    cost_multiplier: 60,
     cost_divider: 5
 };
 
 pub const STORE_WRITE_AND_ENCODE_COST: DataProcessingCost = DataProcessingCost {
-    cost_constant:  2000 - Hash::SIZE as u64,
-    cost_multiplier: 51,
-    cost_divider: 5
+    cost_constant:  20000,
+    cost_multiplier: 52,
+    cost_divider: 1
 };
 
 pub const ENCODING_COST: DataProcessingCost = DataProcessingCost {
     cost_constant: 0,
-    cost_multiplier: 1,
-    cost_divider: 5
+    cost_multiplier: 2,
+    cost_divider: 1
+};
+
+pub const COPYING_COST: DataProcessingCost = DataProcessingCost {
+    cost_constant: 0,
+    cost_multiplier: 2,
+    cost_divider: 1
 };
 
 pub struct Configuration {
@@ -94,10 +99,12 @@ pub struct Configuration {
     pub max_structural_dept: usize,
     pub max_transaction_memory: usize,
     pub return_stack: usize,
+    pub bundle_base_cost:u64,
     pub entry_load_cost: DataProcessingCost,
     pub entry_store_cost: DataProcessingCost,
     pub txt_desc_load_cost:DataProcessingCost,
     pub parsing_cost: DataProcessingCost,
+    pub copy_cost: DataProcessingCost,
     pub block_inclusion_window:u64,
 }
 
@@ -109,10 +116,12 @@ pub const CONFIG: Configuration = Configuration {
     max_structural_dept:64,
     max_transaction_memory:512 * 1024,
     return_stack: 256,
+    bundle_base_cost: 0,
     entry_store_cost: STORE_WRITE_AND_ENCODE_COST,
     entry_load_cost: STORE_LOAD_AND_ENCODE_COST,
     txt_desc_load_cost: STORE_LOAD_COST,
     parsing_cost: ENCODING_COST,
+    copy_cost: COPYING_COST,
     block_inclusion_window: 100,
 };
 
@@ -126,6 +135,28 @@ impl Configuration {
     }
 }
 
+pub trait TransactionBundle {
+    fn byte_size(&self) -> usize;
+    fn earliest_block(&self) -> u64;
+    fn param_heap_limit(&self) -> u16;
+    fn transaction_heap_limit(&self) -> u16;
+    fn stack_elem_limit(&self) -> u16;
+    fn stack_frame_limit(&self) -> u16;
+    fn runtime_heap_limit(&self) -> u16;
+    fn essential_gas_cost(&self) -> u64;
+    fn total_gas_cost(&self) -> u64;
+    fn sections(&self) -> SlicePtr<BundleSection>;
+    fn descriptors(&self) -> SlicePtr<Hash>;
+    fn scratch_pad_slots(&self) -> u8;
+    fn stored(&self) -> SlicePtr<Hash>;
+    fn literal(&self) -> SlicePtr<SlicePtr<u8>>;
+    fn witness(&self) -> SlicePtr<SlicePtr<u8>>;
+}
+
+pub struct Context<'a,'b, S:Store, T:TransactionBundle> {
+    pub store:&'a S,
+    pub txt_bundle:&'b T
+}
 
 pub trait Tracker {
     fn section_start(&mut self, section:&BundleSection);
@@ -142,24 +173,16 @@ pub fn read_transaction_desc<'d, S:Store, A:ParserAllocator>(target:&Hash, store
 
 
 //Executes a transaction
-pub fn execute<S:Store, L: Tracker, E:CompilationExternals, SYS:System>(store:&S, sys:&SYS, txt_bundle_data:&[u8], block_no:u64, heap:&Heap, tracker:&mut L) -> Result<()> {
+pub fn execute<'c, 'd:'c, L: Tracker,SYS:SystemContext<'c>>(ctx:Context<SYS::S, SYS::B>, block_no:u64, heap:&'d Heap, tracker:&mut L) -> Result<()> {
     //Check that it is inside limit
-    if txt_bundle_data.len() > CONFIG.max_transaction_size { return error(||"Transaction Bundle to big")}
-    //Static allocations (could be done once)
-    // A buffer to parse the transaction and load values from store
-    let txt_bundle_alloc = heap.new_virtual_arena(CONFIG.max_transaction_memory);
-    //Parse the transaction
-    let txt_bundle:TransactionBundle = Parser::parse_fully(txt_bundle_data, CONFIG.max_structural_dept, &txt_bundle_alloc)?;
-    let full_bundle_hash = HashingDomain::Bundle.hash(&txt_bundle_data);
-    let bundle_hash = HashingDomain::Bundle.hash(&txt_bundle_data[..txt_bundle.core.byte_size.unwrap()]);
-
-    //create the context
-    verify_repeated(&txt_bundle, block_no)?;
-    verify_once(&StatefulEntryStoreAccounter::new(store,&txt_bundle), sys, heap)?;
-    execute_once(&StatefulEntryStoreExecutor::new(store,&txt_bundle,bundle_hash, full_bundle_hash), block_no, heap, tracker)
+    if ctx.txt_bundle.byte_size() > CONFIG.max_transaction_size { return error(||"Transaction Bundle to big")}
+    verify_repeated::<SYS>( &ctx, block_no)?;
+    verify_once::<SYS>(&SYS::VC::new(), &ctx, heap)?;
+    execute_once::<_,SYS>(&SYS::EC::new(), &ctx, block_no, heap, tracker)?;
+    Ok(())
 }
 
-pub fn deploy<S:Store, E:CompilationExternals, >(store:&S, deploy_data:&[u8], heap:&Heap, system_mode_on:bool) -> Result<()> {
+pub fn deploy<'c, SYS:SystemContext<'c>>(store:&SYS::S, deploy_data:&[u8], heap:&Heap, system_mode_on:bool) -> Result<()> {
     //Check that it is inside limit
     if deploy_data.len() > CONFIG.max_transaction_size { return error(||"Transaction Bundle to big")}
     //Static allocations (could be done once)
@@ -196,7 +219,7 @@ pub fn deploy<S:Store, E:CompilationExternals, >(store:&S, deploy_data:&[u8], he
                 max_used_nesting: Cell::new(0),
                 produced_functions: Cell::new(0)
             };
-            compile_function::<S,E>(store, &accounting,&limiter, target, true)?;
+            compile_function::<_,SYS::CE>(store, &accounting,&limiter, target, true)?;
             store.commit(StorageClass::Transaction);
             store.commit(StorageClass::Descriptor);
         }

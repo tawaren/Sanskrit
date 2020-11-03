@@ -4,14 +4,14 @@ version = "0.1.0"
 authors = ["tawaren <markus.knecht85@gmail.com>"]
 
 [build-dependencies]
-lalrpop = "0.16.2"
+lalrpop = "0.19.1"
 
 [dependencies]
-ed25519-dalek = "0.9.1"
-sha2 = "0.7.0"
-rand = "0.6.1"
+ed25519-dalek = "1.0.1"
+sha2 = "0.9.1"
+rand = "0.7.3"
 wasmi = "0.4.5"
-wasmer-runtime = "0.4.2"
+wasmer-runtime = "0.17.1"
 lazy_static = "1.4.0"
 
 [dependencies.sanskrit_common]

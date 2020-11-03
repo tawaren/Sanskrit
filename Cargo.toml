@@ -12,6 +12,7 @@ members = [
         "sanskrit_test_script_compiler",
         "sanskrit_test",
         "sanskrit_local_server",
+        "sanskrit_bench",
 ]
 
 [profile.release]

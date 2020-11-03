@@ -99,6 +99,37 @@ impl<'a> ValueSchema<'a> {
         })
     }
 
+    pub fn move_value<'b,'h>(&self, value:Entry, alloc:&'b VirtualHeapArena<'h>) -> Result<Entry<'b>> {
+        match *self {
+            ValueSchema::Adt(ctrs) => {
+                let Adt(tag, fields) = unsafe {value.adt};
+                let ctr =  ctrs[tag as usize];
+                assert_eq!(fields.len(), ctr.len());
+                let mut builder =alloc.slice_builder(fields.len())?;
+                for (f_value, f_schema) in fields.iter().zip(ctr.iter()) {
+                    builder.push(f_schema.move_value(*f_value, alloc)?);
+                }
+                Ok(Entry{adt:Adt(tag, builder.finish())})
+            },
+            ValueSchema::Data(size) => {
+                assert_eq!(size as usize, unsafe {value.data}.len());
+                let data = alloc.copy_alloc_slice(&unsafe {value.data})?;
+                Ok(Entry{data})
+            },
+            ValueSchema::Unsigned(1) => Ok(Entry{u8:unsafe {value.u8}}),
+            ValueSchema::Unsigned(2) => Ok(Entry{u16:unsafe {value.u16}}),
+            ValueSchema::Unsigned(4) => Ok(Entry{u32:unsafe {value.u32}}),
+            ValueSchema::Unsigned(8) => Ok(Entry{u64:unsafe {value.u64}}),
+            ValueSchema::Unsigned(16) => Ok(Entry{u128:unsafe {value.u128}}),
+            ValueSchema::Signed(1) => Ok(Entry{i8:unsafe {value.i8}}),
+            ValueSchema::Signed(2) => Ok(Entry{i16:unsafe {value.i16}}),
+            ValueSchema::Signed(4) => Ok(Entry{i32:unsafe {value.i32}}),
+            ValueSchema::Signed(8) => Ok(Entry{i64:unsafe {value.i64}}),
+            ValueSchema::Signed(16) => Ok(Entry{i128:unsafe {value.i128}}),
+            _ => unreachable!()
+        }
+    }
+
     //note: intended as helper for tools and compilers it is not save to execute during block computation
     pub fn runtime_size(self, data:&[u8]) -> Result<u16> {
         let (res,_) = self.runtime_size_intern(data,0)?;
@@ -140,7 +171,6 @@ impl<'a> ValueSchema<'a> {
         }
     }
 
-    //Todo: Have a max pendant for serilized part
     pub fn max_runtime_size(self) -> Result<u16> {
         let res = match self {
             ValueSchema::Adt(ctrs) => {

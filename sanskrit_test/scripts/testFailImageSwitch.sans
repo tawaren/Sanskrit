@@ -1,6 +1,6 @@
 module TestFailImageSwitch {
 
-    public(consume, inspect) type X[A] {
+    public(consume, inspect) type <Value> X[A] {
         X(A);
         Y(A);
     };

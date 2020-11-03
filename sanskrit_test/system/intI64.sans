@@ -17,10 +17,10 @@ system module IntI64 {
    public extFun xor(num1:.I64, num2:.I64):(res:.I64);
    public extFun not(num1:.I64):(res:.I64);
 
-   public extFun toData(num:.I64):(res:Data.Data8);
+   public extFun toData(NUM:.I64):(res:Data.Data8);
    public extFun fromData(data:Data.Data8):(res:.I64);
 
-   public extFun hash(num:.I64):(res:Data.Data20);
+   public extFun hash(NUM:.I64):(res:Data.Data20);
 
 
 }

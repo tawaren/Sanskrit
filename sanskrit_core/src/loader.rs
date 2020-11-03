@@ -195,7 +195,6 @@ impl<T:Component> FetchCache<T> {
     //Create a local context for it (but from the importers view -- meaning they are from a remote Module and the imported functions are ignored and the applies are substituted)
     pub fn substituted_context<'a, 'b:'a,S:Store+'b>(&self, subs:&'a [Crc<ResolvedType>], store:&'b Loader<'b,S>) -> Result<Context<'b,S>> {
         //Generate a local context
-        //todo: make private and move this function??
         Context::create_and_resolve(&[
             Imports::Module(&self.link),
             Imports::Generics(subs),

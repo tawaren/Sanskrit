@@ -16,7 +16,7 @@ system module Ecdsa {
     public extFun verify32(msg:Data.Data32, pk:.Pk, signature:.Sig):(res:Bool.Bool);
 
     public fun verifyTx(ctx:System.Context, pk:.Pk, signature:.Sig):(res:Bool.Bool){
-        hash = call System.TxTHash(ctx);
+        hash = call System.BundleHash(ctx);
         return call .verify20(hash, pk, signature);
     };
 }

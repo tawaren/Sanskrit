@@ -34,11 +34,11 @@ module TestSucCreateClosedAdts {
             return pack .Wrapper[T]#Ctr(t);
         };
 
-        public fun CreateImageWrapper[T](consume t:%T):(res: %.Wrapper[T]) {
+        public fun CreateImageWrapper[<Value> T](consume t:%T):(res: %.Wrapper[T]) {
             return pack %.Wrapper[T]#Ctr(t);
         };
 
-        public fun CreateWrapperImage[T](consume t:%T):(res: .Wrapper[%T]) {
+        public fun CreateWrapperImage[<Value> T](consume t:%T):(res: .Wrapper[%T]) {
             return pack .Wrapper[%T]#Ctr(t);
         };
 

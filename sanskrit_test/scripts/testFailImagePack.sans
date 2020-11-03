@@ -1,6 +1,6 @@
 module TestFailImagePack {
 
-    type <Unbound> Wrapper[X] {
+    type <Value, Unbound> Wrapper[X] {
         Ctr(X);
     };
 

@@ -351,19 +351,16 @@ impl<'b, S:Store + 'b> Context<'b, S> {
         if sig.shared.generics.len() != applies.len() {
             return error(||"Applied types mismatch required generics")
         }
-        // calc the caps after application
-        //prepare the applies vector
-        let are_phantom = sig.shared.generics.iter().map(|generic|match *generic {
-            Generic::Phantom => true,
-            Generic::Physical(_) => false,
-        });
-        //apply the types
-        let (generic_caps,caps) = apply_types(sig.provided_caps,are_phantom,&result);
+
+        //Signatures ignore the caps of generics as a signature does not store values of these type (just take them as param & return them)
+        // A Signature can Capture (store) these types but captures are checked on implement side so that they are covered by the signatures capabilities
+        //  This is needed any way as they could contain anything with any cap (like adt fields)
+        //   But unlike adt fields we can not abstract over them as they may depend on things not declared in the Signature
+        //let (generic_caps,caps) = apply_types(sig.provided_caps,are_phantom,&result);
 
         //Construct the Type
         Ok(self.store.dedup_type(ResolvedType::Sig {
-            caps,
-            generic_caps,
+            caps: sig.provided_caps,
             module:module_link,
             offset,
             applies:result

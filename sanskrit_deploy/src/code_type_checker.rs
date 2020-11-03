@@ -275,15 +275,17 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
             OpCode::CopySwitch(value, perm, ref cases) => self.switch(value, perm, cases, Some(FetchMode::Copy)),
             OpCode::Pack(perm, tag, ref values) => self.pack(perm, tag, values, FetchMode::Consume),
             OpCode::CopyPack(perm, tag, ref values) => self.pack(perm, tag, values, FetchMode::Copy),
-            OpCode::Invoke(perm, ref vals) => self.invoke(perm,vals),
-            OpCode::TryInvoke(perm, ref vals, ref suc, ref fail) => self.try_invoke(perm,vals, suc, fail),
+            OpCode::Invoke(perm, ref vals) => self.invoke(perm,vals, None),
+            OpCode::TryInvoke(perm, ref vals, ref suc, ref fail) => self.try_invoke(perm,vals, suc, fail, None),
             OpCode::Field(value, perm, field) => self.field(value, perm, field, FetchMode::Consume),
             OpCode::CopyField(value, perm, field) => self.field(value, perm, field, FetchMode::Copy),
             OpCode::RollBack(ref consumes, ref produces) => self.rollback(consumes, produces),
             OpCode::Project(typ, val) =>  self.project(typ,val),
             OpCode::UnProject(typ, val) =>  self.un_project(typ, val),
             OpCode::InvokeSig(fun,perm,  ref vals) => self.invoke_sig(fun, perm, vals),
-            OpCode::TryInvokeSig(fun,perm,  ref vals, ref suc, ref fail) => self.try_invoke_sig(fun, perm, vals, suc, fail)
+            OpCode::TryInvokeSig(fun,perm,  ref vals, ref suc, ref fail) => self.try_invoke_sig(fun, perm, vals, suc, fail),
+            OpCode::RepeatedInvoke(_, perm, ref vals, cond, _) => self.invoke(perm,vals, Some(cond)),
+            OpCode::RepeatedTryInvoke(_, perm, ref vals, cond, _, ref suc, ref fail)  => self.try_invoke(perm,vals, suc, fail, Some(cond))
 
         }
     }
@@ -501,7 +503,7 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
         //Calc the required permission
         let perm_type = match mode {
             Some(_) => Permission::Consume,
-             None => Permission::Inspect,
+            None => Permission::Inspect,
         };
 
         //check that it is of the right type
@@ -522,7 +524,7 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
         if Some(FetchMode::Copy) == mode {
             //Copied values need the copy capability
             if !r_typ.get_caps().contains(Capability::Copy) {
-                return error(||"Copy unpack requires copy capability for input")
+                return error(||"Copy switch requires copy capability for input")
             }
         }
 
@@ -659,7 +661,34 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
         self.invoke_try(&sig, vals, suc, fail)
     }
 
-    fn invoke(&mut self, perm:PermRef, vals:&[ValueRef]) -> Result<u8> {
+    fn check_repetition_condition(sig:&ResolvedSignature, cond_arg:u8) -> Result<()> {
+        if sig.params.len() != sig.returns.len() {
+            //num params mismatch num rets
+            return error(||"Number of params miss match number of returns in repeated call")
+        }
+
+        for (p,r) in sig.params.iter().zip(sig.returns.iter()) {
+            if p.typ != *r {
+                return error(||"Parameters must have same type as returns in repeated call")
+            }
+        }
+
+        if cond_arg as usize >= sig.returns.len() {
+            return error(||"Condition value must be parts of the returns")
+        }
+
+        if !sig.returns[cond_arg as usize].is_data() {
+            return error(||"Condition value must have a data type")
+        }
+
+        //Note we do not check tag is in range of ctr
+        // 1: This is easier and is more efficient as we do not need constructor cache
+        // 2: It allows to provide an ot of range if their is no abort condition
+
+        Ok(())
+    }
+
+    fn invoke(&mut self, perm:PermRef, vals:&[ValueRef], rep_cond:Option<u8>) -> Result<u8> {
         //fetch the permission
         let r_perm = perm.fetch(&self.context)?;
         //check that it is of the right type
@@ -669,11 +698,28 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
         }
         //Get the fun sig
         let sig = r_perm.get_sig()?;
+
+        //is this a repeated invoke?
+        match rep_cond {
+            //check the repetition condition
+            Some(cond_arg) => {
+                //check that it is not an implement (the are not  callaberepeatedl)
+                if let ResolvedCallable::Implement { .. }  = **r_perm.get_fun()? {
+                    return error(||"Signature generation can not be used over repeated Call")
+                }
+                Self::check_repetition_condition(sig,cond_arg)?;
+                if !self.transactional {
+                    return error(||"Repeated function calls can only be made in a transactional function")
+                }
+            },
+            None => {}
+        }
+
         //check the sig
         self.invoke_direct( &sig, vals)
     }
 
-    fn try_invoke(&mut self, perm:PermRef, vals:&[(bool,ValueRef)], suc:&Exp, fail:&Exp) -> Result<u8> {
+    fn try_invoke(&mut self, perm:PermRef, vals:&[(bool,ValueRef)], suc:&Exp, fail:&Exp, rep_cond:Option<u8>) -> Result<u8> {
         //fetch the permission
         let r_perm = perm.fetch(&self.context)?;
         //check that it is of the right type
@@ -688,6 +734,14 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
 
         //Get the fun sig
         let sig = r_perm.get_sig()?;
+
+        //is this a repeated invoke?
+        match rep_cond {
+            //check the repetition condition
+            Some(cond_arg) => Self::check_repetition_condition(sig,cond_arg)?,
+            None => {}
+        }
+
         //check the sig
         self.invoke_try(&sig, vals, suc, fail)
     }

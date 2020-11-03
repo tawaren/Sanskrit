@@ -30,8 +30,8 @@ impl External for Data {
         Ok(just_gas_and_mem((13 + data.len()/50) as u64, data.len() as u64,OpCode::Data(data)))
     }
 
-    fn get_literal_checker<'b, 'h>(&self, _data_idx: u8, _len: u16, _alloc: &'b HeapArena<'h>) -> Result<ValueSchema<'b>> {
-        Ok(ValueSchema::Data(_len))
+    fn get_literal_checker<'b, 'h>(&self, _data_idx: u8, len: u16, _alloc: &'b HeapArena<'h>) -> Result<ValueSchema<'b>> {
+        Ok(ValueSchema::Data(len))
     }
 
     fn compile_call<'b, 'h>(&self, fun_idx: u8, params: SlicePtr<'b, ValueRef>, _caller: &[u8; 20], _alloc: &'b HeapArena<'h>) -> Result<CompilationResult<'b>> {
@@ -49,7 +49,9 @@ impl External for Data {
             public extFun eq32(data1:.Data32, data2:.Data32):(res:Bool.Bool);
             */
             //currently we have max 32 Byte:
-            x if x < 10 =>  Ok(just_gas_and_mem(14, 0,OpCode::Eq(Kind::Data,params[0], params[1]))),
+            x if x < 10 => Ok(just_gas_and_mem(14, 0,OpCode::Eq(Kind::Data,params[0], params[1]))),
+            // extFun joinHash(data1:.Data20, data2:.Data20):(res:.Data20);
+            10 => Ok(just_gas_and_mem(70, Hash::SIZE as u64, OpCode::SysInvoke(0, params))),
             /*
             public extFun hash1(data1:.Data1):(res:.Data20);
             public extFun hash2(data1:.Data2):(res:.Data20);
@@ -62,7 +64,8 @@ impl External for Data {
             public extFun hash28(data1:.Data28):(res:.Data20);
             public extFun hash32(data1:.Data32):(res:.Data20);
             */
-            _ =>  Ok(just_gas_and_mem(65, 20, OpCode::Hash(Kind::Data, params[0]))),
+            //currently we have max 32 Byte:
+            _ =>  Ok(just_gas_and_mem(65, 20, OpCode::TypedSysInvoke(0, Kind::Data, params))),
         }
 
     }

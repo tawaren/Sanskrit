@@ -17,9 +17,9 @@ system module IntU64 {
    public extFun xor(num1:.U64, num2:.U64):(res:.U64);
    public extFun not(num1:.U64):(res:.U64);
 
-   public extFun toData(num:.U64):(res:Data.Data8);
+   public extFun toData(NUM:.U64):(res:Data.Data8);
    public extFun fromData(data:Data.Data8):(res:.U64);
 
-   public extFun hash(num:.U64):(res:Data.Data20);
+   public extFun hash(NUM:.U64):(res:Data.Data20);
 
 }

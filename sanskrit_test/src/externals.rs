@@ -1,13 +1,20 @@
 use sanskrit_common::errors::*;
-use sanskrit_interpreter::externals::{CompilationExternals, CompilationResult};
-use sanskrit_common::model::{ModuleLink, SlicePtr, ValueRef, Hash};
-use sanskrit_common::arena::HeapArena;
-use sanskrit_interpreter::model::ValueSchema;
+use sanskrit_interpreter::externals::{CompilationExternals, CompilationResult, RuntimeExternals, ExecutionInterface};
+use sanskrit_common::model::{ModuleLink, SlicePtr, ValueRef, Hash, Ptr};
+use sanskrit_common::arena::{HeapArena, VirtualHeapArena};
+use sanskrit_interpreter::model::{ValueSchema, Kind, Entry, Adt, RuntimeType};
 use std::collections::BTreeMap;
 use sanskrit_common::encoding::*;
 use sanskrit_interpreter::externals::External;
 use sanskrit_interpreter::*;
-use sanskrit_runtime::system::System;
+use sanskrit_runtime::system::SystemContext;
+use sanskrit_common::hashing::HashingDomain;
+use sanskrit_runtime::model::{BundleWithHash, BaseTransactionBundle};
+use sanskrit_runtime::direct_stored::{StatefulEntryStoreVerifier, StatefulEntryStoreExecutor, SystemDataManager};
+use sanskrit_runtime::CONFIG;
+use sanskrit_memory_store::BTreeMapStore;
+use sanskrit_interpreter::externals::crypto::{plain_hash, join_hash, ecdsa_verify};
+
 
 lazy_static! {
     static ref EXT_MAP: BTreeMap<Hash, &'static dyn External> = {
@@ -25,6 +32,7 @@ lazy_static! {
         map.insert(Parser::parse_fully(include_bytes!("../scripts/out/data.hash"),5, &NoCustomAlloc()).unwrap(), externals::data::EXT_DATA);
         map.insert(Parser::parse_fully(include_bytes!("../scripts/out/ids.hash"),5, &NoCustomAlloc()).unwrap(), externals::ids::EXT_IDS);
         map.insert(Parser::parse_fully(include_bytes!("../scripts/out/ecdsa.hash"),5, &NoCustomAlloc()).unwrap(), externals::eddsa::EXT_ECDSA);
+        //map.insert(Parser::parse_fully(include_bytes!("../scripts/out/unsafe.hash"),5, &NoCustomAlloc()).unwrap(), externals::_unsafe::EXT_UNSAFE);
         map
      };
 }
@@ -56,33 +64,98 @@ impl CompilationExternals for ScriptExternals {
         }
     }
 }
+
+impl RuntimeExternals for ScriptExternals {
+    fn typed_system_call<'interpreter, 'transaction:'interpreter, 'heap:'transaction, I:ExecutionInterface<'interpreter, 'transaction, 'heap>>(interface:&mut I, id:u8, kind:Kind, values: &[ValueRef], tail:bool) -> Result<()>{
+        match id {
+            //Hash
+            0 => plain_hash(interface, kind, values[0], tail),
+            _ => unreachable!()
+        }
+    }
+
+    fn system_call<'interpreter, 'transaction:'interpreter, 'heap:'transaction, I:ExecutionInterface<'interpreter, 'transaction, 'heap>>(interface:&mut I, id:u8, values: &[ValueRef], tail:bool) -> Result<()>{
+        match id {
+            //Derive
+            0 => join_hash(interface, values[0], values[1], HashingDomain::Derive, tail),
+            //EcDsaVerify
+            1 => ecdsa_verify(interface, values[0], values[1], values[2], tail),
+            _ => unreachable!()
+        }
+    }
+}
+
+pub struct ScriptSystemDataManager;
+impl<'c> SystemDataManager<BundleWithHash<'c>> for ScriptSystemDataManager {
+
+    fn providable_size(typ: Ptr<RuntimeType>) -> Result<u32> {
+        match *typ {
+            RuntimeType::Custom { module, offset, .. } if module == *SYS_HASH && offset == 1 => {
+                Ok((2*Hash::SIZE + 4*Entry::SIZE) as u32)
+            }
+            _ => return error(||"Provided value parameter must be of a supported type")
+        }
+    }
+
+    fn providable_gas(typ: Ptr<RuntimeType>) -> Result<u64> {
+        match *typ {
+            RuntimeType::Custom { module, offset, .. } if module == *SYS_HASH && offset == 1 => {
+                let hash_alloc = (13 + 20/50) as u64;
+                let pack = 13 + (4 as u64);
+                Ok(2*hash_alloc + pack)
+            }
+            _ => return error(||"Provided value parameter must be of a supported type")
+        }
+    }
+
+
+    fn is_chain_value(typ: Ptr<RuntimeType>) -> bool {
+        match *typ {
+            RuntimeType::Custom { module, offset, .. } if module == *SYS_HASH && offset == 0 => true,
+            _ => false
+        }
+    }
+
+    //This means we can only provide 1 value per Txt
+    fn provided_value_key(_typ: Ptr<RuntimeType>, section_no:u8,  txt_no:u8) -> Option<Vec<u8>> {
+        Some(vec![section_no,txt_no])
+    }
+
+    fn create_provided_value<'a, 'h>(bundle: &BundleWithHash, _typ: Ptr<RuntimeType>, alloc: &'a VirtualHeapArena<'h>, block_no: u64, section_no:u8,  txt_no:u8) -> Result<Entry<'a>> {
+        let mut context = HashingDomain::Derive.get_domain_hasher();
+        //fill the hash with first value
+        context.update(&bundle.bundle_hash);
+        //fill the hash with second value
+        context.update(&[section_no,txt_no]);
+        //calc the Hash
+        let txt_id = context.alloc_finalize(&alloc)?;
+        Ok(Entry{adt: Adt(0,alloc.copy_alloc_slice(&[
+            Entry {data: txt_id},
+            Entry {data: alloc.copy_alloc_slice(&bundle.bundle_hash)?},
+            Entry {u64: block_no},
+            Entry {u8: section_no},
+            Entry {u8: txt_no},
+            Entry {u64: 0}
+        ])?)})
+    }
+}
+
 pub struct ScriptSystem;
-impl System for ScriptSystem {
-    fn system_module(&self) -> Hash {
-        *SYS_HASH
+impl<'c> SystemContext<'c> for ScriptSystem {
+    type CE = ScriptExternals;
+    type RE = ScriptExternals;
+    type S = BTreeMapStore;
+    type B = BundleWithHash<'c>;
+    type VC = StatefulEntryStoreVerifier<Self::B,ScriptSystemDataManager>;
+    type EC = StatefulEntryStoreExecutor<Self::B,ScriptSystemDataManager>;
+
+    fn parse_bundle<A: ParserAllocator>(data: &[u8], alloc: &'c A) -> Result<Self::B> {
+        let txt_bundle:BaseTransactionBundle = Parser::parse_fully(data, CONFIG.max_structural_dept, alloc)?;
+        let bundle_hash = HashingDomain::Bundle.hash(&data[..txt_bundle.core.byte_size.unwrap()]);
+        Ok(BundleWithHash {
+            txt_bundle,
+            bundle_hash,
+        })
     }
 
-    fn entry_offset(&self) -> u8 {
-        0
-    }
-
-    fn context_offset(&self) -> u8 {
-        1
-    }
-
-    fn txt_hash_offset(&self) -> u8 {
-        0
-    }
-
-    fn code_hash_offset(&self) -> u8 {
-        1
-    }
-
-    fn full_hash_offset(&self) -> u8 {
-        2
-    }
-
-    fn unique_id_offset(&self) -> u8 {
-        3
-    }
 }

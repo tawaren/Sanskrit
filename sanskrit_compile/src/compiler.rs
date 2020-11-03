@@ -25,7 +25,7 @@ use sanskrit_common::arena::HeapArena;
 use limiter::Limiter;
 
 //Entry point that compiles all types and public functions of a module
-pub fn compile_transaction<'b, 'h, S:Store, E:CompilationExternals>(transaction_hash:&Hash, store:&S, accounting:&Accounting, limiter:&Limiter, alloc:&'b HeapArena<'h>) -> Result<TransactionDescriptor<'b>>{
+pub fn compile_transaction<'b, 'h, S:Store, CE:CompilationExternals>(transaction_hash:&Hash, store:&S, accounting:&Accounting, limiter:&Limiter, alloc:&'b HeapArena<'h>) -> Result<TransactionDescriptor<'b>>{
 
     //load the module
     let fun:FunctionComponent = store.parsed_get(StorageClass::Transaction, transaction_hash, usize::max_value(), &NoCustomAlloc())?;
@@ -41,7 +41,7 @@ pub fn compile_transaction<'b, 'h, S:Store, E:CompilationExternals>(transaction_
                 //Prepare the context
                 let context = Context::from_top_component(&fun, &resolver)?;
                 //call the generator
-                generate_transaction_descriptor::<S,E>(&fun, code, &context, &alloc, limiter)
+                generate_transaction_descriptor::<_,CE>(&fun, code, &context, &alloc, limiter)
             },
         }
     }
@@ -49,7 +49,7 @@ pub fn compile_transaction<'b, 'h, S:Store, E:CompilationExternals>(transaction_
 }
 
 //generates a function descriptor
-fn generate_transaction_descriptor<'b,'h, S:Store,E:CompilationExternals>(fun:&FunctionComponent, code:&SExp, ctx:&Context<S>, alloc:&'b HeapArena<'h>, limiter:&Limiter) -> Result<TransactionDescriptor<'b>> {
+fn generate_transaction_descriptor<'b,'h, S:Store,CE:CompilationExternals>(fun:&FunctionComponent, code:&SExp, ctx:&Context<S>, alloc:&'b HeapArena<'h>, limiter:&Limiter) -> Result<TransactionDescriptor<'b>> {
     
     //collect the params type builder
     let mut params = alloc.slice_builder(fun.shared.params.len())?;
@@ -57,7 +57,7 @@ fn generate_transaction_descriptor<'b,'h, S:Store,E:CompilationExternals>(fun:&F
         let typ = p.typ.fetch(ctx)?;
         //build the type & desc
         let r_typ = alloc.alloc(resolved_to_runtime_type(&*typ, alloc)?);
-        let desc = alloc.alloc(resolved_to_value_descriptor::<S,E>(&*typ, ctx, alloc)?);
+        let desc = alloc.alloc(resolved_to_value_descriptor::<_,CE>(&*typ, ctx, alloc)?);
         params.push(TxTParam{
             primitive: typ.get_caps().contains(Capability::Primitive),
             copy:typ.get_caps().contains(Capability::Copy),
@@ -76,7 +76,7 @@ fn generate_transaction_descriptor<'b,'h, S:Store,E:CompilationExternals>(fun:&F
 
         //build the typ
         let r_typ = alloc.alloc(resolved_to_runtime_type(&*typ, alloc)?);
-        let desc = alloc.alloc(resolved_to_value_descriptor::<S,E>(&*typ, ctx, alloc)?);
+        let desc = alloc.alloc(resolved_to_value_descriptor::<_,CE>(&*typ, ctx, alloc)?);
         returns.push(TxTReturn{
             primitive: typ.get_caps().contains(Capability::Primitive),
             copy: typ.get_caps().contains(Capability::Copy),
@@ -87,24 +87,24 @@ fn generate_transaction_descriptor<'b,'h, S:Store,E:CompilationExternals>(fun:&F
     }
     let returns = returns.finish();
     //do the compaction process
-    let (functions,ressources) = Compactor::compact::<S,E>(fun, code,  &ctx.store, alloc, limiter)?;
+    let (functions,ressources) = Compactor::compact::<_,CE>(fun, code,  &ctx.store, alloc, limiter)?;
 
     if functions.len() > u16::max_value() as usize {
         return error(||"Number of functions out of range")
     }
 
 
-    if ressources.max_gas > u32::max_value() as u64 {return error(||"Consumed Gas out of range")}
-    if ressources.max_manifest_stack > u16::max_value() as u32 {return error(||"Required stack size out of range")}
-    if ressources.max_frames > u16::max_value() as u32 {return error(||"Required number of frames out of range")}
+    if ressources.gas > u32::max_value() as u64 {return error(||"Consumed Gas out of range")}
+    if ressources.manifest_stack > u16::max_value() as u32 {return error(||"Required stack size out of range")}
+    if ressources.frames > u16::max_value() as u32 {return error(||"Required number of frames out of range")}
 
     let desc = TransactionDescriptor {
         byte_size: None,
         virt_size: None,
-        gas_cost: ressources.max_gas as u32,
-        max_stack: ressources.max_manifest_stack as u16,
-        max_mem: ressources.max_mem as u16,
-        max_frames: ressources.max_frames as u16,
+        gas_cost: ressources.gas as u32,
+        max_stack: ressources.manifest_stack as u16,
+        max_mem: ressources.mem as u16,
+        max_frames: ressources.frames as u16,
         params,
         returns,
         functions
@@ -156,16 +156,16 @@ pub fn resolved_to_runtime_type<'b,'h>(typ:&ResolvedType, alloc:&'b HeapArena<'h
 
 
 
-pub fn resolved_to_value_descriptor<'b,'h, S:Store, E:CompilationExternals>(typ:&ResolvedType, ctx:&Context<S>, alloc:&'b HeapArena<'h>) -> Result<ValueSchema<'b>> {
+pub fn resolved_to_value_descriptor<'b,'h, S:Store, CE:CompilationExternals>(typ:&ResolvedType, ctx:&Context<S>, alloc:&'b HeapArena<'h>) -> Result<ValueSchema<'b>> {
     //build an adt type
-    fn build_adt_checker<'b, 'h, S:Store, E:CompilationExternals>(module:Crc<ModuleLink>, offset:u8, applies:&[Crc<ResolvedType>],  ctx:&Context<S>, alloc:&'b HeapArena<'h>) -> Result<ValueSchema<'b>> {
+    fn build_adt_checker<'b, 'h, S:Store, CE:CompilationExternals>(module:Crc<ModuleLink>, offset:u8, applies:&[Crc<ResolvedType>], ctx:&Context<S>, alloc:&'b HeapArena<'h>) -> Result<ValueSchema<'b>> {
          //Get the cache
         let adt_cache = ctx.store.get_component::<DataComponent>(&module, offset)?;
         //Get the adt
         let adt = adt_cache.retrieve();
 
         Ok(match adt.body {
-            DataImpl::External(size) => E::get_literal_checker(&*module, offset, size, alloc)?,
+            DataImpl::External(size) => CE::get_literal_checker(&*module, offset, size, alloc)?,
             DataImpl::Internal { ref constructors} => {
                 //get its context with the applies as substitutions
                 let context = adt_cache.substituted_context(&applies,ctx.store)?;
@@ -173,7 +173,7 @@ pub fn resolved_to_value_descriptor<'b,'h, S:Store, E:CompilationExternals>(typ:
                 if constructors.len() == 1 && constructors[0].fields.len() == 1 {
                     //Wrapper Optimization
                     let f_typ = constructors[0].fields[0].fetch(&context)?;
-                    resolved_to_value_descriptor::<S,E>(&f_typ, &context, alloc)?
+                    resolved_to_value_descriptor::<_,CE>(&f_typ, &context, alloc)?
                 } else {
                     //normal case
                     let mut casees = alloc.slice_builder(constructors.len())?;
@@ -182,7 +182,7 @@ pub fn resolved_to_value_descriptor<'b,'h, S:Store, E:CompilationExternals>(typ:
                         let mut fields = alloc.slice_builder(case.fields.len())?;
                         for field in &case.fields {
                             let field_typ = field.fetch(&context)?;
-                            fields.push(alloc.alloc(resolved_to_value_descriptor::<S,E>(&field_typ, &context, alloc)?))
+                            fields.push(alloc.alloc(resolved_to_value_descriptor::<_,CE>(&field_typ, &context, alloc)?))
                         }
                         casees.push(fields.finish());
                     }
@@ -200,8 +200,8 @@ pub fn resolved_to_value_descriptor<'b,'h, S:Store, E:CompilationExternals>(typ:
         //sigs are never primitives
         ResolvedType::Sig {..} => unreachable!(),
         //images have the same repr as the inner
-        ResolvedType::Projection { ref un_projected, .. } => resolved_to_value_descriptor::<S,E>(&**un_projected, ctx, alloc)?,
+        ResolvedType::Projection { ref un_projected, .. } => resolved_to_value_descriptor::<_,CE>(&**un_projected, ctx, alloc)?,
         ResolvedType::Lit { ref module, offset, ref applies, .. }
-        | ResolvedType::Data { ref module, offset, ref applies, .. } => build_adt_checker::<S,E>(module.clone(), offset, applies, ctx, alloc)?,
+        | ResolvedType::Data { ref module, offset, ref applies, .. } => build_adt_checker::<_,CE>(module.clone(), offset, applies, ctx, alloc)?,
     })
 }

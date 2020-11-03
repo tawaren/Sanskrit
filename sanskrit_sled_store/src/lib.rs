@@ -8,21 +8,23 @@ use sanskrit_common::model::Hash;
 use sanskrit_common::store::*;
 use sanskrit_common::errors::*;
 use std::path::{Path, PathBuf};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use core::mem;
 use std::cell::RefCell;
 
 #[derive(Clone, Debug)]
 struct Container {
     persisted:Db,
-    pending:BTreeMap<Hash, Option<Vec<u8>>>
+    pending:BTreeMap<Hash, Option<Vec<u8>>>,
+    auto_flush:bool
 }
 
 impl Container {
-    pub fn new(path:PathBuf)-> Self{
+    pub fn new(path:PathBuf, auto_flush:bool)-> Self{
         Container{
             persisted: sled::open(path).unwrap(),
-            pending: BTreeMap::new()
+            pending: BTreeMap::new(),
+            auto_flush
         }
     }
 
@@ -119,11 +121,17 @@ impl Container {
                 Some(data) => self.persisted.insert(key, data).unwrap()
             };
         }
-        self.persisted.flush().unwrap();
+        if self.auto_flush {
+            self.persisted.flush().unwrap();
+        }
     }
 
     pub fn rollback(&mut self){
         self.pending.clear();
+    }
+
+    pub fn flush(&mut self) {
+        self.persisted.flush().unwrap();
     }
 }
 
@@ -139,7 +147,7 @@ pub struct SledStore(RefCell<InnerSledStore>);
 
 impl SledStore {
     //creates a multi thread enabled store
-    pub fn new(folder:&Path)-> Self{
+    pub fn new(folder:&Path, auto_flush:BTreeSet<StorageClass>)-> Self{
         let hash_p = folder.join("hash").with_extension("db");
         let module_p = folder.join("module").with_extension("db");
         let fun_p = folder.join("fun").with_extension("db");
@@ -149,12 +157,26 @@ impl SledStore {
 
 
         SledStore(RefCell::new(InnerSledStore {
-            hashs: Container::new(hash_p),
-            modules: Container::new(module_p),
-            funs: Container::new(fun_p),
-            descs: Container::new(desc_p),
-            elems: Container::new(elem_p),
+            hashs: Container::new(hash_p, auto_flush.contains( &StorageClass::EntryHash)),
+            modules: Container::new(module_p, auto_flush.contains( &StorageClass::Module)),
+            funs: Container::new(fun_p, auto_flush.contains( &StorageClass::Transaction)),
+            descs: Container::new(desc_p, auto_flush.contains( &StorageClass::Descriptor)),
+            elems: Container::new(elem_p, auto_flush.contains( &StorageClass::EntryValue)),
         }))
+    }
+
+    pub fn flush(&self, class: StorageClass) {
+        fn process(map:&mut Container) {
+            map.flush()
+        }
+
+        match class {
+            StorageClass::Module => process(&mut self.0.borrow_mut().modules),
+            StorageClass::Transaction => process(&mut self.0.borrow_mut().funs),
+            StorageClass::Descriptor => process(&mut self.0.borrow_mut().descs),
+            StorageClass::EntryValue => process(&mut self.0.borrow_mut().elems),
+            StorageClass::EntryHash =>  process(&mut self.0.borrow_mut().hashs),
+        }
     }
 }
 

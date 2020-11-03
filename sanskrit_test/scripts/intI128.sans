@@ -17,10 +17,10 @@ system module IntI128 {
    public extFun xor(num1:.I128, num2:.I128):(res:.I128);
    public extFun not(num1:.I128):(res:.I128);
 
-   public extFun toData(num:.I128):(res:Data.Data16);
+   public extFun toData(NUM:.I128):(res:Data.Data16);
    public extFun fromData(data:Data.Data16):(res:.I128);
 
-   public extFun hash(num:.I128):(res:Data.Data20);
+   public extFun hash(NUM:.I128):(res:Data.Data20);
 
 
 }

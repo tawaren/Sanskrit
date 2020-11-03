@@ -24,9 +24,9 @@ use sanskrit_common::arena::Heap;
 use alloc::vec::Vec;
 
 //compiles a single top function
-pub fn compile_function<S:Store, E:CompilationExternals>(store:&S, accounting:&Accounting, limiter:&Limiter, function_hash:Hash, auto_commit:bool) -> Result<(Hash, usize)>{
+pub fn compile_function<S:Store, CE:CompilationExternals>(store:&S, accounting:&Accounting, limiter:&Limiter, function_hash:Hash, auto_commit:bool) -> Result<(Hash, usize)>{
     //create it
-    let (key, data) = create_descriptor::<S,E>(store, accounting, limiter, function_hash)?;
+    let (key, data) = create_descriptor::<_,CE>(store, accounting, limiter, function_hash)?;
     //result size
     let size = data.len();
     //we ignore if it is already in
@@ -41,11 +41,11 @@ pub fn compile_function<S:Store, E:CompilationExternals>(store:&S, accounting:&A
     Ok((key, size))
 }
 
-pub fn create_descriptor<S:Store, E:CompilationExternals>(store:&S, accounting:&Accounting, limiter:&Limiter, function_hash:Hash) -> Result<(Hash, Vec<u8>)>{
+pub fn create_descriptor<S:Store, CE:CompilationExternals>(store:&S, accounting:&Accounting, limiter:&Limiter, function_hash:Hash) -> Result<(Hash, Vec<u8>)>{
     let heap = Heap::new(10000,4.0);
     let alloc = heap.new_arena(10000);
     //compiles the content
-    let txt_desc = compiler::compile_transaction::<S, E>(&function_hash, store, accounting, limiter, &alloc)?;
+    let txt_desc = compiler::compile_transaction::<S, CE>(&function_hash, store, accounting, limiter, &alloc)?;
     //serializes the content
     let data = Serializer::serialize_fully(&txt_desc, usize::max_value())?;
     //calcs the Key for the store

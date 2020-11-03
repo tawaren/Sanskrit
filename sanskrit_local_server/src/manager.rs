@@ -2,29 +2,29 @@
 
 use sanskrit_sled_store::SledStore;
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use sanskrit_deploy::{deploy_module, deploy_function};
-use sanskrit_runtime::{execute, Tracker, CONFIG, read_transaction_desc, deploy};
+use sanskrit_runtime::{execute, Tracker, CONFIG, read_transaction_desc, deploy, Context};
 use sanskrit_common::store::*;
 use sanskrit_common::encoding::*;
 use sanskrit_common::model::*;
 use sanskrit_common::errors::*;
 
-use sled::Db;
+use sled::{Db, IVec, Error};
 use rand::rngs::OsRng;
 use ed25519_dalek::{Keypair, Signature, Signer};
 
 use hex::encode;
-use sanskrit_common::arena::Heap;
+use sanskrit_common::arena::{Heap, VirtualHeapArena};
 use sanskrit_common::hashing::HashingDomain;
 
-use sanskrit_runtime::model::{TransactionBundle, DeployTransaction, DeployType, ParamRef, ParamMode, RetType, BundleSection, SectionType, Transaction, TransactionBundleCore};
+use sanskrit_runtime::model::{DeployTransaction, DeployType, ParamRef, ParamMode, RetType, BundleSection, SectionType, Transaction, TransactionBundleCore, BaseTransactionBundle};
 use sanskrit_core::accounting::Accounting;
 use std::cell::Cell;
 use sanskrit_compile::compile_function;
 use sanskrit_compile::limiter::Limiter;
 use sanskrit_interpreter::model::{Entry, TxTParam, TxTReturn, TransactionDescriptor, ValueSchema, Adt};
-use externals::{ServerExternals, ServerSystem};
+use externals::{ServerSystem, ServerSystemDataManager};
 use std::time::Instant;
 use std::ops::Deref;
 use std::convert::TryInto;
@@ -32,6 +32,14 @@ use std::str::from_utf8;
 use sanskrit_core::model::Module;
 use convert_error;
 use ed25519_dalek::ed25519::SIGNATURE_LENGTH;
+use sanskrit_runtime::system::SystemContext;
+use sanskrit_runtime::direct_stored::SystemDataManager;
+
+pub struct Tx {
+    pub desc:Hash,
+    pub params:Vec<Param>,
+    pub returns:Vec<Ret>
+}
 
 pub enum Param {
     Lit(Vec<u8>),
@@ -40,6 +48,9 @@ pub enum Param {
     Consume(Hash),
     Borrow(Hash),
     Copy(Hash),
+    LocalConsume(String),
+    LocalBorrow(String),
+    LocalCopy(String),
     Provided
 }
 
@@ -47,13 +58,14 @@ pub enum Ret {
     Log,
     Elem,
     Drop,
+    Assign(String),
 }
 
 pub struct ExecutionState {
     pub consumed_elems:BTreeSet<String>,
     pub produced_elems:BTreeMap<String, (Hash,String)>,
-    pub param_names:Vec<String>,
-    pub return_names:Vec<String>,
+    pub param_names:VecDeque<String>,
+    pub return_names:VecDeque<String>,
     pub success:bool,
 }
 
@@ -68,12 +80,12 @@ pub struct TrackingState {
 
 pub struct State {
     pub store:SledStore,
-    pub system:ServerSystem,
     pub accounts:Db,
     pub system_entries:Db,
     pub module_name_mapping:Db,
     pub transaction_name_mapping:Db,
-    pub tracking:TrackingState
+    pub tracking:TrackingState,
+    pub meta_data:Db,
 }
 
 #[derive(Debug, Parsable, Serializable)]
@@ -103,12 +115,12 @@ impl Serializable for EncString{
 }
 
 impl ExecutionState {
-    pub fn new(param_names:Vec<String>, return_names:Vec<String>) -> Self {
+    pub fn new() -> Self {
         ExecutionState {
             consumed_elems: BTreeSet::new(),
             produced_elems:  BTreeMap::new(),
-            param_names,
-            return_names,
+            param_names: VecDeque::new(),
+            return_names: VecDeque::new(),
             success:false
         }
     }
@@ -160,7 +172,7 @@ impl Tracker for TrackingState {
     fn transaction_start(&mut self, _transaction: &Transaction) { }
 
     fn parameter_load(&mut self, p_ref: &ParamRef, _p_desc: &TxTParam, _value: &Entry) {
-        let name = self.exec_state.param_names.pop().unwrap();
+        let name = self.exec_state.param_names.pop_front().unwrap();
         match p_ref {
             ParamRef::Load(ParamMode::Consume, _) => {
                 self.exec_state.consumed_elems.insert(name);
@@ -170,7 +182,7 @@ impl Tracker for TrackingState {
     }
 
     fn return_value(&mut self, r_typ:&RetType, r_desc:&TxTReturn, value:&Entry){
-        let name = self.exec_state.return_names.pop().unwrap();
+        let name = self.exec_state.return_names.pop_front().unwrap();
         match r_typ {
             RetType::Store => {
                 let id = unsafe {value.adt.1.get(0).unwrap().data.deref()}.try_into().unwrap();
@@ -178,6 +190,7 @@ impl Tracker for TrackingState {
                 println!("store({}): {}",name, pretty);
                 self.exec_state.produced_elems.insert(name, (id, pretty));
             },
+            RetType::Put(_) => {}
             RetType::Drop => {},
             RetType::Log => {
                 println!("log({}): {}",name, pretty_print_data(value, &r_desc.desc))
@@ -204,6 +217,11 @@ impl Tracker for TrackingState {
             }
             self.active_elems.flush().unwrap();
             self.element_data.flush().unwrap();
+            self.exec_state.consumed_elems = BTreeSet::new();
+            self.exec_state.produced_elems = BTreeMap::new();
+            println!("transaction section executed successfully")
+        } else {
+            println!("transaction section rolled back")
         }
     }
 }
@@ -254,14 +272,20 @@ impl State {
         }
     }
 
-    pub fn execute_bundle(&mut self, bundle:&[u8]) -> Result<()> {
+    pub fn execute_bundle(&mut self, bundle:&[u8], block_no:u64) -> Result<()> {
         let heap = Heap::new(100000000,2.0);
-        execute::<_,_,ServerExternals, _>(&self.store, &self.system,&bundle,0, &heap, &mut self.tracking)
+        let txt_bundle_alloc = heap.new_virtual_arena(CONFIG.max_transaction_memory);
+        let txt_bundle= ServerSystem::parse_bundle(&bundle,&txt_bundle_alloc)?;
+        let ctx = Context {
+            store: &self.store,
+            txt_bundle: &txt_bundle
+        };
+        execute::<_, ServerSystem>(ctx,block_no, &heap, &mut self.tracking)
     }
 
     pub fn execute_deploy(&mut self, bundle:&[u8], system_mode_on:bool) -> Result<()> {
         let heap = Heap::new(100000000,2.0);
-        deploy::<_,ServerExternals>(&self.store, &bundle, &heap, system_mode_on)
+        deploy::<ServerSystem>(&self.store, &bundle, &heap, system_mode_on)
     }
 
     pub fn deploy_module(&mut self, module:Vec<u8>, system_mode_on:bool) -> Result<Hash> {
@@ -291,7 +315,7 @@ impl State {
         let limiter = Self::max_limiter();
 
         let hash = deploy_function(&self.store,&accounting,transaction.clone(),false)?;
-        let (t_hash,t_size) = compile_function::<SledStore,ServerExternals>(&self.store,&accounting,&limiter,hash, false)?;
+        let (t_hash,t_size) = compile_function::<_,<ServerSystem as SystemContext>::CE>(&self.store, &accounting,&limiter,hash, false)?;
         self.store.rollback(StorageClass::Transaction);
         self.store.rollback(StorageClass::Descriptor);
         let txt = Self::deploy_txt(DeployType::Transaction, &transaction, accounting, Some(limiter));
@@ -307,27 +331,42 @@ impl State {
     fn build_core<'c>(
         gas:u64,
         param_heap_limit:u16,
-        txt_desc:&TransactionDescriptor,
+        descs:&[TransactionDescriptor],
         sections:SlicePtr<'c, BundleSection<'c>>,
         descriptors:SlicePtr<'c, Hash>,
         stored: SlicePtr<'c, Hash>,
-        literal:SlicePtr<'c, SlicePtr<'c,u8>>
+        literal:SlicePtr<'c, SlicePtr<'c,u8>>,
+        scratch_pad_limit:u8,
+        meta:SlicePtr<'c, u8>,
+        earliest_block:u64,
     ) -> TransactionBundleCore<'c> {
+        let mut transaction_heap_limit:u16 = 0;
+        let mut stack_elem_limit:u16 = 0;
+        let mut stack_frame_limit:u16 = 0;
+        let mut runtime_heap_limit:u16 = 0;
+        for txt_desc in descs{
+            transaction_heap_limit = transaction_heap_limit.max(txt_desc.virt_size.unwrap() as u16);
+            stack_elem_limit = stack_elem_limit.max(txt_desc.max_stack);
+            stack_frame_limit = stack_frame_limit.max(txt_desc.max_frames);
+            runtime_heap_limit = runtime_heap_limit.max(txt_desc.max_mem);
+        }
+
         TransactionBundleCore {
             //The correct info will be filled in later
             essential_gas_cost: gas,
             total_gas_cost: gas,
 
             byte_size: None,
-            meta: SlicePtr::empty(),
-            earliest_block:0,
+            meta,
+            earliest_block,
             param_heap_limit,
             //This is to low why -- oh I see, this is byte size we need parsed size -- can we inject in derive -- ?
             // Alla alloc Size??
-            transaction_storage_heap: txt_desc.virt_size.unwrap() as u16,
-            stack_elem_limit: txt_desc.max_stack,
-            stack_frame_limit: txt_desc.max_frames,
-            runtime_heap_limit: txt_desc.max_mem, //why we need that much more mem
+            scratch_pad_limit,
+            transaction_heap_limit,
+            stack_elem_limit,
+            stack_frame_limit,
+            runtime_heap_limit,
 
             sections,
             descriptors,
@@ -336,19 +375,46 @@ impl State {
         }
     }
 
-    pub fn execute_transaction(&mut self, desc:&Hash, params:&[Param], returns:&[Ret]) -> Result<()>{
+    fn print_bundle_stats(bundle:&BaseTransactionBundle){
+        println!("Transaction Bundle Stats:");
+        println!("Size: {} byte", bundle.byte_size.unwrap());
+        println!("Essential gas: {}", bundle.core.essential_gas_cost);
+        println!("Total gas: {}", bundle.core.total_gas_cost);
+        println!("Virtual runtime heap memory required: {} bytes", bundle.core.runtime_heap_limit);
+        println!("Virtual transaction storage memory required: {} bytes", bundle.core.transaction_heap_limit);
+        println!("Maximum stack slots: {} (required memory: {} bytes)", bundle.core.stack_elem_limit, ( bundle.core.stack_elem_limit as usize) * Entry::SIZE);
+        println!("Maximum frame slots: {} (required memory: ~{} bytes)", bundle.core.stack_frame_limit, ( bundle.core.stack_frame_limit as usize) * (5*8));
+    }
+
+    pub fn execute_transaction(&mut self, txts:&[Tx]) -> Result<()> {
         //todo make softer exits
         //todo: improve overall heap management only alloc 1 Heap
-        let heap = Heap::new(100000000,2.0);
-        let mut full_heap = heap.new_virtual_arena(100000 as usize);
-        let txt_desc = read_transaction_desc(desc,&self.store, &full_heap)?;
-        if txt_desc.params.len() != params.len() {
-            panic!("Number of supplied parameter missmatches")
-        }
-        if txt_desc.returns.len() != returns.len() {
-            panic!("Number of supplied returns missmatches")
-        }
-        //todo: build on Heap
+        let heap = Heap::new(256000000,2.0);
+        let full_heap = heap.new_virtual_arena(100000 as usize);
+        let block_no = match convert_error(self.meta_data.get("block_no"))? {
+            None => 0,
+            Some(val) => Parser::parse_fully(&val, 1, &NoCustomAlloc())?
+        };
+        let bundle = self.build_transactions(txts, &full_heap, block_no)?;
+        Self::print_bundle_stats(&bundle);
+        println!("Starting bundle execution");
+        let now = Instant::now();
+        self.execute_bundle( &Serializer::serialize_fully(&bundle,MAX_PARSE_DEPTH)?,block_no)?;
+        //we flush manually as this would be done once per block and not per txt
+        println!("Bundle executed in: {}ms", now.elapsed().as_millis());
+        self.store.flush(StorageClass::EntryValue);
+        self.store.flush(StorageClass::EntryHash);
+        println!("Bundle executed and flushed in: {}ms", now.elapsed().as_millis());
+        let new_block_no = block_no+1;
+        convert_error(self.meta_data.insert("block_no", Serializer::serialize_fully(&new_block_no, 1)?))?;
+        convert_error(self.meta_data.flush())?;
+        Ok(())
+    }
+
+    pub fn build_transactions<'c,'h>(&mut self, txts:&[Tx], full_heap:&'c VirtualHeapArena<'h>, block_no:u64) -> Result<BaseTransactionBundle<'c>>{
+        let mut transactions:Vec<Transaction> = Vec::with_capacity(txts.len());
+
+        //todo: build on Heap?
         let mut lits:Vec<SlicePtr<u8>> = Vec::new();
         let mut lit_dedup:BTreeMap<Vec<u8>,u16> = BTreeMap::new();
 
@@ -358,126 +424,192 @@ impl State {
         let mut stores:Vec<Hash> = Vec::new();
         let mut stores_dedup:BTreeMap<Hash,u16> = BTreeMap::new();
 
-        let mut txt_params:Vec<ParamRef> = Vec::with_capacity(params.len());
-
         let mut param_heap = 0;
+        let mut ret_assigns:BTreeMap<String,u8> = BTreeMap::new();
 
-        let mut gas = txt_desc.gas_cost as u64;
-        gas += CONFIG.parsing_cost.compute(txt_desc.byte_size.unwrap() as u64);
+        //Todo: Later do dedup
+        let mut descs:Vec<Hash> = Vec::with_capacity(txts.len());
+        let mut txt_descs:Vec<TransactionDescriptor> = Vec::with_capacity(txts.len());
 
-        //todo: make collect
-        for (p, txt_p) in params.iter().zip(txt_desc.params.iter()) {
-            param_heap += txt_p.desc.max_runtime_size()? as usize;
-            match p {
-                Param::Lit(data) => {
-                    if lit_dedup.contains_key(data) {
-                        txt_params.push(ParamRef::Literal(*lit_dedup.get(data).unwrap()))
-                    } else {
-                        gas += CONFIG.parsing_cost.compute(txt_p.desc.max_runtime_size()? as u64);
-                        lits.push(full_heap.copy_alloc_slice(&data)?);
-                        lit_dedup.insert(data.clone(), (lits.len()-1) as u16);
-                        txt_params.push(ParamRef::Literal((lits.len()-1) as u16))
+        let mut gas = CONFIG.bundle_base_cost;
+        for Tx{ref desc, ref params, ref returns} in txts {
+            let txt_desc = read_transaction_desc(desc,&self.store, full_heap)?;
+            gas += txt_desc.gas_cost as u64;
+
+            descs.push(*desc);
+            if txt_desc.params.len() != params.len() {
+                panic!("Number of supplied parameter missmatches")
+            }
+            if txt_desc.returns.len() != returns.len() {
+                panic!("Number of supplied returns missmatches")
+            }
+
+            let mut txt_params:Vec<ParamRef> = Vec::with_capacity(params.len());
+
+            gas += CONFIG.parsing_cost.compute(txt_desc.byte_size.unwrap() as u64);
+
+            //todo: make collect
+            for (p, txt_p) in params.iter().zip(txt_desc.params.iter()) {
+                match p {
+                    Param::Lit(data) => {
+                        param_heap += txt_p.desc.max_runtime_size()? as usize;
+                        if lit_dedup.contains_key(data) {
+                            txt_params.push(ParamRef::Literal(*lit_dedup.get(data).unwrap()))
+                        } else {
+                            gas += CONFIG.parsing_cost.compute(txt_p.desc.max_runtime_size()? as u64);
+                            lits.push(full_heap.copy_alloc_slice(&data)?);
+                            lit_dedup.insert(data.clone(), (lits.len()-1) as u16);
+                            txt_params.push(ParamRef::Literal((lits.len()-1) as u16))
+                        }
+                    },
+
+                    Param::Pk(account) => {
+                        param_heap += txt_p.desc.max_runtime_size()? as usize;
+                        let data = self.get_account(account)?.public.to_bytes().to_vec();
+                        if lit_dedup.contains_key(&data) {
+                            txt_params.push(ParamRef::Literal(*lit_dedup.get(&data).unwrap()))
+                        } else {
+                            gas += CONFIG.parsing_cost.compute(txt_p.desc.max_runtime_size()? as u64);
+                            lits.push(full_heap.copy_alloc_slice(&data)?);
+                            lit_dedup.insert(data, (lits.len()-1) as u16);
+                            txt_params.push(ParamRef::Literal((lits.len()-1) as u16))
+                        }
+                    },
+
+                    Param::Sig(account) => {
+                        param_heap += txt_p.desc.max_runtime_size()? as usize;
+                        if sigs_dedup.contains_key(account) {
+                            txt_params.push(ParamRef::Witness(*sigs_dedup.get(account).unwrap()))
+                        } else {
+                            gas += CONFIG.parsing_cost.compute(txt_p.desc.max_runtime_size()? as u64);
+                            sigs.push(account.clone());
+                            sigs_dedup.insert(account.clone(), (sigs.len()-1) as u16);
+                            txt_params.push(ParamRef::Witness((sigs.len()-1) as u16))
+                        }
                     }
-                },
 
-                Param::Pk(account) => {
-                    let data = self.get_account(account)?.public.to_bytes().to_vec();
-                    if lit_dedup.contains_key(&data) {
-                        txt_params.push(ParamRef::Literal(*lit_dedup.get(&data).unwrap()))
-                    } else {
-                        gas += CONFIG.parsing_cost.compute(txt_p.desc.max_runtime_size()? as u64);
-                        lits.push(full_heap.copy_alloc_slice(&data)?);
-                        lit_dedup.insert(data, (lits.len()-1) as u16);
-                        txt_params.push(ParamRef::Literal((lits.len()-1) as u16))
-                    }
-                },
+                    Param::Provided => {
+                        gas += ServerSystemDataManager::providable_gas(txt_p.typ)?;
+                        param_heap += ServerSystemDataManager::providable_size(txt_p.typ)? as usize;
+                        txt_params.push(ParamRef::Provided)
+                    },
 
-                Param::Sig(account) => {
-                    if sigs_dedup.contains_key(account) {
-                        txt_params.push(ParamRef::Witness(*sigs_dedup.get(account).unwrap()))
-                    } else {
-                        gas += CONFIG.parsing_cost.compute(txt_p.desc.max_runtime_size()? as u64);
-                        sigs.push(account.clone());
-                        sigs_dedup.insert(account.clone(), (sigs.len()-1) as u16);
-                        txt_params.push(ParamRef::Witness((sigs.len()-1) as u16))
+                    //todo: share common stuff
+                    Param::Consume(id) => {
+                        param_heap += txt_p.desc.max_runtime_size()? as usize;
+                        if stores_dedup.contains_key(id) {
+                            txt_params.push(ParamRef::Load(ParamMode::Consume,*stores_dedup.get(id).unwrap()))
+                        } else {
+                            gas += CONFIG.entry_load_cost.compute(txt_p.desc.max_serialized_size() as u64);
+                            gas += CONFIG.entry_store_cost.compute(0);
+                            stores.push(id.clone());
+                            stores_dedup.insert(id.clone(), (stores.len()-1) as u16);
+                            txt_params.push(ParamRef::Load(ParamMode::Consume,(stores.len()-1) as u16))
+                        }
+                    },
+                    Param::Borrow(id) => {
+                        param_heap += txt_p.desc.max_runtime_size()? as usize;
+                        if stores_dedup.contains_key(id) {
+                            txt_params.push(ParamRef::Load(ParamMode::Borrow,*stores_dedup.get(id).unwrap()))
+                        } else {
+                            gas += CONFIG.entry_load_cost.compute(txt_p.desc.max_serialized_size() as u64);
+                            stores.push(id.clone());
+                            stores_dedup.insert(id.clone(), (stores.len()-1) as u16);
+                            txt_params.push(ParamRef::Load(ParamMode::Borrow,(stores.len()-1) as u16))
+                        }
+                    },
+                    Param::Copy(id) => {
+                        param_heap += txt_p.desc.max_runtime_size()? as usize;
+                        if stores_dedup.contains_key(id) {
+                            txt_params.push(ParamRef::Load(ParamMode::Copy,*stores_dedup.get(id).unwrap()))
+                        } else {
+                            gas += CONFIG.entry_load_cost.compute(txt_p.desc.max_serialized_size() as u64);
+                            stores.push(id.clone());
+                            stores_dedup.insert(id.clone(), (stores.len()-1) as u16);
+                            txt_params.push(ParamRef::Load(ParamMode::Copy,(stores.len()-1) as u16))
+                        }
                     }
-                }
 
-                Param::Provided => {
-                    txt_params.push(ParamRef::Provided)
-                },
+                    Param::LocalConsume(key) => {
+                        if !ret_assigns.contains_key(key) {
+                            return error(||"Element name unknown")
+                        }
+                        txt_params.push(ParamRef::Fetch(ParamMode::Consume,*ret_assigns.get(key).unwrap() as u8))
 
-                //todo: share
-                Param::Consume(id) => {
-                    if stores_dedup.contains_key(id) {
-                        txt_params.push(ParamRef::Load(ParamMode::Consume,*stores_dedup.get(id).unwrap()))
-                    } else {
-                        gas += CONFIG.entry_load_cost.compute(txt_p.desc.max_serialized_size() as u64);
-                        gas += CONFIG.entry_store_cost.compute(0);
-                        stores.push(id.clone());
-                        stores_dedup.insert(id.clone(), (stores.len()-1) as u16);
-                        txt_params.push(ParamRef::Load(ParamMode::Consume,(stores.len()-1) as u16))
                     }
-                },
-                Param::Borrow(id) => {
-                    if stores_dedup.contains_key(id) {
-                        txt_params.push(ParamRef::Load(ParamMode::Borrow,*stores_dedup.get(id).unwrap()))
-                    } else {
-                        gas += CONFIG.entry_load_cost.compute(txt_p.desc.max_serialized_size() as u64);
-                        stores.push(id.clone());
-                        stores_dedup.insert(id.clone(), (stores.len()-1) as u16);
-                        txt_params.push(ParamRef::Load(ParamMode::Borrow,(stores.len()-1) as u16))
+                    Param::LocalBorrow(key) => {
+                        if !ret_assigns.contains_key(key) {
+                            return error(||"Element name unknown")
+                        }
+                        txt_params.push(ParamRef::Fetch(ParamMode::Borrow,*ret_assigns.get(key).unwrap() as u8))
                     }
-                },
-                Param::Copy(id) => {
-                    if stores_dedup.contains_key(id) {
-                        txt_params.push(ParamRef::Load(ParamMode::Copy,*stores_dedup.get(id).unwrap()))
-                    } else {
-                        gas += CONFIG.entry_load_cost.compute(txt_p.desc.max_serialized_size() as u64);
-                        stores.push(id.clone());
-                        stores_dedup.insert(id.clone(), (stores.len()-1) as u16);
-                        txt_params.push(ParamRef::Load(ParamMode::Copy,(stores.len()-1) as u16))
+                    Param::LocalCopy(key) => {
+                        if !ret_assigns.contains_key(key) {
+                            return error(||"Element name unknown")
+                        }
+                        txt_params.push(ParamRef::Fetch(ParamMode::Copy,*ret_assigns.get(key).unwrap() as u8))
                     }
                 }
             }
-        }
 
-        let mut txt_rets:Vec<RetType> = Vec::with_capacity(returns.len());
-        for (r, txt_r) in returns.iter().zip(txt_desc.returns.iter()) {
-            match r {
-                Ret::Log => {
-                    //Logs may cost something in the future
-                    txt_rets.push(RetType::Log)
-                },
-                Ret::Elem => {
-                    gas += CONFIG.entry_store_cost.compute(txt_r.desc.max_serialized_size() as u64);
-                    txt_rets.push(RetType::Store)
-                },
-                Ret::Drop => txt_rets.push(RetType::Drop)
+            let mut txt_rets:Vec<RetType> = Vec::with_capacity(returns.len());
+            for (r, txt_r) in returns.iter().zip(txt_desc.returns.iter()) {
+                match r {
+                    Ret::Log => {
+                        //Logs may cost something in the future
+                        txt_rets.push(RetType::Log)
+                    },
+                    Ret::Assign(name) => {
+                        if !ret_assigns.contains_key(name) {
+                            ret_assigns.insert(name.clone(), ret_assigns.len() as u8);
+                        }
+                        txt_rets.push(RetType::Put(*ret_assigns.get(name).unwrap()));
+                        let runtime_size = txt_r.desc.max_runtime_size()?;
+                        gas += CONFIG.copy_cost.compute(runtime_size as u64);
+                        param_heap += runtime_size as usize;
+                    }
+
+                    Ret::Elem => {
+                        gas += CONFIG.entry_store_cost.compute(txt_r.desc.max_serialized_size() as u64);
+                        txt_rets.push(RetType::Store)
+                    },
+                    Ret::Drop => txt_rets.push(RetType::Drop),
+                }
             }
+
+            txt_descs.push(txt_desc);
+
+            transactions.push(Transaction {
+                txt_desc: (descs.len()-1) as u16,
+                params: full_heap.copy_alloc_slice(&txt_params)?,
+                returns: full_heap.copy_alloc_slice(&txt_rets)?,
+            });
         }
 
-        let transaction = Transaction {
-            txt_desc: 0,
-            params: full_heap.copy_alloc_slice(&txt_params)?,
-            returns: full_heap.copy_alloc_slice(&txt_rets)?,
-        };
+        //Todo: Allow many Sections
         let section = BundleSection {
             typ: SectionType::Essential,
-            txts: full_heap.copy_alloc_slice(&[transaction])?
+            txts: full_heap.copy_alloc_slice(&transactions)?
         };
 
-        let bundle_core = Self::build_core(0, param_heap as u16, &txt_desc,
+        let meta = Serializer::serialize_fully(&block_no,1).unwrap();
+
+        let bundle_core = Self::build_core(
+            0,
+            param_heap as u16,
+            &txt_descs,
             full_heap.copy_alloc_slice(&[section])?,
-            full_heap.copy_alloc_slice(&[*desc])?,
+            full_heap.copy_alloc_slice(&descs)?,
             full_heap.copy_alloc_slice(&stores)?,
             full_heap.copy_alloc_slice(&lits)?,
+             ret_assigns.len() as u8,
+            full_heap.copy_alloc_slice(&meta)?,
+            block_no
         );
 
         let bundle_core_data = &Serializer::serialize_fully(&bundle_core,MAX_PARSE_DEPTH)?;  //todo: is the max here correct
         //this is not nice but the cyclic dependency requires it
-        full_heap = full_heap.reuse();
-        let mut core_reparsed:TransactionBundleCore = Parser::parse_fully(&bundle_core_data,MAX_PARSE_DEPTH, &full_heap)?;  //todo: is the max here correct
+        let mut core_reparsed:TransactionBundleCore = Parser::parse_fully(&bundle_core_data,MAX_PARSE_DEPTH, full_heap)?;  //todo: is the max here correct
         let witness_size = (sigs.len() * (SIGNATURE_LENGTH + 2)) + 2;
         let full_size = core_reparsed.byte_size.unwrap() + witness_size;
 
@@ -494,14 +626,12 @@ impl State {
             let signature: Signature = keys.sign(&bundle_hash);
             witness.push(full_heap.copy_alloc_slice(&signature.to_bytes())?);
         };
-
-        let bundle = TransactionBundle {
-            byte_size: None,
+        let witness_slice  = full_heap.copy_alloc_slice(&witness)?;
+        Ok(BaseTransactionBundle {
+            byte_size: Some(core_reparsed.byte_size.unwrap() + witness_slice.len()*(64+2) +2), //cheat here a bit so we can do stats
             core: core_reparsed,
-            witness: full_heap.copy_alloc_slice(&witness)?,
-        };
-
-        self.execute_bundle( &Serializer::serialize_fully(&bundle,MAX_PARSE_DEPTH)?)
+            witness: witness_slice,
+        })
     }
 
     pub fn get_account(&mut self, ident:&str) -> Result<Keypair> {

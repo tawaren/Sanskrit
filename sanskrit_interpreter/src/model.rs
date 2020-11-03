@@ -50,8 +50,9 @@ pub enum OpCode<#[AllocLifetime] 'b> {
     Switch(ValueRef, SlicePtr<'b,Ptr<'b, Exp<'b>>>),               //Branches on a type that has multiple ctrs where each branch corresponds to 1 Ctr (Does an implicit Unpack)
     Pack(Tag, SlicePtr<'b,ValueRef>),                              //Generates a value
     CreateSig(u16, SlicePtr<'b,ValueRef>),                         //Captures a Function Pointer
-    InvokeSig(Ptr<'b,ValueRef>, SlicePtr<'b,ValueRef>),            //Invokes a Function Pointer
+    InvokeSig(ValueRef, SlicePtr<'b,ValueRef>),                    //Invokes a Function Pointer
     Invoke(u16, SlicePtr<'b,ValueRef>),                            //Invokes a Function
+    RepeatedInvoke(u16, SlicePtr<'b,ValueRef>, ValueRef, Tag, u8), //Invokes a Function repeatedly
     Try(Ptr<'b, OpCode<'b>>, Ptr<'b, Exp<'b>>, Ptr<'b, Exp<'b>>),  //Executes the Opcode, and then runs either exp depending on sucess or failure
     Rollback,
     Return(SlicePtr<'b,ValueRef>),
@@ -67,17 +68,16 @@ pub enum OpCode<#[AllocLifetime] 'b> {
     Mul(Kind, ValueRef,ValueRef),                                   //Does an arithmetic multiplication of two ints (throws on under or overflow)
     Div(Kind, ValueRef,ValueRef),                                   //Does an arithmetic dividation of two ints (throws on a division by zero)
     Eq(Kind, ValueRef,ValueRef),                                    //Compares two values for equality
-    Hash(Kind, ValueRef),                                           //Calculates a plain hash for a data input (not structurally encoded)
-    EcDsaVerify(ValueRef, ValueRef, ValueRef),                      //checks that the signature in last ref signs the msg in first ref and the second is the pk
     Lt(Kind, ValueRef,ValueRef),                                    //Compares two values to decide if one is less than the other
     Gt(Kind, ValueRef,ValueRef),                                    //Compares two values to decide if one is greater than the other
     Lte(Kind, ValueRef,ValueRef),                                   //Compares two values to decide if one is less than or equal the other
     Gte(Kind, ValueRef,ValueRef),                                   //Compares two values to decide if one is greater or equal than the other
     ToData(Kind, ValueRef),                                         //Transforms Integers & Uniques to data
     FromData(Kind, ValueRef),                                        //Transforms Data to Integers & Uniques
-    Derive(ValueRef,ValueRef),                                      //derives a new index or referenz from two others
     //Gas Testing Operands
     Id(ValueRef),                                                   //Makes a Copy of the input (this is for testing) -- Establishes a Baseline
+    SysInvoke(u8, SlicePtr<'b,ValueRef>),
+    TypedSysInvoke(u8, Kind, SlicePtr<'b,ValueRef>)
 }
 
 #[derive(Copy, Clone, Debug, Parsable, Serializable, VirtualSize)]

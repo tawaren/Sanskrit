@@ -5,18 +5,18 @@ system module System {
    };
 
    top type <Drop,Value,Unbound> Context{
-          Ctr(Ids.PrivateId, Data.Data20, IntU64.U64, IntU64.U64);
+          Ctr(Ids.PrivateId, Data.Data20, IntU64.U64, IntU8.U8, IntU8.U8, IntU64.U64);
    };
 
-   public fun TxTHash(ctx:.Context):(txtHash:Data.Data20) {
+   public fun TxId(ctx:.Context):(txtHash:Ids.PublicId) {
         txtId = copy field[0] ctx:.Context;
-        txtHash = call Ids.privateToData(txtId);
-        return txtHash;
+        txtPub = call Ids.privateToPublic(txtId);
+        return txtPub;
    };
 
-   public fun FullHash(ctx:.Context):(fullHash:Data.Data20) {
-        fullHash = copy field[1] ctx:.Context;
-        return fullHash;
+   public fun BundleHash(ctx:.Context):(fullHash:Data.Data20) {
+        bundleHash = copy field[1] ctx:.Context;
+        return bundleHash;
    };
 
    public fun BlockNo(ctx:.Context):(blockNo:IntU64.U64) {
@@ -25,12 +25,12 @@ system module System {
    };
 
    public transactional fun UniqueID(consume ctx:.Context):(id:Ids.PrivateId, ctx:.Context) {
-         (txtId, fullHash, blockNo, ctr) = unpack ctx:.Context;
+         (txtId, bundleHash, blockNo, sectionNo, txNo, ctr) = unpack ctx:.Context;
          ctrData = call IntU64.toData(ctr);
          id = call Ids.derivePrivateId8(txtId,ctrData);
          inc = lit 1:IntU64.U64;
          newCtr = call IntU64.add(ctr,inc);
-         newCtx = pack .Context#Ctr(txtId, fullHash, blockNo, newCtr);
+         newCtx = pack .Context#Ctr(txtId, bundleHash, blockNo, sectionNo, txNo, newCtr);
          return (id,newCtx);
    };
 

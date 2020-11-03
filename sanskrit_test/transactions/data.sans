@@ -1,7 +1,7 @@
 system module Data {
     public extType(1) <Copy,Drop,Persist,Primitive,Value,Unbound> Data1;
-    public extType(2) <Copy,Drop,Persist,Primitive,Value,Unbound> Data2;
-    public extType(4) <Copy,Drop,Persist,Primitive,Value,Unbound> Data4;
+    public extType(2)  <Copy,Drop,Persist,Primitive,Value,Unbound> Data2;
+    public extType(4)  <Copy,Drop,Persist,Primitive,Value,Unbound> Data4;
     public extType(8) <Copy,Drop,Persist,Primitive,Value,Unbound> Data8;
     public extType(12) <Copy,Drop,Persist,Primitive,Value,Unbound> Data12;
     public extType(16) <Copy,Drop,Persist,Primitive,Value,Unbound> Data16;
@@ -20,6 +20,8 @@ system module Data {
     public extFun eq24(data1:.Data24, data2:.Data24):(res:Bool.Bool);
     public extFun eq28(data1:.Data28, data2:.Data28):(res:Bool.Bool);
     public extFun eq32(data1:.Data32, data2:.Data32):(res:Bool.Bool);
+
+    public extFun joinHash(data1:.Data20, data2:.Data20):(res:.Data20);
 
     public extFun hash1(data1:.Data1):(res:.Data20);
     public extFun hash2(data1:.Data2):(res:.Data20);

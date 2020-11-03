@@ -28,36 +28,36 @@ module TestSucTypeCheck{
         return unpack a:TestSucAdt.Wrapper[A];
    };
 
-   fun TestFun71[A](consume a:%TestSucAdt.Wrapper[A]):(b:%A){
+   fun TestFun71[<Value> A](consume a:%TestSucAdt.Wrapper[A]):(b:%A){
         return unpack a:%TestSucAdt.Wrapper[A];
    };
 
-   fun TestFun72[A](consume a:TestSucAdt.Wrapper[%A]):(b:%A){
+   fun TestFun72[<Value> A](consume a:TestSucAdt.Wrapper[%A]):(b:%A){
         return unpack a:TestSucAdt.Wrapper[%A];
    };
 
 
-   fun TestFun73[A](a:TestSucAdt.Wrapper[%A]):(c:%%A){
+   fun TestFun73[<Value> A](a:TestSucAdt.Wrapper[%A]):(c:%%A){
         b = project a:%TestSucAdt.Wrapper[%A];
         c = unpack b:%TestSucAdt.Wrapper[%A];
         return c;
    };
 
-   fun TestFun74[A](consume a:%TestSucAdt.Wrapper[A]):(c:%%A){
+   fun TestFun74[<Value> A](consume a:%TestSucAdt.Wrapper[A]):(c:%%A){
        b = field[0] a:%TestSucAdt.Wrapper[A];
        c = project b:%%A;
        return c;
    };
 
-   fun TestFun75[A](consume a:%TestSucAdt.Wrapper[A]):(b:%A){
+   fun TestFun75[<Value> A](consume a:%TestSucAdt.Wrapper[A]):(b:%A){
         return field[0] a:%TestSucAdt.Wrapper[A];
    };
 
-   fun TestFun76[A](a:A):(b:%A){
+   fun TestFun76[<Value> A](a:A):(b:%A){
         return project a:%A;
    };
 
-   fun TestFun77[A](a:A):(c:%%A){
+   fun TestFun77[<Value> A](a:A):(c:%%A){
         b = project a:%A;
         c = project b:%%A;
         return c;
@@ -76,7 +76,7 @@ module TestSucTypeCheck{
        };
    };
 
-   fun TestFun101[<Drop> A](consume a:%TestSucAdt.Option[A], consume b:%A):(c:%A){
+   fun TestFun101[<Value, Drop> A](consume a:%TestSucAdt.Option[A], consume b:%A):(c:%A){
       return switch a:%TestSucAdt.Option[A] {
            None() => {
                return b;
@@ -88,7 +88,7 @@ module TestSucTypeCheck{
       };
    };
 
-   fun TestFun102[<Drop> A](consume a:TestSucAdt.Option[%A], consume b:%A):(c:%A){
+   fun TestFun102[<Value, Drop> A](consume a:TestSucAdt.Option[%A], consume b:%A):(c:%A){
      return switch a:TestSucAdt.Option[%A] {
           None() => {
               return b;

@@ -7,6 +7,13 @@ pub mod gas {
         14 + (3*(args as u64))/2//70 + 7*args
     }
 
+    //todo: may be cheaper as arguments do nott need reajusting after first
+    //todo: may be more expensive as we need the abort check
+    //todo: measure
+    pub fn repeated_call(args:usize, reps:u64) -> u64 {
+        reps*call(args)
+    }
+
     pub fn void() -> u64 {
         3 /*Note this one is purely guessed*/
     }

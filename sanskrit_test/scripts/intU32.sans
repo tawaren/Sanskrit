@@ -17,9 +17,9 @@ system module IntU32 {
     public extFun xor(num1:.U32, num2:.U32):(res:.U32);
     public extFun not(num1:.U32):(res:.U32);
 
-    public extFun toData(num:.U32):(res:Data.Data4);
+    public extFun toData(NUM:.U32):(res:Data.Data4);
     public extFun fromData(data:Data.Data4):(res:.U32);
 
-    public extFun hash(num:.U32):(res:Data.Data20);
+    public extFun hash(NUM:.U32):(res:Data.Data20);
 
 }

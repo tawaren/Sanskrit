@@ -324,10 +324,15 @@ fn check_type_import_integrity<S:Store>(context:&Context<S>) -> Result<()> {
     for typ in context.list_types() {
         //resolve the type to ensure it is legit
         match **typ {
-            //Nothing has to be checked for Generics, Projections and Virtuals
+            //Nothing has to be checked for Generics and Virtuals
             ResolvedType::Generic { .. }
-            | ResolvedType::Projection { .. }
             | ResolvedType::Virtual(_) => {},
+            ResolvedType::Projection { ref un_projected, .. } => {
+                //only value types can be projected
+                if !un_projected.get_caps().contains(Capability::Value) {
+                    return error(||"Only value types can be projected")
+                }
+            }
             //we need to check implement and call visibility
             ResolvedType::Sig { ref module, offset, ref applies, .. } => {
                 //Fetch the Cache Entry
@@ -388,7 +393,7 @@ fn check_function_import_integrity<S:Store>(context:&Context<S>) -> Result<()> {
 
 //check that capp full fills constraints
 fn check_cap_constraints(must_have_caps:CapSet, caps:CapSet) -> Result<()>{
-    //check the target has all the necessary caps + embed
+    //check the target has all the necessary caps
     //Note: a top level generic in an adt context does always have all the rec caps
     if !must_have_caps.is_subset_of(caps) {
         return error(||"Capabilities of type must full fill the constraints")
@@ -411,7 +416,7 @@ fn check_ctr_fields<S:Store>(provided_caps:CapSet, ctrs:&[Case], context:&Contex
                 // Note: generic recursive-caps is delayed (rechecked) to apply side to allow Option[T] (or even Option[Option[T]] instead of requiring DropOption[Drop T] ... PersistOption[Persist T] etc...
                 //if a regular type on non phantom generic check that it does support the caps
                 ResolvedType::Data { generic_caps, .. }
-                | ResolvedType::Sig { generic_caps, .. }
+                | ResolvedType::Sig { caps:generic_caps, .. } //For Sigs generic_caps == caps (all sigs ignore generics)
                 | ResolvedType::Lit { generic_caps, .. } => check_cap_constraints(provided_caps,generic_caps)?,
                 ResolvedType::Generic { .. } => {},
                 ResolvedType::Projection { .. }  => unreachable!()

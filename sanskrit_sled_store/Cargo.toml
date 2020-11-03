@@ -8,5 +8,5 @@ path = "../sanskrit_common"
 version = "0.1.0"
 
 [dependencies]
-sled = "0.34.2"
-arrayref = "0.3.5"
+sled = "0.34.4"
+arrayref = "0.3.6"

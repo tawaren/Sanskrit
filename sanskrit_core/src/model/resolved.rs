@@ -18,7 +18,8 @@ pub enum ResolvedType {
     //A Projection type capturing the information of a projected type
     Projection { depth:u8, un_projected: Crc<ResolvedType> },
     //An signature type (can be from same module if Module == This)
-    Sig { generic_caps: CapSet, caps: CapSet, module:Crc<ModuleLink>, offset:u8, applies: Vec<Crc<ResolvedType>>},
+    // As a signature ignores its generics when computing its caps generic_caps == caps == base_caps
+    Sig { caps: CapSet, module:Crc<ModuleLink>, offset:u8, applies: Vec<Crc<ResolvedType>>},
     //An imported type (can be from same module if Module == This)
     Data { generic_caps: CapSet, caps: CapSet, module:Crc<ModuleLink>, offset:u8, applies: Vec<Crc<ResolvedType>>},
     //An imported type (can be from same module if Module == This)
@@ -130,7 +131,7 @@ impl Crc<ResolvedType> {
     // Note: this only influences generics and applied types with generic inputs
     pub fn get_generic_caps(&self) -> CapSet {
         match **self {
-            ResolvedType::Sig { generic_caps, .. }
+            ResolvedType::Sig { caps:generic_caps, .. } //For Sigs: generic_caps == caps (all sigs ignore generics)
             | ResolvedType::Lit { generic_caps, .. }
             | ResolvedType::Data { generic_caps, .. } => generic_caps,
             ResolvedType::Generic { .. }
@@ -177,6 +178,14 @@ impl Crc<ResolvedType> {
     pub fn is_literal(&self) -> bool {
         match **self {
             ResolvedType::Lit {  .. }  => true,
+            _ => false
+        }
+    }
+
+    //checks if this type is a literal
+    pub fn is_data(&self) -> bool {
+        match **self {
+            ResolvedType::Data {  .. }  => true,
             _ => false
         }
     }

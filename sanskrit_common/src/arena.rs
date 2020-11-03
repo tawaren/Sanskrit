@@ -90,7 +90,7 @@ pub struct HeapArena<'h> {
     locked: Cell<bool>,
 }
 
-/*
+
 pub trait ArenaUnlock {
     fn set_lock(&self, val:bool);
     fn get_lock(&self) -> bool;
@@ -122,7 +122,7 @@ impl<'a, T:ArenaUnlock> Drop for ArenaLock<'a, T> {
         self.new.set_lock(true);
     }
 }
-*/
+
 
 impl<'h> HeapArena<'h> {
 
@@ -198,7 +198,7 @@ impl<'h> HeapArena<'h> {
         }
     }
 
-    /*fn unlocked_clone(&self) -> Self {
+    fn unlocked_clone(&self) -> Self {
         HeapArena {
             buffer: self.buffer,
             start: self.pos.get(),
@@ -206,9 +206,9 @@ impl<'h> HeapArena<'h> {
             end: self.end,
             locked: Cell::new(false),
         }
-    }*/
+    }
 
-    /*
+
     pub fn temp_arena(&self) -> ArenaLock<Self> {
         if self.locked.get() {panic!();}
         let new = self.unlocked_clone();
@@ -217,7 +217,7 @@ impl<'h> HeapArena<'h> {
             old: self,
             new,
         }
-    }*/
+    }
 
     pub fn merge_alloc_slice<T: Sized + Copy + VirtualSize>(&self, vals1: &[T], vals2: &[T]) -> Result<SlicePtr<T>> {
         let slice = unsafe {self.alloc_raw_slice(vals1.len() + vals2.len())};
@@ -271,7 +271,7 @@ impl<'o> ParserAllocator for HeapArena<'o>  {
     }
 }
 
-/*
+
 impl<'o> ArenaUnlock for HeapArena<'o> {
     fn set_lock(&self, val: bool) {
         self.locked.set(val)
@@ -281,7 +281,7 @@ impl<'o> ArenaUnlock for HeapArena<'o> {
         self.locked.get()
     }
 }
-*/
+
 
 pub struct VirtualHeapArena<'o>{
     uncounted:HeapArena<'o>,
@@ -335,7 +335,7 @@ impl<'o> VirtualHeapArena<'o> {
         }
     }
 
-    /*
+
     pub fn temp_arena(&self) -> Result<ArenaLock<Self>> {
         if self.uncounted.locked.get() {
             return error(||"Arena already in use by a temporary arena")
@@ -344,7 +344,7 @@ impl<'o> VirtualHeapArena<'o> {
         let new = VirtualHeapArena{
             uncounted:self.uncounted.unlocked_clone(),
             virt_pos: Cell::new(self.virt_pos.get()),
-            virt_end_limit: self.virt_end_limit,
+            virt_end_limit: Cell::new(self.virt_end_limit.get()),
             virt_end_orig: self.virt_end_orig,
 
         };
@@ -355,7 +355,7 @@ impl<'o> VirtualHeapArena<'o> {
             new,
         })
     }
-    */
+
 
     pub fn merge_alloc_slice<T: Sized + Copy + VirtualSize>(&self, vals1: &[T], vals2: &[T]) -> Result<SlicePtr<T>> {
         self.ensure_virt_space(T::SIZE*(vals1.len()+vals2.len()))?;
@@ -393,6 +393,7 @@ impl<'a, T:Copy + Sized> HeapStack<'a, T>{
 
     pub fn push(&mut self, val:T) -> Result<()> {
         if self.pos == self.slice.len() {
+            panic!("Size limit exceeded: max allowed size");
             return error(||"Size limit exceeded: max allowed size")
         }
         self.slice[self.pos] = val;
@@ -452,7 +453,7 @@ impl<'a, T:Copy + Sized> HeapStack<'a, T>{
     }
 }
 
-/*
+
 impl<'o> ArenaUnlock for VirtualHeapArena<'o> {
     fn set_lock(&self, val: bool) {
         self.uncounted.locked.set(val)
@@ -462,7 +463,7 @@ impl<'o> ArenaUnlock for VirtualHeapArena<'o> {
         self.uncounted.locked.get()
     }
 }
-*/
+
 
 impl<'o> ParserAllocator for VirtualHeapArena<'o> {
     fn allocated_virtual_bytes(&self) -> usize {
@@ -508,6 +509,10 @@ impl<'a,T:Copy> SlicePtr<'a,T>{
     pub fn wrap(val:&'a [T]) -> Self {
         assert!(val.len() < u16::max_value() as usize);
         SlicePtr(val.len() as u16, val.as_ptr(), PhantomData)
+    }
+
+    pub fn len(&self) -> usize {
+        self.0 as usize
     }
 }
 

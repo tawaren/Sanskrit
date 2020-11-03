@@ -17,9 +17,9 @@ system module IntU16 {
     public extFun xor(num1:.U16, num2:.U16):(res:.U16);
     public extFun not(num1:.U16):(res:.U16);
 
-    public extFun toData(num:.U16):(res:Data.Data2);
+    public extFun toData(NUM:.U16):(res:Data.Data2);
     public extFun fromData(data:Data.Data2):(res:.U16);
 
-    public extFun hash(num:.U16):(res:Data.Data20);
+    public extFun hash(NUM:.U16):(res:Data.Data20);
 
 }
