@@ -24,7 +24,7 @@ pub enum LitDesc {
     U128,
 }
 
-#[derive(Copy, Clone, Debug, Parsable, Serializable, VirtualSize)]
+#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Debug, Parsable, Serializable, VirtualSize)]
 #[repr(u8)]
 pub enum Kind {
     I8,
@@ -145,7 +145,6 @@ pub union Entry<'a> {
     pub data: SlicePtr<'a, u8>,
     pub adt: Adt<'a>,
     pub func: Func<'a>,
-    pub tag: u8,
     pub u8: u8,
     pub i8: i8,
     pub u16: u16,

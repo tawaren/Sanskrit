@@ -393,7 +393,6 @@ impl<'a, T:Copy + Sized> HeapStack<'a, T>{
 
     pub fn push(&mut self, val:T) -> Result<()> {
         if self.pos == self.slice.len() {
-            panic!("Size limit exceeded: max allowed size");
             return error(||"Size limit exceeded: max allowed size")
         }
         self.slice[self.pos] = val;

@@ -8,6 +8,7 @@ pub Param:ParamInput = {
     <lit:Lit> => ParamInput::Lit(lit),
     "sig" "(" <name:Id> ")" => ParamInput::Sig(name),
     "pk" "(" <name:Id> ")" => ParamInput::Pk(name),
+    "subject" "(" <name:Id> ")" => ParamInput::Subject(name),
     "consume" "(" <name:Id> ")" => ParamInput::Consume(name),
     "read" "(" <name:Id> ")" => ParamInput::Read(name),
     "copy" "(" <name:Id> ")" => ParamInput::Copy(name),

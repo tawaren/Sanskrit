@@ -426,7 +426,7 @@ impl<'transaction,'code,'interpreter,'execution,'heap> ExecutionContext<'transac
 
         //Cost: relative to: elems.len()
         //get the input
-        let Adt(tag, fields) = unsafe { self.get(idx as usize)?.adt };
+        let Adt(_, fields) = unsafe { self.get(idx as usize)?.adt };
         //must be an adt (static guarantee)
         //push each field
         let stack = self.get_stack(tail);

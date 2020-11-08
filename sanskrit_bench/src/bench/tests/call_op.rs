@@ -3,12 +3,13 @@ use sanskrit_common::model::{SlicePtr, Ptr};
 use crate::test_utils::TestCode;
 use sanskrit_common::arena::VirtualHeapArena;
 
-pub trait Op {
+pub trait CallOp {
     fn get_kind(&self) -> Kind;
     fn get_params(&self) -> usize;
     //in case of data it is length
     fn get_base_num(&self) -> isize;
     fn get_repeats(&self) -> usize;
+    fn build_function<'b>(&self, alloc:&'b VirtualHeapArena) -> Exp<'b>;
     fn build_opcode<'b>(&self, iter:usize, alloc:&'b VirtualHeapArena) -> OpCode<'b>;
 }
 
@@ -33,10 +34,9 @@ fn gen_entry<'l,'h>(kind:Kind, base_num:isize, alloc:&'l VirtualHeapArena<'h>)->
         }
     }
 }
-
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub struct OpTest<T: Op>(pub T);
-impl<T: Op> TestCode for OpTest<T> {
+pub struct CallOpTest<T: CallOp>(pub T);
+impl<T: CallOp> TestCode for CallOpTest<T> {
     fn get_initials<'l,'h>(&self, alloc:&'l VirtualHeapArena<'h>) -> SlicePtr<'l, Entry<'l>> {
         let params = self.0.get_params();
         let mut builder = alloc.slice_builder(params).unwrap();
@@ -52,6 +52,7 @@ impl<T: Op> TestCode for OpTest<T> {
         for i in 0..repeats {
             builder.push(self.0.build_opcode(i,alloc))
         }
-        vec![alloc.alloc(Exp(builder.finish())).unwrap()]
+        let fun = self.0.build_function(alloc);
+        vec![alloc.alloc(fun).unwrap(), alloc.alloc(Exp(builder.finish())).unwrap()]
     }
 }

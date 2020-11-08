@@ -52,7 +52,7 @@ use sanskrit_common::arena::{Heap, VirtualHeapArena};
 use sanskrit_interpreter::model::Entry;
 use sanskrit_common::encoding::{VirtualSize, Parser, NoCustomAlloc};
 use std::collections::BTreeSet;
-use std::cell::{RefCell, Cell};
+use std::cell::RefCell;
 use std::rc::Rc;
 use sanskrit_common::store::StorageClass;
 
@@ -211,7 +211,10 @@ fn process_line(line:String, shared_state:Arc<Mutex<State>>, full_heap:&VirtualH
         //prints account infos (creates it if it does not exist)
         "account" => {
             let kp =   convert_error(shared_state.lock())?.get_account(&input)?;
-            println!("0x{}",encode(kp.public.to_bytes()))
+            let pk = kp.public.to_bytes();
+            println!("Pk: 0x{}",encode(pk));
+            println!("Subject: 0x{}",encode(State::calc_subject(&pk, full_heap)?.to_vec()))
+
         },
         "accounts" =>  for (name, kp) in convert_error(shared_state.lock())?.get_accounts()? {
             println!("{} -> 0x{}",name,encode(kp.public.to_bytes()))
@@ -284,7 +287,10 @@ fn process_bundle_line(line:String, bundle_state:Rc<RefCell<(BTreeSet<String>,Ve
         "execute" | "exec" | "end" => {
             let mut local_state =  convert_error(shared_state.lock())?;
             let (_, ref txts) = *bundle_state.borrow_mut();
-            local_state.execute_transaction(&txts)?;
+            match local_state.execute_transaction(&txts) {
+                Ok(_) => {}
+                Err(err) => println!("transaction bundle execution produced error: {:?}",err)
+            }
             if local_state.tracking.exec_state.success{
                 println!("transaction bundle execution successful")
             } else {

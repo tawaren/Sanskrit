@@ -1,6 +1,6 @@
-#[cfg(test)]
-mod tests {
+pub mod tests {
     pub mod op;
+    pub mod call_op;
     pub mod struct_op;
 
     //Other
@@ -8,10 +8,14 @@ mod tests {
     pub mod pack;
     pub mod ret;
     pub mod id;
+    pub mod _let;
+    pub mod try_succ;
+    pub mod try_fail;
 
     //AdtTest
     pub mod get;
     pub mod unpack;
+    pub mod switch;
 
     //Numeric Tests
     pub mod add;
@@ -30,10 +34,6 @@ mod tests {
     pub mod lt;
     pub mod lte;
 
-    //Frame Push/Pop Tests
-    pub mod _let;
-    pub mod switch;
-
 
     //Todo: Can we include this in the corresponding opcode? let, switch, ...
     //       Are they dependent on num returned values - probably they are
@@ -45,11 +45,13 @@ mod tests {
 
     //SysCalls
     pub mod plain_hash;
+    pub mod join_hash;
+
     // JoinHash -- is a data call
     // EdDSA -- is a data call
 
     //Invoke Tests
-    //Todo:
+    pub mod call;
 
 
 

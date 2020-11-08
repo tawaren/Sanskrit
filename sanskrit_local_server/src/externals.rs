@@ -25,9 +25,15 @@ lazy_static! {
     pub static ref SYS_HASH: Mutex<Cell<Hash>> = Mutex::new(Cell::new([0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]));
 }
 
+lazy_static! {
+    pub static ref EDDSA_HASH: Mutex<Cell<Hash>> = Mutex::new(Cell::new([0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]));
+}
+
+pub fn get_ed_dsa_module() -> Hash {EDDSA_HASH.lock().unwrap().get()}
+
 
 lazy_static! {
-    pub static ref SYS_MODS: [fn(Hash)->();15] = [
+    pub static ref SYS_MODS: [fn(Hash)->();16] = [
             |h|{EXT_MAP.lock().unwrap().insert(h,externals::i8::EXT_I8);},          //0
             |h|{EXT_MAP.lock().unwrap().insert(h,externals::i16::EXT_I16);},        //1
             |h|{EXT_MAP.lock().unwrap().insert(h,externals::i32::EXT_I32);},        //2
@@ -41,9 +47,9 @@ lazy_static! {
             |h|{EXT_MAP.lock().unwrap().insert(h,externals::data::EXT_DATA);},      //10
             |h|{EXT_MAP.lock().unwrap().insert(h,externals::ids::EXT_IDS);},        //11
             |h|{SYS_HASH.lock().unwrap().set(h);},                                  //12
-            |h|{EXT_MAP.lock().unwrap().insert(h,externals::eddsa::EXT_ECDSA);},    //13
+            |h|{EXT_MAP.lock().unwrap().insert(h,externals::eddsa::EXT_ECDSA);},
             |h|{EXT_MAP.lock().unwrap().insert(h,externals::_unsafe::EXT_UNSAFE);}, //14
-
+            |h|{EDDSA_HASH.lock().unwrap().set(h);},                                //15
     ];
 }
 
@@ -100,7 +106,10 @@ impl<'c> SystemDataManager<BundleWithHash<'c>> for ServerSystemDataManager {
     fn providable_size(typ: Ptr<RuntimeType>) -> Result<u32> {
         match *typ {
             RuntimeType::Custom { module, offset, .. } if module == SYS_HASH.lock().unwrap().get() && offset == 1 => {
-                Ok((2*Hash::SIZE + 6*Entry::SIZE) as u32)
+                Ok((Hash::SIZE + 4*Entry::SIZE) as u32)
+            }
+            RuntimeType::Custom { module, offset, .. } if module == SYS_HASH.lock().unwrap().get() && offset == 2 => {
+                Ok((Hash::SIZE + 2*Entry::SIZE) as u32)
             }
             _ => return error(||"Provided value parameter must be of a supported type")
         }
@@ -111,8 +120,13 @@ impl<'c> SystemDataManager<BundleWithHash<'c>> for ServerSystemDataManager {
             RuntimeType::Custom { module, offset, .. } if module == SYS_HASH.lock().unwrap().get() && offset == 1 => {
                 let hash_alloc = (13 + 20/50) as u64;
                 let pack = 13 + (6 as u64);
+                Ok(hash_alloc + pack)
+            }
+            RuntimeType::Custom { module, offset, .. } if module == SYS_HASH.lock().unwrap().get() && offset == 2 => {
+                let hash_alloc = (13 + 20/50) as u64;
+                let pack = 13 + (6 as u64);
                 let hash_cost = 65;
-                Ok(2*hash_alloc + pack + hash_cost)
+                Ok(hash_alloc + pack + hash_cost)
             }
             _ => return error(||"Provided value parameter must be of a supported type")
         }
@@ -127,26 +141,39 @@ impl<'c> SystemDataManager<BundleWithHash<'c>> for ServerSystemDataManager {
     }
 
     //This means we can only provide 1 value per Txt
-    fn provided_value_key(_typ: Ptr<RuntimeType>, section_no:u8,  txt_no:u8) -> Option<Vec<u8>> {
-        Some(vec![section_no,txt_no])
+    fn provided_value_key(typ: Ptr<RuntimeType>, section_no:u8,  txt_no:u8) -> Option<Vec<u8>> {
+        match *typ {
+            //This means we can only provide 1 value per Txt
+            RuntimeType::Custom { module, offset, .. } if module == SYS_HASH.lock().unwrap().get() && offset == 2 => Some(vec![section_no,txt_no]),
+            //For the rest (TxData we can provide as many copies as we want)
+            _ => None
+        }
     }
 
-    fn create_provided_value<'a, 'h>(bundle: &BundleWithHash, _typ: Ptr<RuntimeType>, alloc: &'a VirtualHeapArena<'h>, block_no: u64, section_no:u8,  txt_no:u8) -> Result<Entry<'a>> {
-        let mut context = HashingDomain::Derive.get_domain_hasher();
-        //fill the hash with first value
-        context.update(&bundle.bundle_hash);
-        //fill the hash with second value
-        context.update(&[section_no,txt_no]);
-        //calc the Hash
-        let txt_id = context.alloc_finalize(&alloc)?;
-        Ok(Entry{adt: Adt(0,alloc.copy_alloc_slice(&[
-            Entry {data: txt_id},
-            Entry {data: alloc.copy_alloc_slice(&bundle.bundle_hash)?},
-            Entry {u64: block_no},
-            Entry {u8: section_no},
-            Entry {u8: txt_no},
-            Entry {u64: 0}
-        ])?)})
+    fn create_provided_value<'a, 'h>(bundle: &BundleWithHash, typ: Ptr<RuntimeType>, alloc: &'a VirtualHeapArena<'h>, block_no: u64, section_no:u8,  txt_no:u8) -> Result<Entry<'a>> {
+        match *typ {
+            RuntimeType::Custom { module, offset, .. } if module == SYS_HASH.lock().unwrap().get() && offset == 1 => {
+                Ok(Entry{adt: Adt(0,alloc.copy_alloc_slice(&[
+                    Entry {data: alloc.copy_alloc_slice(&bundle.bundle_hash)?},
+                    Entry {u64: block_no},
+                    Entry {u8: section_no},
+                    Entry {u8: txt_no},
+                ])?)})
+            },
+            RuntimeType::Custom { module, offset, .. } if module == SYS_HASH.lock().unwrap().get() && offset == 2 => {
+                let mut context = HashingDomain::Derive.get_domain_hasher();
+                //fill the hash with bunlde hash value
+                context.update(&bundle.bundle_hash);
+                //fill the hash with section & txt indexes
+                context.update(&[section_no,txt_no]);
+                Ok(Entry{adt: Adt(0,alloc.copy_alloc_slice(&[
+                    //calc the Hash
+                    Entry {data: context.alloc_finalize(&alloc)?},
+                    Entry {u64: 0},
+                ])?)})
+            },
+            _ => error(||"Requested value is not providable")
+        }
     }
 }
 

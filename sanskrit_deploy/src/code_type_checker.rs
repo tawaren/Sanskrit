@@ -800,7 +800,7 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
                 if !p.typ.get_caps().contains(Capability::Value) {
                     return error(||"Only Value params can be returned on a failure")
                 }
-            } else if !p.consumes && !p.typ.get_caps().contains(Capability::Drop){
+            } else if p.consumes && !p.typ.get_caps().contains(Capability::Drop){
                 return error(||"Consumed params must be returned on a failure or be dropped")
             }
 

@@ -167,7 +167,6 @@ fn generate_main_data(n:u8) -> DataComponent {
         consume_scope: Accessibility::Global,
         inspect_scope: Accessibility::Global,
         provided_caps: CapSet::all(),
-        top:false,
         generics,
         import: empty_import(),
         body: DataImpl::Internal {

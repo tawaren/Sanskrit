@@ -130,11 +130,6 @@ pub fn validate<S:Store>(data:&[u8], store:&S, accounting:&Accounting, link:Hash
 
 //Checks that an Adt declaration is semantically valid
 fn validate_adt<S:Store>(adt:&DataComponent, context:&Context<S>, system_mode_on:bool ) -> Result<()>{
-    //ensure only system deploys tops
-    if adt.top && !system_mode_on {
-        return error(||"system mode is required for deployment of top data type")
-    }
-
     //Check the import section
     //we allow no protection forwarding as adts have 2 visibilities & should not need to import create, consumes & implements
     check_type_import_integrity(context)?;
@@ -407,19 +402,20 @@ fn check_ctr_fields<S:Store>(provided_caps:CapSet, ctrs:&[Case], context:&Contex
     for ctr in ctrs {
         //Go over all fields
         for field in &ctr.fields {
-            //resolve field type
-            match **field.fetch(context)?.get_target() {
+            //Resolve the field type
+            match *field.fetch(context)? {
                 //if the type is generic ensure it is not a phantom
                 // Externals are always Phantom types
-                ResolvedType::Generic { is_phantom:true, .. }
-                | ResolvedType::Virtual(_) => return error(||"Phantom types can not be used as constructor fields"),
+                ResolvedType::Generic { is_phantom: true, .. }
+                | ResolvedType::Virtual(_) => return error(|| "Phantom types can not be used as constructor fields"),
                 // Note: generic recursive-caps is delayed (rechecked) to apply side to allow Option[T] (or even Option[Option[T]] instead of requiring DropOption[Drop T] ... PersistOption[Persist T] etc...
                 //if a regular type on non phantom generic check that it does support the caps
                 ResolvedType::Data { generic_caps, .. }
-                | ResolvedType::Sig { caps:generic_caps, .. } //For Sigs generic_caps == caps (all sigs ignore generics)
-                | ResolvedType::Lit { generic_caps, .. } => check_cap_constraints(provided_caps,generic_caps)?,
+                | ResolvedType::Sig { caps: generic_caps, .. } //For Sigs generic_caps == caps (all sigs ignore generics)
+                | ResolvedType::Lit { generic_caps, .. } => check_cap_constraints(provided_caps, generic_caps)?,
                 ResolvedType::Generic { .. } => {},
-                ResolvedType::Projection { .. }  => unreachable!()
+                //We have all capabilities on a projection
+                ResolvedType::Projection { .. } => {},
             }
         }
     }
@@ -515,7 +511,9 @@ fn check_permission_accessibility<S:Store>(context:&Context<S>, system_mode_on:b
                 if !perm.is_subset_of(PermSet::lit_perms()) {
                     return error(||"Permissions not applicable to literal")
                 }
-                match **typ.get_target() {
+                match **typ {
+                    //We have all permissions on a projection
+                    ResolvedType::Projection { .. } => {}
                     ResolvedType::Lit {ref module,offset, ..} => {
                         if perm.contains(Permission::Create) {
                             //Fetch the Cache Entry
@@ -533,7 +531,9 @@ fn check_permission_accessibility<S:Store>(context:&Context<S>, system_mode_on:b
                 if !perm.is_subset_of(PermSet::data_perms()) {
                     return error(|| "Permissions not applicable to data")
                 }
-                match **typ.get_target() {
+                match **typ {
+                    //We have all permissions on a projection
+                    ResolvedType::Projection { .. } => {}
                     ResolvedType::Data { ref module, offset, ref applies, .. } => {
                         //Fetch the Cache Entry
                         let imp_data_cache = context.store.get_component::<DataComponent>(&*module, offset)?;
@@ -627,43 +627,10 @@ fn check_params_and_returns<S:Store>(params:&[Param], returns:&[TypeRef], contex
 //Checks that params and return to not phantoms
 fn check_txt_params_and_returns<S:Store>(params:&[Param], returns:&[TypeRef], context:&Context<S>) -> Result<()> {
 
-    //process all params
-    for &Param{ typ, ..} in params {
-        match **typ.fetch(context)?.get_target() {
-            ResolvedType::Data {caps, ref module, offset, ..}
-            | ResolvedType::Lit { caps, ref module, offset, ..} => {
-                if !caps.contains(Capability::Primitive) {
-                    //Fetch the Cache Entry
-                    let data_cache = context.store.get_component::<DataComponent>(&*module, offset)?;
-                    //Retrieve the function from the cache
-                    let data = data_cache.retrieve();
-                    if !data.top {
-                        return error(||"transaction parameter must be primitives or top values")
-                    }
-                }
-            },
-            _ => return error(||"transaction parameter must be primitives or top values")
-        }
-    }
-
+    //Nothing to do for params anymore
     //process all returns
     for typ in returns {
         let r_typ = typ.fetch(context)?;
-        match **r_typ.get_target() {
-            ResolvedType::Data {caps, ref module, offset, ..}
-            | ResolvedType::Lit { caps, ref module, offset, ..} => {
-                if !caps.contains(Capability::Primitive) {
-                    //Fetch the Cache Entry
-                    let data_cache = context.store.get_component::<DataComponent>(&*module, offset)?;
-                    //Retrieve the function from the cache
-                    let data = data_cache.retrieve();
-                    if !data.top {
-                        return error(||"transaction returns must be primitives or top values")
-                    }
-                }
-            },
-            _ => return error(||"transaction returns must be primitives or top values")
-        }
         if !r_typ.get_caps().contains(Capability::Unbound) {
             return error(||"Returning a value requires the unbound capability")
         }
@@ -699,7 +666,7 @@ fn check_implement_constraints<S:Store>(imp:&ImplementComponent, context:&Contex
 
             //The captures must full fill sig caps
             //resolve field type
-            match **capture.typ.fetch(context)?.get_target() {
+            match *capture.typ.fetch(context)? {
                 //if the type is generic ensure it is not a phantom
                 // Externals are always Phantom types
                 ResolvedType::Generic { is_phantom:true, .. }
@@ -709,7 +676,8 @@ fn check_implement_constraints<S:Store>(imp:&ImplementComponent, context:&Contex
                 | ResolvedType::Data { caps, .. }
                 | ResolvedType::Sig { caps, .. }
                 | ResolvedType::Lit { caps, .. } => check_cap_constraints(sig_caps,caps)?,
-                ResolvedType::Projection { .. } => unreachable!()
+                //Projections have all caps
+                ResolvedType::Projection { .. } => { }
             }
         }
     } else {

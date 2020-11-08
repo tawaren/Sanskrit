@@ -46,7 +46,6 @@ pub struct DataComponent {
     pub create_scope: Accessibility,
     pub consume_scope: Accessibility,
     pub inspect_scope: Accessibility,
-    pub top:bool,
     pub provided_caps:CapSet,                   //All caps that this is allowed to have (not considering generics)
     pub generics:Vec<Generic>,                  //An Adt has Generic Type parameters that can be constraint
     pub import: PublicImport,                   //An Adt has imports usable in its constructors

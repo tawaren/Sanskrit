@@ -10,7 +10,7 @@ use sanskrit_common::encoding::*;
 use sanskrit_common::model::*;
 use sanskrit_common::errors::*;
 
-use sled::{Db, IVec, Error};
+use sled::Db;
 use rand::rngs::OsRng;
 use ed25519_dalek::{Keypair, Signature, Signer};
 
@@ -24,7 +24,7 @@ use std::cell::Cell;
 use sanskrit_compile::compile_function;
 use sanskrit_compile::limiter::Limiter;
 use sanskrit_interpreter::model::{Entry, TxTParam, TxTReturn, TransactionDescriptor, ValueSchema, Adt};
-use externals::{ServerSystem, ServerSystemDataManager};
+use externals::{ServerSystem, ServerSystemDataManager, get_ed_dsa_module};
 use std::time::Instant;
 use std::ops::Deref;
 use std::convert::TryInto;
@@ -34,6 +34,7 @@ use convert_error;
 use ed25519_dalek::ed25519::SIGNATURE_LENGTH;
 use sanskrit_runtime::system::SystemContext;
 use sanskrit_runtime::direct_stored::SystemDataManager;
+use sanskrit_interpreter::externals::crypto::{raw_plain_hash, raw_join_hash};
 
 pub struct Tx {
     pub desc:Hash,
@@ -45,6 +46,7 @@ pub enum Param {
     Lit(Vec<u8>),
     Sig(String),       //Signs with account with id x
     Pk(String),        //Produces a Pk literal for account with id x
+    Subject(String),   //Produces a Subject literal for account with id x
     Consume(Hash),
     Borrow(Hash),
     Copy(Hash),
@@ -452,11 +454,12 @@ impl State {
             for (p, txt_p) in params.iter().zip(txt_desc.params.iter()) {
                 match p {
                     Param::Lit(data) => {
-                        param_heap += txt_p.desc.max_runtime_size()? as usize;
+                        let max_size = txt_p.desc.max_runtime_size()?;
+                        param_heap += max_size as usize;
                         if lit_dedup.contains_key(data) {
                             txt_params.push(ParamRef::Literal(*lit_dedup.get(data).unwrap()))
                         } else {
-                            gas += CONFIG.parsing_cost.compute(txt_p.desc.max_runtime_size()? as u64);
+                            gas += CONFIG.parsing_cost.compute(max_size as u64);
                             lits.push(full_heap.copy_alloc_slice(&data)?);
                             lit_dedup.insert(data.clone(), (lits.len()-1) as u16);
                             txt_params.push(ParamRef::Literal((lits.len()-1) as u16))
@@ -464,24 +467,44 @@ impl State {
                     },
 
                     Param::Pk(account) => {
-                        param_heap += txt_p.desc.max_runtime_size()? as usize;
+                        let max_size = txt_p.desc.max_runtime_size()?;
+                        param_heap += max_size as usize;
                         let data = self.get_account(account)?.public.to_bytes().to_vec();
                         if lit_dedup.contains_key(&data) {
                             txt_params.push(ParamRef::Literal(*lit_dedup.get(&data).unwrap()))
                         } else {
-                            gas += CONFIG.parsing_cost.compute(txt_p.desc.max_runtime_size()? as u64);
+                            gas += CONFIG.parsing_cost.compute(max_size as u64);
                             lits.push(full_heap.copy_alloc_slice(&data)?);
                             lit_dedup.insert(data, (lits.len()-1) as u16);
                             txt_params.push(ParamRef::Literal((lits.len()-1) as u16))
                         }
                     },
 
+                    Param::Subject(account) => {
+                        let max_size = txt_p.desc.max_runtime_size()?;
+                        param_heap += max_size as usize;
+                        let pk = self.get_account(account)?.public.to_bytes().to_vec();
+                        //compute the edDsaSubject
+                        let subject = Self::calc_subject(&pk,&full_heap)?;
+                        //vectorized to store in lit dedup
+                        let data = subject.to_vec();
+                        if lit_dedup.contains_key(&data) {
+                            txt_params.push(ParamRef::Literal(*lit_dedup.get(&data).unwrap()))
+                        } else {
+                            gas += CONFIG.parsing_cost.compute(max_size as u64);
+                            lits.push(subject);
+                            lit_dedup.insert(data, (lits.len()-1) as u16);
+                            txt_params.push(ParamRef::Literal((lits.len()-1) as u16))
+                        }
+                    },
+
                     Param::Sig(account) => {
-                        param_heap += txt_p.desc.max_runtime_size()? as usize;
+                        let max_size = txt_p.desc.max_runtime_size()?;
+                        param_heap += max_size as usize;
                         if sigs_dedup.contains_key(account) {
                             txt_params.push(ParamRef::Witness(*sigs_dedup.get(account).unwrap()))
                         } else {
-                            gas += CONFIG.parsing_cost.compute(txt_p.desc.max_runtime_size()? as u64);
+                            gas += CONFIG.parsing_cost.compute(max_size as u64);
                             sigs.push(account.clone());
                             sigs_dedup.insert(account.clone(), (sigs.len()-1) as u16);
                             txt_params.push(ParamRef::Witness((sigs.len()-1) as u16))
@@ -704,6 +727,13 @@ impl State {
         let hash_bytes = convert_error(self.module_name_mapping.get(ident))?.unwrap();
         let id = hash_from_slice(&hash_bytes);
         self.store.parsed_get(StorageClass::Module, &id, CONFIG.max_structural_dept, heap)
+    }
+
+    pub fn calc_subject<'a,'h>(pk:&[u8], full_heap:&'a VirtualHeapArena<'h>) -> Result<SlicePtr<'a,u8>>{
+        //compute the edDsaSubject
+        let id = raw_plain_hash(pk, &full_heap)?;
+        //compute the subject Manager Subject
+        raw_join_hash(&get_ed_dsa_module(), &id, HashingDomain::Derive, &full_heap)
     }
 
 }

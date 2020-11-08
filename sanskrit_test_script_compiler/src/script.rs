@@ -344,7 +344,6 @@ impl<'a> Compiler<'a> {
                             consume_scope: consume_vis,
                             inspect_scope: inspect_vis,
                             provided_caps: caps,
-                            top,
                             generics,
                             import,
                             body: DataImpl::External(size)
@@ -367,7 +366,6 @@ impl<'a> Compiler<'a> {
                             consume_scope: consume_vis,
                             inspect_scope: inspect_vis,
                             provided_caps: caps,
-                            top,
                             generics,
                             import,
                             body: DataImpl::Internal {

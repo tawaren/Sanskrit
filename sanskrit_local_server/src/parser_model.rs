@@ -19,6 +19,7 @@ pub enum ParamInput {
     Lit(LitInput),
     Sig(String),
     Pk(String),
+    Subject(String),
     Consume(String),
     Read(String),
     Copy(String),
@@ -113,6 +114,7 @@ impl Execute {
                 ParamInput::Lit(input) => Param::Lit(build_top_lit(input,state)?),
                 ParamInput::Sig(name) => Param::Sig(name.clone()),
                 ParamInput::Pk(name) => Param::Pk(name.clone()),
+                ParamInput::Subject(name) => Param::Subject(name.clone()),
                 ParamInput::Consume(key) => if local_bindings.contains(key) {
                     Param::LocalConsume(key.clone())
                 } else {
@@ -163,6 +165,7 @@ impl Execute {
                 ParamInput::Lit(_) => "(lit)".to_string(),
                 ParamInput::Sig(name) => name.clone(),
                 ParamInput::Pk(name) => name.clone(),
+                ParamInput::Subject(name) => name.clone(),
                 ParamInput::Consume(name) => name.clone(),
                 ParamInput::Read(name) => name.clone(),
                 ParamInput::Copy(name) => name.clone(),
