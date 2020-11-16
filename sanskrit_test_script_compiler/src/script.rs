@@ -328,7 +328,7 @@ impl<'a> Compiler<'a> {
             };
             for comp in &self.parsed[&id].module.components {
                 match *comp {
-                    Component::ExtLit { top, ref perms, caps, ref generics, size, .. } => {
+                    Component::ExtLit { ref perms, caps, ref generics, size, .. } => {
                         let imp = CodeImportBuilder::new(&self.parsed[&id], generics, &self.parsed);
                         let create_vis = get_perm(&perms,"create").compile(&generics);
                         let consume_vis = get_perm(&perms,"consume").compile(&generics);
@@ -350,7 +350,7 @@ impl<'a> Compiler<'a> {
                         })
                     },
 
-                    Component::Adt { top, caps, ref perms, ref generics, ref ctrs,  .. } => {
+                    Component::Adt { caps, ref perms, ref generics, ref ctrs,  .. } => {
                         let mut imp = CodeImportBuilder::new(&self.parsed[&id], generics, &self.parsed);
                         let create_vis = get_perm(&perms,"create").compile(&generics);
                         let consume_vis = get_perm(&perms,"consume").compile(&generics);
@@ -494,7 +494,7 @@ impl<'a> Compiler<'a> {
     }
 
     pub fn create_bundle(&self, hashes:&[Hash], heap:&Heap) -> Vec<u8> {
-        let alloc =  heap.new_arena(CONFIG.max_transaction_memory);
+        let alloc =  heap.new_arena(CONFIG.max_txt_alloc);
 
         let mut env = BundleImportBuilder::new();
 
@@ -522,7 +522,7 @@ impl<'a> Compiler<'a> {
             core: TransactionBundleCore {
                 byte_size: None,
                 meta:SlicePtr::empty(),
-                transaction_heap_limit: 10000,
+                transaction_heap_limit: 64000,
                 param_heap_limit: 10000,
                 stack_elem_limit: 1000,
                 stack_frame_limit: 1000,

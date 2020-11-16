@@ -1,10 +1,11 @@
-use sanskrit_interpreter::externals::{RuntimeExternals, CompilationExternals};
+use sanskrit_interpreter::externals::RuntimeExternals;
 use sanskrit_common::store::Store;
 use verify::TransactionVerificationContext;
 use compute::TransactionExecutionContext;
 use TransactionBundle;
 use sanskrit_common::encoding::ParserAllocator;
 use sanskrit_common::errors::*;
+use sanskrit_compile::externals::CompilationExternals;
 
 
 pub trait SystemContext<'c> {

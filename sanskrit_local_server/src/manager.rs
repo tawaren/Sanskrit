@@ -26,7 +26,7 @@ use sanskrit_compile::limiter::Limiter;
 use sanskrit_interpreter::model::{Entry, TxTParam, TxTReturn, TransactionDescriptor, ValueSchema, Adt};
 use externals::{ServerSystem, ServerSystemDataManager, get_ed_dsa_module};
 use std::time::Instant;
-use std::ops::Deref;
+use std::ops::{Deref, Add};
 use std::convert::TryInto;
 use std::str::from_utf8;
 use sanskrit_core::model::Module;
@@ -34,7 +34,7 @@ use convert_error;
 use ed25519_dalek::ed25519::SIGNATURE_LENGTH;
 use sanskrit_runtime::system::SystemContext;
 use sanskrit_runtime::direct_stored::SystemDataManager;
-use sanskrit_interpreter::externals::crypto::{raw_plain_hash, raw_join_hash};
+use externals::crypto::{raw_plain_hash, raw_join_hash};
 
 pub struct Tx {
     pub desc:Hash,
@@ -63,6 +63,7 @@ pub enum Ret {
     Assign(String),
 }
 
+#[derive(Clone)]
 pub struct ExecutionState {
     pub consumed_elems:BTreeSet<String>,
     pub produced_elems:BTreeMap<String, (Hash,String)>,
@@ -130,7 +131,7 @@ impl ExecutionState {
 
 fn pretty_print_data(value:&Entry, desc:&ValueSchema) -> String {
     match *desc {
-        ValueSchema::Adt(ctrs) => {
+        ValueSchema::Adt(_,ctrs) => {
             let Adt(tag, fields) = unsafe {value.adt};
 
             //if their are zero fields we omit the fields
@@ -143,7 +144,7 @@ fn pretty_print_data(value:&Entry, desc:&ValueSchema) -> String {
                 string.push_str(&format!("(|"))
             }
             let mut first = true;
-            for (f_value, f_schema) in fields.iter().zip(ctr.iter()) {
+            for (f_value, (_,f_schema)) in fields.iter().zip(ctr.iter()) {
                 if !first {
                     string.push_str(", ")
                 }
@@ -189,14 +190,11 @@ impl Tracker for TrackingState {
             RetType::Store => {
                 let id = unsafe {value.adt.1.get(0).unwrap().data.deref()}.try_into().unwrap();
                 let pretty = pretty_print_data(value, &r_desc.desc);
-                println!("store({}): {}",name, pretty);
                 self.exec_state.produced_elems.insert(name, (id, pretty));
             },
             RetType::Put(_) => {}
             RetType::Drop => {},
-            RetType::Log => {
-                println!("log({}): {}",name, pretty_print_data(value, &r_desc.desc))
-            },
+            RetType::Log => {},
         };
     }
 
@@ -212,7 +210,7 @@ impl Tracker for TrackingState {
                 let data = pretty.clone().into_bytes();
                 match self.active_elems.insert(name.clone(), id) {
                     Ok(None) => {},
-                    Ok(Some(_)) => println!("Warning: {} had a previous mapping that can no longer be accessed over this tool (it remains in the state)", name),
+                    Ok(Some(_)) => {}
                     Err(x) => Err(x).unwrap(),
                 }
                 self.element_data.insert(name.clone(), data).unwrap();
@@ -221,9 +219,6 @@ impl Tracker for TrackingState {
             self.element_data.flush().unwrap();
             self.exec_state.consumed_elems = BTreeSet::new();
             self.exec_state.produced_elems = BTreeMap::new();
-            println!("transaction section executed successfully")
-        } else {
-            println!("transaction section rolled back")
         }
     }
 }
@@ -274,9 +269,8 @@ impl State {
         }
     }
 
-    pub fn execute_bundle(&mut self, bundle:&[u8], block_no:u64) -> Result<()> {
-        let heap = Heap::new(100000000,2.0);
-        let txt_bundle_alloc = heap.new_virtual_arena(CONFIG.max_transaction_memory);
+    pub fn execute_bundle(&mut self, bundle:&[u8], block_no:u64, heap:&Heap) -> Result<()> {
+        let txt_bundle_alloc = heap.new_virtual_arena(CONFIG.max_bundle_size);
         let txt_bundle= ServerSystem::parse_bundle(&bundle,&txt_bundle_alloc)?;
         let ctx = Context {
             store: &self.store,
@@ -286,7 +280,7 @@ impl State {
     }
 
     pub fn execute_deploy(&mut self, bundle:&[u8], system_mode_on:bool) -> Result<()> {
-        let heap = Heap::new(100000000,2.0);
+        let heap = Heap::new(CONFIG.calc_heap_size(2),2.0);
         deploy::<ServerSystem>(&self.store, &bundle, &heap, system_mode_on)
     }
 
@@ -342,12 +336,12 @@ impl State {
         meta:SlicePtr<'c, u8>,
         earliest_block:u64,
     ) -> TransactionBundleCore<'c> {
-        let mut transaction_heap_limit:u16 = 0;
+        let mut transaction_heap_limit = SlicePtr::<TransactionDescriptor>::SIZE as u32;
         let mut stack_elem_limit:u16 = 0;
         let mut stack_frame_limit:u16 = 0;
         let mut runtime_heap_limit:u16 = 0;
-        for txt_desc in descs{
-            transaction_heap_limit = transaction_heap_limit.max(txt_desc.virt_size.unwrap() as u16);
+        for txt_desc in descs {
+            transaction_heap_limit = transaction_heap_limit.add(txt_desc.virt_size.unwrap() as u32);
             stack_elem_limit = stack_elem_limit.max(txt_desc.max_stack);
             stack_frame_limit = stack_frame_limit.max(txt_desc.max_frames);
             runtime_heap_limit = runtime_heap_limit.max(txt_desc.max_mem);
@@ -388,10 +382,47 @@ impl State {
         println!("Maximum frame slots: {} (required memory: ~{} bytes)", bundle.core.stack_frame_limit, ( bundle.core.stack_frame_limit as usize) * (5*8));
     }
 
+
+    pub fn bench_transaction(&mut self, txts:&[Tx]) -> Result<()> {
+        let n = 5000;
+        //todo make softer exits
+        //todo: improve overall heap management only alloc 1 Heap
+        //2*Because heap is not reset between verify and execute
+        let block_no = match convert_error(self.meta_data.get("block_no"))? {
+            None => 0,
+            Some(val) => Parser::parse_fully(&val, 1, &NoCustomAlloc())?
+        };
+        let mut heap = Heap::new(2*CONFIG.calc_heap_size(2),2.0);
+        let mut elapsed = 0;
+        let base_exec_state = self.tracking.exec_state.clone();
+        for i in 0..n {
+            self.tracking.exec_state = base_exec_state.clone();
+            let full_heap = heap.new_virtual_arena(100000 as usize);
+            let bundle = self.build_transactions(txts, &full_heap, block_no+i)?;
+            let ser = Serializer::serialize_fully(&bundle,MAX_PARSE_DEPTH)?;
+            heap = heap.reuse();
+            let now = Instant::now();
+            self.execute_bundle( &ser,block_no+i, &heap)?;
+            elapsed+=now.elapsed().as_millis();
+            heap = heap.reuse();
+        }
+        //we flush manually as this would be done once per block and not per txt
+        println!("Bundle executed in: {}ms",(elapsed as f64)/(n as f64));
+        let now = Instant::now();
+        self.store.flush(StorageClass::EntryValue);
+        self.store.flush(StorageClass::EntryHash);
+        println!("Bundle executed and flushed in: {}ms", ((elapsed as f64)/(n as f64)) + now.elapsed().as_millis() as f64);
+        let new_block_no = block_no+n;
+        convert_error(self.meta_data.insert("block_no", Serializer::serialize_fully(&new_block_no, 1)?))?;
+        convert_error(self.meta_data.flush())?;
+        Ok(())
+    }
+
     pub fn execute_transaction(&mut self, txts:&[Tx]) -> Result<()> {
         //todo make softer exits
         //todo: improve overall heap management only alloc 1 Heap
-        let heap = Heap::new(256000000,2.0);
+        //2*Because heap is not reset between verify and execute
+        let mut heap = Heap::new(2*CONFIG.calc_heap_size(2),2.0);
         let full_heap = heap.new_virtual_arena(100000 as usize);
         let block_no = match convert_error(self.meta_data.get("block_no"))? {
             None => 0,
@@ -399,9 +430,11 @@ impl State {
         };
         let bundle = self.build_transactions(txts, &full_heap, block_no)?;
         Self::print_bundle_stats(&bundle);
+        let ser = Serializer::serialize_fully(&bundle,MAX_PARSE_DEPTH)?;
+        heap = heap.reuse();
         println!("Starting bundle execution");
         let now = Instant::now();
-        self.execute_bundle( &Serializer::serialize_fully(&bundle,MAX_PARSE_DEPTH)?,block_no)?;
+        self.execute_bundle( &ser,block_no, &heap)?;
         //we flush manually as this would be done once per block and not per txt
         println!("Bundle executed in: {}ms", now.elapsed().as_millis());
         self.store.flush(StorageClass::EntryValue);
@@ -430,15 +463,27 @@ impl State {
         let mut ret_assigns:BTreeMap<String,u8> = BTreeMap::new();
 
         //Todo: Later do dedup
-        let mut descs:Vec<Hash> = Vec::with_capacity(txts.len());
-        let mut txt_descs:Vec<TransactionDescriptor> = Vec::with_capacity(txts.len());
+        let mut descs:Vec<Hash> = Vec::new();
+        let mut txt_descs:Vec<TransactionDescriptor> = Vec::new();
+        let mut desc_dedup:BTreeMap<Hash,u16> = BTreeMap::new();
 
         let mut gas = CONFIG.bundle_base_cost;
         for Tx{ref desc, ref params, ref returns} in txts {
-            let txt_desc = read_transaction_desc(desc,&self.store, full_heap)?;
-            gas += txt_desc.gas_cost as u64;
 
-            descs.push(*desc);
+            let txt_desc = if desc_dedup.contains_key(desc) {
+                let txt_index = desc_dedup.get(desc).unwrap();
+                &txt_descs[*txt_index as usize]
+            } else {
+                let l_desc = read_transaction_desc(desc,&self.store, full_heap)?;
+                let txt_index = txt_descs.len();
+                gas += l_desc.gas_cost as u64;
+                txt_descs.push(l_desc);
+                descs.push(*desc);
+                desc_dedup.insert(*desc, txt_index as u16);
+                &txt_descs[txt_index]
+            };
+
+
             if txt_desc.params.len() != params.len() {
                 panic!("Number of supplied parameter missmatches")
             }
@@ -448,7 +493,7 @@ impl State {
 
             let mut txt_params:Vec<ParamRef> = Vec::with_capacity(params.len());
 
-            gas += CONFIG.parsing_cost.compute(txt_desc.byte_size.unwrap() as u64);
+            gas += CONFIG.entry_load_cost.compute(txt_desc.byte_size.unwrap() as u64);
 
             //todo: make collect
             for (p, txt_p) in params.iter().zip(txt_desc.params.iter()) {
@@ -599,8 +644,6 @@ impl State {
                     Ret::Drop => txt_rets.push(RetType::Drop),
                 }
             }
-
-            txt_descs.push(txt_desc);
 
             transactions.push(Transaction {
                 txt_desc: (descs.len()-1) as u16,

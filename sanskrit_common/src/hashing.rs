@@ -1,27 +1,19 @@
-use blake2_rfc::blake2b::{Blake2b};
 use model::{Hash, SlicePtr, hash_from_slice};
 use errors::*;
 use arena::VirtualHeapArena;
 
 //Hashing Domains to ensure there are no collisions
 pub enum HashingDomain {
-    Unique,
-    Singleton,
-    Transaction,
     Bundle,
-    Id,
     Derive,
-    Object,
-    Account,
-    Entry
+    Entry,
+    Index
 }
 
-pub struct Hasher(Blake2b);
+pub struct Hasher(blake3::Hasher);
 
 impl Hasher {
-    pub fn new() -> Self {
-        Hasher(Blake2b::new(20))
-    }
+    pub fn new() -> Self { Hasher(blake3::Hasher::new())  }
 
     pub fn update(&mut self, data:&[u8]) {
         self.0.update(data);
@@ -48,15 +40,10 @@ impl HashingDomain {
 
     pub fn get_domain_code(&self) -> u8 {
         match *self {
-            HashingDomain::Unique => 0,
-            HashingDomain::Singleton => 1,
-            HashingDomain::Transaction => 2,
-            HashingDomain::Id => 3,
-            HashingDomain::Derive => 4,
-            HashingDomain::Object => 5,
-            HashingDomain::Account => 6,
-            HashingDomain::Bundle => 8,
-            HashingDomain::Entry => 9,
+            HashingDomain::Derive => 0,
+            HashingDomain::Bundle => 1,
+            HashingDomain::Entry => 2,
+            HashingDomain::Index => 3
         }
     }
 

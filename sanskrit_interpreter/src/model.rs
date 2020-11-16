@@ -114,9 +114,10 @@ pub struct TxTReturn<#[AllocLifetime] 'c> {
     pub desc:Ptr<'c, ValueSchema<'c>>
 }
 
+//The Option<Hash> are type indexes and field indexes respectively
 #[derive(Clone, Copy, Eq, PartialEq, Debug, Parsable, Serializable, VirtualSize)]
 pub enum ValueSchema<#[AllocLifetime] 'a> {
-    Adt(SlicePtr<'a, SlicePtr<'a, Ptr<'a, ValueSchema<'a>>>>),
+    Adt(Option<Ptr<'a,(Hash,u8)>>, SlicePtr<'a, SlicePtr<'a, (SlicePtr<'a,u8>, Ptr<'a, ValueSchema<'a>>)>>),
     Data(u16),
     Unsigned(u8),
     Signed(u8)

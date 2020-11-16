@@ -79,38 +79,6 @@ impl Container {
         self.pending.clear();
     }
 
-    pub fn report(&mut self) -> ChangeReport {
-        let mut entries_difference = 0;
-        let mut bytes_difference = 0;
-        for (key, value) in &self.pending {
-            match value {
-                None => match self.persisted.get(key) {
-                    None => {},
-                    Some(rem_data) => {
-                        entries_difference -= 1;
-                        bytes_difference -= rem_data.len() as isize;
-                    }
-                },
-                Some(data) => {
-                    entries_difference += 1;
-                    bytes_difference += data.len() as isize;
-                    match self.persisted.get(key) {
-                        None => {},
-                        Some(rem_data) => {
-                            entries_difference -= 1;
-                            bytes_difference -= rem_data.len() as isize;
-                        }
-                    }
-                }
-            };
-        }
-
-        ChangeReport {
-            entries_difference,
-            bytes_difference
-        }
-    }
-
     pub fn commit(&mut self) {
         let mut res = BTreeMap::new();
         mem::swap(&mut res, &mut self.pending);
@@ -236,19 +204,6 @@ impl Store for BTreeMapStore {
         }
     }
 
-    fn report(&self, class: StorageClass) -> ChangeReport {
-        fn process(map:&mut Container) -> ChangeReport {
-            map.report()
-        }
-
-        match class {
-            StorageClass::Module => process(&mut self.0.borrow_mut().modules),
-            StorageClass::Transaction => process(&mut self.0.borrow_mut().funs),
-            StorageClass::Descriptor => process(&mut self.0.borrow_mut().descs),
-            StorageClass::EntryValue => process(&mut self.0.borrow_mut().elems),
-            StorageClass::EntryHash => process(&mut self.0.borrow_mut().hashs),
-        }
-    }
 
 
     fn commit(&self, class: StorageClass) {

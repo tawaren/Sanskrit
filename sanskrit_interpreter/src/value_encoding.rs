@@ -13,7 +13,7 @@ impl<'a> ValueSchema<'a> {
 
     pub fn serialize_value(&self, value:Entry, s:&mut Serializer) -> Result<()> {
         match *self {
-            ValueSchema::Adt(ctrs) => {
+            ValueSchema::Adt(_, ctrs) => {
                 let Adt(tag, fields) = unsafe {value.adt};
                 //if their is only 1 tag we omit the tag
                 if ctrs.len() != 1 {
@@ -24,7 +24,7 @@ impl<'a> ValueSchema<'a> {
                 let ctr =  ctrs[tag as usize];
                 assert_eq!(fields.len(), ctr.len());
                 s.increment_depth()?;
-                for (f_value, f_schema) in fields.iter().zip(ctr.iter()) {
+                for (f_value, (_,f_schema)) in fields.iter().zip(ctr.iter()) {
                     f_schema.serialize_value(*f_value, s)?;
                 }
                 s.decrement_depth();
@@ -52,7 +52,7 @@ impl<'a> ValueSchema<'a> {
     //todo: do we need to enforce structural depth here?
     pub fn parse_value<'c, 'd, 'b, A: ParserAllocator>(self, p:&'c mut Parser<'d>, alloc:&'b A) -> Result<Entry<'b>> {
         Ok(match self {
-            ValueSchema::Adt(ctrs) => {
+            ValueSchema::Adt(_, ctrs) => {
                 //if their is only 1 tag it was omitted
                 let tag = if ctrs.len() != 1 {
                     u8::parse(p,alloc)?
@@ -68,7 +68,7 @@ impl<'a> ValueSchema<'a> {
                 let fields = if !ctr.is_empty() {
                     let mut builder = alloc.poly_slice_builder(ctr.len())?;
                     p.increment_depth()?;
-                    for f_schema in ctr.iter(){
+                    for  (_,f_schema) in ctr.iter(){
                         builder.push(f_schema.parse_value(p, alloc)?);
                     }
                     p.decrement_depth();
@@ -101,12 +101,12 @@ impl<'a> ValueSchema<'a> {
 
     pub fn move_value<'b,'h>(&self, value:Entry, alloc:&'b VirtualHeapArena<'h>) -> Result<Entry<'b>> {
         match *self {
-            ValueSchema::Adt(ctrs) => {
+            ValueSchema::Adt(_, ctrs) => {
                 let Adt(tag, fields) = unsafe {value.adt};
                 let ctr =  ctrs[tag as usize];
                 assert_eq!(fields.len(), ctr.len());
                 let mut builder =alloc.slice_builder(fields.len())?;
-                for (f_value, f_schema) in fields.iter().zip(ctr.iter()) {
+                for (f_value,  (_,f_schema)) in fields.iter().zip(ctr.iter()) {
                     builder.push(f_schema.move_value(*f_value, alloc)?);
                 }
                 Ok(Entry{adt:Adt(tag, builder.finish())})
@@ -138,7 +138,7 @@ impl<'a> ValueSchema<'a> {
 
     fn runtime_size_intern(self, data:&[u8], mut pos:usize) -> Result<(u16,usize)> {
         let res = match self {
-            ValueSchema::Adt(ctrs) => {
+            ValueSchema::Adt(_, ctrs) => {
                 //if their is only 1 tag it was omitted
                 let tag = if ctrs.len() != 1 {
                     data[pos]
@@ -153,7 +153,7 @@ impl<'a> ValueSchema<'a> {
                 let ctr =  ctrs[tag as usize];
                 let mut field_content_sizes = 0;
                 if !ctr.is_empty() {
-                    for f_schema in ctr.iter(){
+                    for  (_,f_schema) in ctr.iter(){
                         let (size, new_pos) = f_schema.runtime_size_intern(data, pos)?;
                         pos = new_pos;
                         field_content_sizes += size
@@ -173,12 +173,12 @@ impl<'a> ValueSchema<'a> {
 
     pub fn max_runtime_size(self) -> Result<u16> {
         let res = match self {
-            ValueSchema::Adt(ctrs) => {
+            ValueSchema::Adt(_, ctrs) => {
                 let mut max_field_content_sizes = 0;
                 for ctr in ctrs.iter() {
                     let mut field_content_sizes = 0;
                     if !ctr.is_empty() {
-                        for f_schema in ctr.iter(){
+                        for  (_,f_schema) in ctr.iter(){
                             field_content_sizes += f_schema.max_runtime_size()? as usize;
                         }
                     }
@@ -200,11 +200,11 @@ impl<'a> ValueSchema<'a> {
 
     pub fn max_serialized_size(&self) -> u16 {
         match *self {
-            ValueSchema::Adt(ctrs) => {
+            ValueSchema::Adt(_, ctrs) => {
                 let mut max_ctr_size = 0;
                 for ctr in ctrs.iter() {
                     let mut ctr_size = 0;
-                    for f_schema in ctr.iter() {
+                    for  (_,f_schema) in ctr.iter() {
                         ctr_size += f_schema.max_serialized_size();
                     }
                     if ctr_size > max_ctr_size {

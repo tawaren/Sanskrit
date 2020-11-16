@@ -5,7 +5,7 @@
 #![no_std]
 #![feature(nll)]
 
-extern crate blake2_rfc;
+extern crate blake3;
 extern crate byteorder;
 extern crate alloc;
 #[macro_use]

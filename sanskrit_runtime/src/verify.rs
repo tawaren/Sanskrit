@@ -1,15 +1,14 @@
 
 use sanskrit_common::errors::*;
-use sanskrit_common::encoding::{ParserAllocator, Serializer};
+use sanskrit_common::encoding::ParserAllocator;
 use model::{Transaction, ParamRef, RetType, ParamMode, SectionType};
-use sanskrit_common::model::{Hash, Ptr};
+use sanskrit_common::model::{Hash, Ptr, SlicePtr};
 use sanskrit_common::arena::*;
 use sanskrit_interpreter::model::{TransactionDescriptor, TxTReturn, RuntimeType, TxTParam};
 
 use alloc::collections::BTreeSet;
 use core::cell::{RefCell, Cell};
 use alloc::vec::Vec;
-use sanskrit_common::hashing::HashingDomain;
 use ::CONFIG;
 use sanskrit_common::store::Store;
 use system::SystemContext;
@@ -18,12 +17,12 @@ use ::{Context, TransactionBundle};
 
 //A struct holding context information of the current transaction
 pub struct VerificationEnvironment<'a> {
-    max_desc_alloc:VirtualHeapArena<'a>,
     //Caches to parse each param just once
-    entry_types:RefCell<Vec<Option<Hash>>>,
-    literal_types:RefCell<Vec<Option<Hash>>>,
-    witness_types:RefCell<Vec<Option<Hash>>>,
-    scratch_pad_types:RefCell<Vec<Option<Hash>>>,
+    descs:SlicePtr<'a,TransactionDescriptor<'a>>,
+    entry_types:RefCell<Vec<Option<Ptr<'a, RuntimeType<'a>>>>>,
+    literal_types:RefCell<Vec<Option<Ptr<'a, RuntimeType<'a>>>>>,
+    witness_types:RefCell<Vec<Option<Ptr<'a, RuntimeType<'a>>>>>,
+    scratch_pad_types:RefCell<Vec<Option<Ptr<'a, RuntimeType<'a>>>>>,
     //indicates the number of scratch pad entries that lack drop
     num_non_drop_scratch_pad_entries:Cell<u8>,
     param_heap:Cell<u32>,
@@ -89,17 +88,25 @@ pub fn verify_once<'c, SYS:SystemContext<'c>>(acc_ctx:&SYS::VC, ctx:&Context<SYS
     //Starts with the parsing costs which are already done mostly but this is inevitable (a miner could have a size limit)
     //This includes encoding the parameter witnesses
 
-
-    let max_desc_alloc = heap.new_virtual_arena(ctx.txt_bundle.transaction_heap_limit() as usize);
-
     let entry_types = RefCell::new(alloc::vec::from_elem(Option::None, ctx.txt_bundle.stored().len()));
     let literal_types = RefCell::new(alloc::vec::from_elem(Option::None, ctx.txt_bundle.literal().len()));
     let witness_types  = RefCell::new(alloc::vec::from_elem(Option::None,ctx.txt_bundle.witness().len()));
     let scratch_pad_types  = RefCell::new(alloc::vec::from_elem(Option::None,ctx.txt_bundle.scratch_pad_slots() as usize));
 
+    if CONFIG.max_txt_alloc < ctx.txt_bundle.transaction_heap_limit() as usize {
+        return error(||"Transaction Descriptors use to much memory")
+    }
 
-    let mut verify_env = VerificationEnvironment {
-        max_desc_alloc,
+    //Todo: Shall we do lazy? -- currently all the txt loads count to essential cost
+    let desc_alloc = heap.new_virtual_arena(ctx.txt_bundle.transaction_heap_limit() as usize);
+    let mut desc_builder = desc_alloc.slice_builder(ctx.txt_bundle.descriptors().len())?;
+    for desc_hash in ctx.txt_bundle.descriptors().iter() {
+        desc_builder.push(acc_ctx.read_transaction_desc(ctx, desc_hash, &desc_alloc)?);
+    }
+
+
+    let verify_env = VerificationEnvironment {
+        descs: desc_builder.finish(),
         //Input type checks
         entry_types,
         literal_types,
@@ -115,13 +122,11 @@ pub fn verify_once<'c, SYS:SystemContext<'c>>(acc_ctx:&SYS::VC, ctx:&Context<SYS
     let mut is_in_essential = true;
 
     let mut sec_no = 0;
+    //todo: Check that first section is essential or modify essential const comp for case where 0 essentials
     for txt_section in ctx.txt_bundle.sections().iter() {
         let mut txt_no = 0;
         for txt in txt_section.txts.iter() {
             required_gas += verify_transaction::<SYS>(&verify_env, acc_ctx, ctx, txt, txt_section.typ, sec_no, txt_no)? as u64;
-            //release all the memory so it does not leak into the next transaction
-            verify_env.max_desc_alloc = verify_env.max_desc_alloc.reuse();
-
             if txt_no == u8::max_value() {
                 //Check Txt Limit
                 return error(||"to many transactions in a section only 256 are allowed")
@@ -175,10 +180,8 @@ pub fn verify_once<'c, SYS:SystemContext<'c>>(acc_ctx:&SYS::VC, ctx:&Context<SYS
 
 fn verify_transaction<'c, SYS:SystemContext<'c>>(env:&VerificationEnvironment, acc_ctx:&SYS::VC, ctx:&Context<SYS::S, SYS::B>, txt:&Transaction, sec_typ:SectionType, sec_no:u8, txt_no:u8) -> Result<u64>{
     //Prepare all the Memory
-    if ctx.txt_bundle.descriptors().len() <= txt.txt_desc as usize { return error(||"Descriptor index out of range")  }
-    let target = &ctx.txt_bundle.descriptors()[txt.txt_desc as usize];
-
-    let txt_desc = acc_ctx.read_transaction_desc(ctx, target, &env.max_desc_alloc)?;
+    if  env.descs.len() <= txt.txt_desc as usize { return error(||"Descriptor index out of range")  }
+    let txt_desc = env.descs[txt.txt_desc as usize];
 
     if txt_desc.max_frames > ctx.txt_bundle.stack_frame_limit() {return error(||"Bundle has not reserved enough frame space")}
     if txt_desc.max_stack > ctx.txt_bundle.stack_elem_limit() {return error(||"Bundle has not reserved enough stack space")}
@@ -299,7 +302,7 @@ fn verify_transaction<'c, SYS:SystemContext<'c>>(env:&VerificationEnvironment, a
                         if env.scratch_pad_types.borrow()[*index as usize] != None {
                             return error(||"Scratch pad slot index already occupied")
                         }
-                        env.scratch_pad_types.borrow_mut()[*index as usize] = Some(type_hash(r.typ)?);
+                        env.scratch_pad_types.borrow_mut()[*index as usize] = Some(r.typ);
                         if !r.drop {
                             env.num_non_drop_scratch_pad_entries.set(env.num_non_drop_scratch_pad_entries.get()+1)
                         }
@@ -322,31 +325,12 @@ fn verify_transaction<'c, SYS:SystemContext<'c>>(env:&VerificationEnvironment, a
     Ok(gas)
 }
 
-
-//Helper to calc the key for a storage slot
-fn type_hash(typ:Ptr<RuntimeType>) -> Result<Hash> {
-
-    let control_type = Serializer::serialize_fully(&typ,CONFIG.max_structural_dept)?;
-
-    //Todo: This wastes CPU Cycles
-    //      We could instead store control_type
-    //       But that would use unpredicatble memory
-    //       Luckely this is implementation detail here
-    //Make a 20 byte digest hascher
-    let mut context = HashingDomain::Entry.get_domain_hasher();
-    //push the data into it
-    context.update(&control_type);
-    //calc the Hash
-    Ok(context.finalize())
-}
-
-fn check_scratch_pad_type(env:&VerificationEnvironment, index:u8, param:TxTParam) -> Result<()> {
+fn check_scratch_pad_type<'a>(env:&VerificationEnvironment<'a>, index:u8, param:TxTParam<'a>) -> Result<()> {
     let entry_copy = env.scratch_pad_types.borrow()[index as usize];
-    let control_hash = type_hash(param.typ)?;
     match entry_copy {
         None => return error(|| "Scratch pad entry was not available"),
-        Some(expected_hash) => {
-            if control_hash != expected_hash {
+        Some(expected_typ) => {
+            if param.typ != expected_typ {
                 return error(|| "A scratch pad value is referred to over different types")
             }
         }
@@ -354,50 +338,47 @@ fn check_scratch_pad_type(env:&VerificationEnvironment, index:u8, param:TxTParam
     Ok(())
 }
 
-fn check_literal_type(env:&VerificationEnvironment, index:u16, param:TxTParam) -> Result<bool> {
+fn check_literal_type<'a>(env:&VerificationEnvironment<'a>, index:u16, param:TxTParam<'a>) -> Result<bool> {
     let entry_copy = env.literal_types.borrow()[index as usize];
-    let control_hash = type_hash(param.typ)?;
     match entry_copy {
         None => {
             env.param_heap.set(env.param_heap.get() + param.desc.max_runtime_size()? as u32);
-            env.literal_types.borrow_mut()[index as usize] = Some(control_hash);
+            env.literal_types.borrow_mut()[index as usize] = Some(param.typ);
             Ok(true)
         },
-        Some(expected_hash) => {
-            if control_hash != expected_hash { return error(|| "A single literal value is referred to over different types") }
+        Some(expected_typ) => {
+            if param.typ != expected_typ { return error(|| "A single literal value is referred to over different types") }
             Ok(false)
         }
     }
 }
 
-fn check_witness_type(env:&VerificationEnvironment, index:u16, param:TxTParam) -> Result<bool> {
+fn check_witness_type<'a>(env:&VerificationEnvironment<'a>, index:u16, param:TxTParam<'a>) -> Result<bool> {
     let entry_copy = env.witness_types.borrow()[index as usize];
-    let control_hash = type_hash(param.typ)?;
     match entry_copy {
         None => {
             env.param_heap.set(env.param_heap.get() + param.desc.max_runtime_size()? as u32);
-            env.witness_types.borrow_mut()[index as usize] = Some(control_hash);
+            env.witness_types.borrow_mut()[index as usize] = Some(param.typ);
             Ok(true)
         },
-        Some(expected_hash) => {
-            if control_hash != expected_hash { return error(|| "A single witness value is referred to over different types") }
+        Some(expected_typ) => {
+            if param.typ != expected_typ { return error(|| "A single witness value is referred to over different types") }
             Ok(false)
         }
     }
 }
 
 
-fn check_store_type(env:&VerificationEnvironment,index:u16, param:TxTParam) -> Result<bool> {
+fn check_store_type<'a>(env:&VerificationEnvironment<'a>,index:u16, param:TxTParam<'a>) -> Result<bool> {
     let entry_copy = env.entry_types.borrow()[index as usize];
-    let control_hash = type_hash(param.typ)?;
     match entry_copy {
         None => {
             env.param_heap.set(env.param_heap.get() + param.desc.max_runtime_size()? as u32);
-            env.entry_types.borrow_mut()[index as usize] = Some(control_hash);
+            env.entry_types.borrow_mut()[index as usize] = Some(param.typ);
             Ok(true)
         },
-        Some(expected_hash) => {
-            if control_hash != expected_hash { return error(||"A single store value is referred to over different types")}
+        Some(expected_typ) => {
+            if param.typ != expected_typ { return error(||"A single store value is referred to over different types")}
             Ok(false)
         }
     }

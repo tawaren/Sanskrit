@@ -35,7 +35,7 @@ pub struct TransactionBundleCore<#[AllocLifetime] 'c> {
     pub param_heap_limit: u16,
     pub scratch_pad_limit: u8,
     //Static execution costs
-    pub transaction_heap_limit: u16,
+    pub transaction_heap_limit: u32,
     pub stack_elem_limit:u16,
     pub stack_frame_limit:u16,
     pub runtime_heap_limit:u16,
@@ -71,6 +71,7 @@ pub struct BundleWithHash<'c>{
     pub txt_bundle:BaseTransactionBundle<'c>,
     pub bundle_hash:Hash,
 }
+
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Parsable, Serializable, VirtualSize)]
 pub enum SectionType {
@@ -131,7 +132,7 @@ pub enum RetType {
 }
 
 
-impl<'c> TransactionBundle  for BundleWithHash<'c>  {
+impl<'c> TransactionBundle for BundleWithHash<'c>  {
     fn byte_size(&self) -> usize {
         self.txt_bundle.byte_size.unwrap()
     }
@@ -141,7 +142,7 @@ impl<'c> TransactionBundle  for BundleWithHash<'c>  {
     fn param_heap_limit(&self) -> u16 {
         self.txt_bundle.core.param_heap_limit
     }
-    fn transaction_heap_limit(&self) -> u16 {
+    fn transaction_heap_limit(&self) -> u32 {
         self.txt_bundle.core.transaction_heap_limit
     }
     fn stack_elem_limit(&self) -> u16 {

@@ -298,6 +298,20 @@ fn process_bundle_line(line:String, bundle_state:Rc<RefCell<(BTreeSet<String>,Ve
             }
             return Ok(ProcRes::End)
         }
+        "bench" => {
+            let mut local_state = convert_error(shared_state.lock())?;
+            let (_, ref txts) = *bundle_state.borrow_mut();
+            match local_state.bench_transaction(&txts) {
+                Ok(_) => {}
+                Err(err) => println!("transaction bundle execution produced error: {:?}",err)
+            }
+            if local_state.tracking.exec_state.success{
+                println!("transaction bundle execution successful")
+            } else {
+                println!("transaction bundle execution was rolled back")
+            }
+            return Ok(ProcRes::End)
+        }
         x if x.len() != 0 =>  println!("Unknown Command"),
         _ => { }
     }

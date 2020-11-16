@@ -122,9 +122,9 @@ fn main() {
     ret::measure_gas(10000);
     call::measure_gas(10000);
     get::measure_gas(10000);
-    pack::measure_gas(10000);
+    pack::measure_gas(10000);*/
     join_hash::measure_gas(10000);
-    plain_hash::measure_gas(10000);*/
-    switch::measure_gas(1000);
+    plain_hash::measure_gas(10000);
+    //switch::measure_gas(1000);
 
 }

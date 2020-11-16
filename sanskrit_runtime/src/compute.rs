@@ -1,7 +1,7 @@
 use sanskrit_common::errors::*;
 use sanskrit_common::encoding::{Parser, ParserAllocator};
 use model::{Transaction, ParamRef, RetType, ParamMode};
-use sanskrit_common::model::{Hash, Ptr};
+use sanskrit_common::model::{Hash, Ptr, SlicePtr};
 //use ed25519_dalek::*;
 //use sha2::{Sha512};
 use sanskrit_common::arena::*;
@@ -16,9 +16,10 @@ use ::{Context, TransactionBundle};
 use system::SystemContext;
 
 //A struct holding context information of the current transaction
-pub struct ExecutionEnvironment<'b, 'c> {
+pub struct ExecutionEnvironment<'a, 'b, 'c> {
     parameter_heap:&'b VirtualHeapArena<'c>,
-    max_desc_alloc:VirtualHeapArena<'c>,
+    descs:SlicePtr<'a,TransactionDescriptor<'a>>,
+
     structural_arena:HeapArena<'c>,
     runtime_heap:VirtualHeapArena<'c>,
     //Caches to parse each param just once
@@ -58,7 +59,6 @@ pub fn execute_once<'c, L: Tracker, SYS:SystemContext<'c>>(exec_store:&SYS::EC, 
             + Heap::elems::<Entry>(CONFIG.return_stack)
     );
 
-    let max_desc_alloc = heap.new_virtual_arena(ctx.txt_bundle.transaction_heap_limit() as usize);
     let parameter_heap = heap.new_virtual_arena(ctx.txt_bundle.param_heap_limit() as usize);
     let runtime_heap = heap.new_virtual_arena(ctx.txt_bundle.runtime_heap_limit() as usize);
 
@@ -67,8 +67,15 @@ pub fn execute_once<'c, L: Tracker, SYS:SystemContext<'c>>(exec_store:&SYS::EC, 
     let witness_cache = RefCell::new(alloc::vec::from_elem(Option::None,ctx.txt_bundle.witness().len()));
     let scratch_pad = RefCell::new(alloc::vec::from_elem(Option::None,ctx.txt_bundle.scratch_pad_slots() as usize));
 
+    //Todo: Shall we do lazy? -- currently all the txt loads count to essential cost
+    let desc_alloc = heap.new_virtual_arena(ctx.txt_bundle.transaction_heap_limit() as usize);
+    let mut desc_builder = desc_alloc.slice_builder(ctx.txt_bundle.descriptors().len())?;
+    for desc_hash in ctx.txt_bundle.descriptors().iter() {
+        desc_builder.push(exec_store.read_transaction_desc(ctx, desc_hash, &desc_alloc)?);
+    }
+
     let mut exec_env = ExecutionEnvironment {
-        max_desc_alloc,
+        descs: desc_builder.finish(),
         structural_arena,
         parameter_heap: &parameter_heap,
         runtime_heap,
@@ -96,7 +103,6 @@ pub fn execute_once<'c, L: Tracker, SYS:SystemContext<'c>>(exec_store:&SYS::EC, 
             txt_no +=1;
             //release all the memory so it does not leak into the next transaction
             exec_env.structural_arena = exec_env.structural_arena.reuse();
-            exec_env.max_desc_alloc = exec_env.max_desc_alloc.reuse();
             exec_env.runtime_heap = exec_env.runtime_heap.reuse();
             tracker.transaction_finish(txt, true);
         }
@@ -113,8 +119,7 @@ pub fn execute_once<'c, L: Tracker, SYS:SystemContext<'c>>(exec_store:&SYS::EC, 
 fn execute_transaction<'c, L: Tracker, SYS:SystemContext<'c>>(env:&ExecutionEnvironment, exec_store:&SYS::EC, ctx:&Context<SYS::S, SYS::B>, txt:&Transaction, block_no:u64, sec_no:u8, txt_no:u8,  tracker:&mut L) -> Result<()>{
 
     //Prepare all the Memory
-    let target = &ctx.txt_bundle.descriptors()[txt.txt_desc as usize];
-    let txt_desc:TransactionDescriptor = exec_store.read_transaction_desc(ctx, target,  &env.max_desc_alloc)?;
+    let txt_desc:TransactionDescriptor = env.descs[txt.txt_desc as usize];
 
     let mut interpreter_stack = env.structural_arena.alloc_stack::<Entry>(txt_desc.max_stack as usize);
     let mut frame_stack = env.structural_arena.alloc_stack::<Frame>(txt_desc.max_frames as usize);
@@ -193,7 +198,7 @@ fn execute_transaction<'c, L: Tracker, SYS:SystemContext<'c>>(env:&ExecutionEnvi
 }
 
 
-fn load_from_literal<'b,'c, 'd, SYS:SystemContext<'d>>(env:&ExecutionEnvironment<'b, 'c>, ctx:&Context<SYS::S, SYS::B>, index:u16, param:TxTParam) -> Result<Entry<'b>> {
+fn load_from_literal<'a, 'b,'c, 'd, SYS:SystemContext<'d>>(env:&ExecutionEnvironment<'a, 'b, 'c>, ctx:&Context<SYS::S, SYS::B>, index:u16, param:TxTParam) -> Result<Entry<'b>> {
     let entry_copy = env.literal_cache.borrow()[index as usize];
     Ok(match entry_copy {
         None => {
@@ -207,7 +212,7 @@ fn load_from_literal<'b,'c, 'd, SYS:SystemContext<'d>>(env:&ExecutionEnvironment
     })
 }
 
-fn load_from_witness<'b,'c, 'd, SYS:SystemContext<'d>>(env:&ExecutionEnvironment<'b, 'c>, ctx:&Context<SYS::S, SYS::B>, index:u16, param:TxTParam) -> Result<Entry<'b>> {
+fn load_from_witness<'a, 'b,'c, 'd, SYS:SystemContext<'d>>(env:&ExecutionEnvironment<'a, 'b, 'c>, ctx:&Context<SYS::S, SYS::B>, index:u16, param:TxTParam) -> Result<Entry<'b>> {
     let entry_copy = env.witness_cache.borrow()[index as usize];
     Ok(match entry_copy {
         None => {
@@ -221,7 +226,8 @@ fn load_from_witness<'b,'c, 'd, SYS:SystemContext<'d>>(env:&ExecutionEnvironment
     })
 }
 
-fn load_from_store<'b,'c, 'd, SYS:SystemContext<'d>>(env:&ExecutionEnvironment<'b, 'c>, exec_store: &SYS::EC, ctx:&Context<SYS::S, SYS::B>, index:u16, param:TxTParam) -> Result<Entry<'b>> {
+
+fn load_from_store<'a, 'b,'c, 'd, SYS:SystemContext<'d>>(env:&ExecutionEnvironment<'a,'b, 'c>, exec_store: &SYS::EC, ctx:&Context<SYS::S, SYS::B>, index:u16, param:TxTParam) -> Result<Entry<'b>> {
     let entry_copy = env.entry_cache.borrow()[index as usize];
     Ok(match entry_copy {
         None => {

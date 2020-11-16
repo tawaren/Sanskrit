@@ -487,9 +487,9 @@ impl<'b, S:Store + 'b> Context<'b, S> {
                 self.store.accounting.process_bytes(adt.get_signature_byte_size()?)?;
                 //Create the Ctr
                 match adt.body {
-                    DataImpl::Internal { ref constructors } => {
+                    DataImpl::Internal { ref constructors, .. } => {
                         Ok(self.store.dedup_ctr(constructors.iter().map(|c|{
-                            c.fields.iter().map(|t|context.get_type(*t)).collect::<Result<_>>()
+                            c.fields.iter().map(|t|context.get_type(t.typ)).collect::<Result<_>>()
                         }).collect::<Result<_>>()?))
                     }
                     DataImpl::External(_) => error(||"Extrnal data does not have ctrs")

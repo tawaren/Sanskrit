@@ -12,16 +12,17 @@ mod collector;
 mod compacting;
 pub mod compiler;
 mod gas_table;
+pub mod externals;
 
 use sanskrit_common::model::*;
 use sanskrit_common::store::*;
 use sanskrit_common::errors::*;
 use sanskrit_common::encoding::*;
-use sanskrit_interpreter::externals::CompilationExternals;
 use sanskrit_core::accounting::Accounting;
 use limiter::Limiter;
 use sanskrit_common::arena::Heap;
 use alloc::vec::Vec;
+use externals::CompilationExternals;
 
 //compiles a single top function
 pub fn compile_function<S:Store, CE:CompilationExternals>(store:&S, accounting:&Accounting, limiter:&Limiter, function_hash:Hash, auto_commit:bool) -> Result<(Hash, usize)>{

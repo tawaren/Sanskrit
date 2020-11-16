@@ -365,31 +365,31 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected="A type from the current module is required to be applied to a protected generic")]
+    #[should_panic(expected="A type from the current module is required to be applied to a guarded generic")]
     fn protected_fun_call_fail1() {
         parse_and_deploy("testFailProtectedCall1").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="A type from the current module is required to be applied to a protected generic")]
+    #[should_panic(expected="A type from the current module is required to be applied to a guarded generic")]
     fn protected_fun_call_fail2() {
         parse_and_deploy("testFailProtectedCall2").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="A type from the current module is required to be applied to a protected generic")]
+    #[should_panic(expected="A type from the current module is required to be applied to a guarded generic")]
     fn protected_fun_call_fail3() {
         parse_and_deploy("testFailProtectedCall3").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="A type from the current module is required to be applied to a protected generic")]
+    #[should_panic(expected="A type from the current module is required to be applied to a guarded generic")]
     fn protected_fun_call_fail4() {
         parse_and_deploy("testFailProtectedCall4").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="A type from the current module is required to be applied to a protected generic")]
+    #[should_panic(expected="A type from the current module is required to be applied to a guarded generic")]
     fn protected_fun_call_fail5() {
         parse_and_deploy("testFailProtectedCall5").unwrap();
     }

@@ -54,16 +54,16 @@ fn impl_serialize_macro(ast:&DeriveInput) -> TokenStream {
     let body = match ast.data {
         Data::Struct(ref ds) => {
             let size_field = extract_named_field("ByteSize",ds.fields.iter());
+            let virt_field = extract_named_field("VirtualSize",ds.fields.iter());
             let transient_fields = extract_named_fields("Transient",ds.fields.iter());
             let start_field = extract_named_field("StartIndex",ds.fields.iter());
-            let virt_field = extract_named_field("VirtualSize",ds.fields.iter());
 
             let mut body = Vec::new();
             for (idx,f) in ds.fields.iter().filter(|f|
                 (size_field.is_none() || f.ident != size_field)
+                    && (virt_field.is_none() || f.ident != virt_field)
                     && (f.ident.is_none() || !transient_fields.contains(&f.ident.as_ref().unwrap()))
                     && (start_field.is_none() || f.ident != start_field)
-                    && (virt_field.is_none() || f.ident != virt_field)
             ).enumerate() {
                 body.push(match &f.ident {
                     None => {
@@ -98,9 +98,9 @@ fn impl_serialize_macro(ast:&DeriveInput) -> TokenStream {
                     cases.push(quote!{#prefix::#name => s.produce_byte(#num)})
                 } else {
                     let size_field = extract_named_field("ByteSize",v.fields.iter());
+                    let virt_field = extract_named_field("VirtualSize",v.fields.iter());
                     let transient_fields = extract_named_fields("Transient",v.fields.iter());
                     let start_field = extract_named_field("StartIndex",v.fields.iter());
-                    let virt_field = extract_named_field("VirtualSize",v.fields.iter());
 
                     let body = pattern_body_serialize(v.fields.iter(),size_field,transient_fields,start_field,virt_field);
                     if named {
@@ -147,9 +147,9 @@ fn impl_parsable_macro(ast:&DeriveInput) -> TokenStream {
     let body = match ast.data {
         Data::Struct(ref ds) => {
             let size_field = extract_named_field("ByteSize",ds.fields.iter());
+            let virt_field = extract_named_field("VirtualSize",ds.fields.iter());
             let transient_fields = extract_named_fields("Transient",ds.fields.iter());
             let start_field = extract_named_field("StartIndex",ds.fields.iter());
-            let virt_field = extract_named_field("VirtualSize",ds.fields.iter());
 
             let pos_fetch = match (&size_field,&start_field) {
                 (None,None) => quote!{},
@@ -199,7 +199,7 @@ fn impl_parsable_macro(ast:&DeriveInput) -> TokenStream {
             match virt_field {
                 None => {},
                 Some(id) => {
-                    body.push(quote!{#id:Option::Some((alloc.allocated_virtual_bytes()-start)+#prefix::SIZE)})
+                    body.push(quote!{#id:Option::Some((alloc.allocated_virtual_bytes()-virt_start)+#prefix::SIZE)})
                 },
             };
 
@@ -237,9 +237,9 @@ fn impl_parsable_macro(ast:&DeriveInput) -> TokenStream {
                     cases.push(quote!{#num => #prefix::#name})
                 } else {
                     let size_field = extract_named_field("ByteSize",v.fields.iter());
+                    let virt_field = extract_named_field("VirtualSize",v.fields.iter());
                     let transient_fields = extract_named_fields("Transient",v.fields.iter());
                     let start_field = extract_named_field("StartIndex",v.fields.iter());
-                    let virt_field = extract_named_field("VirtualSize",v.fields.iter());
 
                     let pos_fetch = match (&size_field,&start_field) {
                         (None,None) => quote!{},
@@ -263,7 +263,7 @@ fn impl_parsable_macro(ast:&DeriveInput) -> TokenStream {
             quote!{
                 Ok(match p.consume_byte()? {
                     #(#cases,)*
-                    x => panic!("{:?} in {:?}",x, stringify!(#prefix))//return error(||"Can not parse unknown enum variant")
+                    x => return error(||"Can not parse unknown enum variant")
                 })
             }
         },
@@ -349,9 +349,9 @@ fn pattern_body_serialize<'a>(fs: impl Iterator<Item=&'a Field>, size_field:Opti
     let mut body = Vec::new();
     for (idx,f) in fs.filter(|f|
         (size_field.is_none() || f.ident != size_field)
+            && (virt_field.is_none() || f.ident != virt_field)
             && (f.ident.is_none() || !transient_fields.contains(&f.ident.as_ref().unwrap()))
             && (start_field.is_none() || f.ident != start_field)
-            && (virt_field.is_none() || f.ident != virt_field)
     ).enumerate() {
         body.push(match &f.ident {
             None => {
@@ -402,7 +402,7 @@ fn pattern_body_parse<'a>(fs: impl Iterator<Item=&'a Field>, size_field:Option<I
     match virt_field {
         None => {},
         Some(id) => {
-            body.push(quote!{#id:Option::Some((alloc.allocated_virtual_bytes()-start)+#prefix::SIZE)})
+            body.push(quote!{#id:Option::Some((alloc.allocated_virtual_bytes()-virt_start)+#prefix::SIZE)})
         },
     };
 

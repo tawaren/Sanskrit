@@ -95,9 +95,9 @@ pub struct Configuration {
     pub max_stack_depth:usize,
     pub max_frame_depth:usize,
     pub max_heap_size:usize,
-    pub max_transaction_size: usize,
+    pub max_bundle_size: usize,
+    pub max_txt_alloc: usize,
     pub max_structural_dept: usize,
-    pub max_transaction_memory: usize,
     pub return_stack: usize,
     pub bundle_base_cost:u64,
     pub entry_load_cost: DataProcessingCost,
@@ -112,9 +112,9 @@ pub const CONFIG: Configuration = Configuration {
     max_stack_depth:2048,
     max_frame_depth:512,
     max_heap_size:512 * 1024,
-    max_transaction_size: 128 * 1024,
+    max_bundle_size: 128 * 1024,
+    max_txt_alloc: 256 * 64 * 1024,
     max_structural_dept:64,
-    max_transaction_memory:512 * 1024,
     return_stack: 256,
     bundle_base_cost: 0,
     entry_store_cost: STORE_WRITE_AND_ENCODE_COST,
@@ -131,15 +131,17 @@ impl Configuration {
             + Heap::elems::<Frame>(self.max_stack_depth)
             + Heap::elems::<Entry>(self.return_stack)
             + (self.max_heap_size* virt_factor)
-            + (self.max_transaction_memory * virt_factor)
+            + (self.max_bundle_size * virt_factor)
+            + (self.max_txt_alloc * virt_factor)
     }
 }
+
 
 pub trait TransactionBundle {
     fn byte_size(&self) -> usize;
     fn earliest_block(&self) -> u64;
     fn param_heap_limit(&self) -> u16;
-    fn transaction_heap_limit(&self) -> u16;
+    fn transaction_heap_limit(&self) -> u32;
     fn stack_elem_limit(&self) -> u16;
     fn stack_frame_limit(&self) -> u16;
     fn runtime_heap_limit(&self) -> u16;
@@ -175,7 +177,7 @@ pub fn read_transaction_desc<'d, S:Store, A:ParserAllocator>(target:&Hash, store
 //Executes a transaction
 pub fn execute<'c, 'd:'c, L: Tracker,SYS:SystemContext<'c>>(ctx:Context<SYS::S, SYS::B>, block_no:u64, heap:&'d Heap, tracker:&mut L) -> Result<()> {
     //Check that it is inside limit
-    if ctx.txt_bundle.byte_size() > CONFIG.max_transaction_size { return error(||"Transaction Bundle to big")}
+    if ctx.txt_bundle.byte_size() > CONFIG.max_bundle_size { return error(||"Transaction Bundle to big")}
     verify_repeated::<SYS>( &ctx, block_no)?;
     verify_once::<SYS>(&SYS::VC::new(), &ctx, heap)?;
     execute_once::<_,SYS>(&SYS::EC::new(), &ctx, block_no, heap, tracker)?;
@@ -184,10 +186,10 @@ pub fn execute<'c, 'd:'c, L: Tracker,SYS:SystemContext<'c>>(ctx:Context<SYS::S, 
 
 pub fn deploy<'c, SYS:SystemContext<'c>>(store:&SYS::S, deploy_data:&[u8], heap:&Heap, system_mode_on:bool) -> Result<()> {
     //Check that it is inside limit
-    if deploy_data.len() > CONFIG.max_transaction_size { return error(||"Transaction Bundle to big")}
+    if deploy_data.len() > CONFIG.max_bundle_size { return error(||"Transaction Bundle to big")}
     //Static allocations (could be done once)
     // A buffer to parse the transaction and load values from store
-    let deploy_txt_alloc = heap.new_virtual_arena(CONFIG.max_transaction_memory);
+    let deploy_txt_alloc = heap.new_virtual_arena(CONFIG.max_txt_alloc);
     //Parse the transaction
     let deploy_txt:DeployTransaction = Parser::parse_fully(deploy_data, CONFIG.max_structural_dept, &deploy_txt_alloc)?;
 

@@ -152,7 +152,8 @@ fn validate_adt<S:Store>(adt:&DataComponent, context:&Context<S>, system_mode_on
 
     //check visibility
     check_accessibility_integrity(&adt.create_scope, adt.generics.len())?;
-    check_accessibility_integrity(&adt.consume_scope, adt.generics.len())
+    check_accessibility_integrity(&adt.consume_scope, adt.generics.len())?;
+    check_accessibility_integrity(&adt.inspect_scope, adt.generics.len())
 
 }
 
@@ -403,7 +404,7 @@ fn check_ctr_fields<S:Store>(provided_caps:CapSet, ctrs:&[Case], context:&Contex
         //Go over all fields
         for field in &ctr.fields {
             //Resolve the field type
-            match *field.fetch(context)? {
+            match *field.typ.fetch(context)? {
                 //if the type is generic ensure it is not a phantom
                 // Externals are always Phantom types
                 ResolvedType::Generic { is_phantom: true, .. }
@@ -424,21 +425,22 @@ fn check_ctr_fields<S:Store>(provided_caps:CapSet, ctrs:&[Case], context:&Contex
 
 //check the functions visibility
 fn check_access(comp_access:&Accessibility, comp_module:&Crc<ModuleLink>, comp_applies:&[Crc<ResolvedType>], system_mode_on:bool) -> Result<()> {
-    //check the functions visibility
+    //We have always access to types defined in the same module or if we are in system mode
+    if comp_module.is_local_link() || system_mode_on {
+        return Ok(())
+    }
     match comp_access {
         //public can always be imported
         Accessibility::Global => {},
-        //private can only be imported if from the same module
-        Accessibility::Local => if !comp_module.is_local_link() && !system_mode_on {
-            return error(||"A private permission must be from the current module")
-        },
-        //Protected can only be imported if the protected types are owned or are declared as protected as well
-        Accessibility::Guarded(ref guards) => if !system_mode_on {
+        //private can only be imported if from the same module (already checked)
+        Accessibility::Local => return error(||"A private permission must be from the current module"),
+        //Protected can only be imported if the guarded types are owned
+        Accessibility::Guarded(ref guards) => {
             //check that all protected types are ok
             for &GenRef(index) in guards {
                 //check the ownership protection
                if !comp_applies[index as usize].is_local() {
-                    return error(||"A type from the current module is required to be applied to a protected generic")
+                    return error(||"A type from the current module is required to be applied to a guarded generic")
                }
             }
         }
@@ -625,7 +627,7 @@ fn check_params_and_returns<S:Store>(params:&[Param], returns:&[TypeRef], contex
 
 
 //Checks that params and return to not phantoms
-fn check_txt_params_and_returns<S:Store>(params:&[Param], returns:&[TypeRef], context:&Context<S>) -> Result<()> {
+fn check_txt_params_and_returns<S:Store>(_params:&[Param], returns:&[TypeRef], context:&Context<S>) -> Result<()> {
 
     //Nothing to do for params anymore
     //process all returns

@@ -5,13 +5,8 @@ use alloc::vec::Vec;
 use model::Hash;
 use hashing::*;
 
-pub struct ChangeReport {
-    pub entries_difference: isize,
-    pub bytes_difference: isize,
-}
-
 //Trait representing a store
-//Allows it to be flexible from Temporary in Memeory, over stateless in Memeory to persistent
+//Allows it to be flexible from Temporary in Memory, over stateless in Memory to persistent
 pub trait Store {
     //Check if something is their
     fn contains(&self, class:StorageClass, key: &Hash) -> bool;
@@ -21,8 +16,6 @@ pub trait Store {
     fn get<P,F:FnOnce(&[u8]) -> P>(&self, class:StorageClass, key: &Hash, f:F) -> Result<P>;
     //Stores a value in the store (reqiures that it is empty)
     fn set(&self, class:StorageClass, key:Hash, data:Vec<u8>) -> Result<()> ;
-    // reports the pending elements
-    fn report(&self, class:StorageClass) -> ChangeReport;
     //commits accumulated changes
     fn commit(&self, class:StorageClass);
     //reverts accumulated changes;
@@ -41,6 +34,7 @@ pub trait Store {
 
 //enum pointing to different sections in the store
 #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone, Debug)]
+#[repr(u8)]
 pub enum StorageClass{
     Module,
     Transaction,

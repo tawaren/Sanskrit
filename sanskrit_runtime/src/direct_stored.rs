@@ -56,7 +56,7 @@ impl<S:Store,B:TransactionBundle, SDM: SystemDataManager<B>> TransactionVerifica
 
     fn read_transaction_desc<'d, A: ParserAllocator>(&self, ctx:&Context<S,B>, target: &Hash, heap: &'d A) -> Result<TransactionDescriptor<'d>> {
         let txt_desc:TransactionDescriptor = ctx.store.parsed_get(StorageClass::Descriptor, target, CONFIG.max_structural_dept, heap)?;
-        self.section_gas.set(self.section_gas.get() + CONFIG.parsing_cost.compute(txt_desc.byte_size.unwrap() as u64));
+        self.section_gas.set(self.section_gas.get() + CONFIG.entry_load_cost.compute(txt_desc.byte_size.unwrap() as u64));
         Ok(txt_desc)
     }
 

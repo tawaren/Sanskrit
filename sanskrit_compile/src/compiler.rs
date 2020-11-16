@@ -18,11 +18,11 @@ use compacting::Compactor;
 use sanskrit_common::errors::*;
 use sanskrit_core::model::resolved::ResolvedType;
 use sanskrit_common::encoding::NoCustomAlloc;
-use sanskrit_interpreter::externals::CompilationExternals;
 use sanskrit_core::utils::Crc;
 use sanskrit_core::accounting::Accounting;
 use sanskrit_common::arena::HeapArena;
 use limiter::Limiter;
+use externals::CompilationExternals;
 
 //Entry point that compiles all types and public functions of a module
 pub fn compile_transaction<'b, 'h, S:Store, CE:CompilationExternals>(transaction_hash:&Hash, store:&S, accounting:&Accounting, limiter:&Limiter, alloc:&'b HeapArena<'h>) -> Result<TransactionDescriptor<'b>>{
@@ -172,21 +172,27 @@ pub fn resolved_to_value_descriptor<'b,'h, S:Store, CE:CompilationExternals>(typ
                 //handle special case
                 if constructors.len() == 1 && constructors[0].fields.len() == 1 {
                     //Wrapper Optimization
-                    let f_typ = constructors[0].fields[0].fetch(&context)?;
+                    let f_typ = constructors[0].fields[0].typ.fetch(&context)?;
                     resolved_to_value_descriptor::<_,CE>(&f_typ, &context, alloc)?
                 } else {
+                    let mut index_mod = None;
+
                     //normal case
                     let mut casees = alloc.slice_builder(constructors.len())?;
                     //build the ctrs by retriving their fields
                     for case in constructors {
                         let mut fields = alloc.slice_builder(case.fields.len())?;
                         for field in &case.fields {
-                            let field_typ = field.fetch(&context)?;
-                            fields.push(alloc.alloc(resolved_to_value_descriptor::<_,CE>(&field_typ, &context, alloc)?))
+                            let field_typ = field.typ.fetch(&context)?;
+                            if !field.indexed.is_empty() && index_mod.is_none() {
+                                index_mod = Some(alloc.alloc((module.to_hash(),offset)))
+                            }
+                            let index = alloc.copy_alloc_slice(&field.indexed)?;
+                            fields.push((index,alloc.alloc(resolved_to_value_descriptor::<_,CE>(&field_typ, &context, alloc)?)))
                         }
                         casees.push(fields.finish());
                     }
-                    ValueSchema::Adt(casees.finish())
+                    ValueSchema::Adt(index_mod, casees.finish())
                 }
             }
         })

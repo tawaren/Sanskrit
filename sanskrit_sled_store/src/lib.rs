@@ -246,20 +246,6 @@ impl Store for SledStore {
         }
     }
 
-    fn report(&self, class: StorageClass) -> ChangeReport {
-        fn process(map:&mut Container) -> ChangeReport {
-            map.report()
-        }
-
-        match class {
-            StorageClass::Module => process(&mut self.0.borrow_mut().modules),
-            StorageClass::Transaction => process(&mut self.0.borrow_mut().funs),
-            StorageClass::Descriptor => process(&mut self.0.borrow_mut().descs),
-            StorageClass::EntryValue => process(&mut self.0.borrow_mut().elems),
-            StorageClass::EntryHash => process(&mut self.0.borrow_mut().hashs),
-        }
-    }
-
 
     fn commit(&self, class: StorageClass) {
         fn process(map:&mut Container) {

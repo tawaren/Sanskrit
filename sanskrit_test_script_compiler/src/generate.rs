@@ -1,7 +1,7 @@
 use model::*;
 use environment::*;
 use std::collections::HashMap;
-use sanskrit_core::model::{OpCode as ROpCode, TypeRef};
+use sanskrit_core::model::{OpCode as ROpCode, TypeRef, Field};
 use sanskrit_core::model::Accessibility as RVisibility;
 use sanskrit_core::model::Case as RCase;
 use sanskrit_core::model::Generic as RGeneric;
@@ -320,7 +320,7 @@ impl Ret {
 
 impl Case {
     pub fn compile(&self, imp: &mut CodeImportBuilder) -> Result<RCase,String> {
-        let fields = self.params.iter().map(|f|imp.import_typ_ref(f)).collect::<Result<_,_>>()?;
+        let fields = self.params.iter().map(|f|imp.import_typ_ref(f).map(|typ|Field{indexed:Vec::new(),typ})).collect::<Result<_,_>>()?;
         Ok(RCase { fields })
     }
 }

@@ -13,6 +13,8 @@ members = [
         "sanskrit_test",
         "sanskrit_local_server",
         "sanskrit_bench",
+        "sanskrit_wasm_deploy_compile",
+        "sanskrit_wasm_test"
 ]
 
 [profile.release]

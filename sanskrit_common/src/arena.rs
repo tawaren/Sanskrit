@@ -60,6 +60,7 @@ impl Heap {
         }
     }
 
+    //todo: make the asserts real checks
     pub fn new_virtual_arena(&self, size: usize) -> VirtualHeapArena {
         //ensures at least size if f > 1
         assert!(self.convert >= 0f64);

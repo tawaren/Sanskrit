@@ -34,7 +34,9 @@ pub struct Module {
 
 #[derive(Debug, Parsable, Serializable)]
 pub enum DataImpl {
-    Internal {constructors:Vec<Case>},      //An Adt has multiple Constructors
+    Internal {
+        constructors:Vec<Case>              //An Adt has multiple Constructors
+    },
     External(u16),                          // u16 is size
 }
 
@@ -49,7 +51,7 @@ pub struct DataComponent {
     pub provided_caps:CapSet,                   //All caps that this is allowed to have (not considering generics)
     pub generics:Vec<Generic>,                  //An Adt has Generic Type parameters that can be constraint
     pub import: PublicImport,                   //An Adt has imports usable in its constructors
-    pub body:DataImpl
+    pub body:DataImpl,
 }
 
 //Represents a fun signature
@@ -162,8 +164,15 @@ pub struct Param{
 
 //Represents a constructor of an adt
 #[derive(Ord, PartialOrd, Eq, PartialEq, Clone, Hash, Debug, Parsable, Serializable)]
+pub struct Field {
+    pub indexed:Vec<u8>,         //indexes this is part of
+    pub typ:TypeRef              //The Type of the constructor field
+}
+
+//Represents a constructor of an adt
+#[derive(Ord, PartialOrd, Eq, PartialEq, Clone, Hash, Debug, Parsable, Serializable)]
 pub struct Case {
-    pub fields:Vec<TypeRef>     //The Type of the constructors fields
+    pub fields:Vec<Field>   //The constructors fields
 }
 
 //Represents the visibility of a Function

@@ -21,12 +21,12 @@ use sanskrit_common::store::*;
 use core::mem;
 use sanskrit_common::arena::*;
 use gas_table::gas;
-use sanskrit_interpreter::externals::{CompilationExternals, ExpResources, CompilationResult};
 use sanskrit_core::utils::Crc;
 use sanskrit_common::encoding::VirtualSize;
 use collector::Collector;
 use sanskrit_core::loader::Loader;
 use limiter::Limiter;
+use externals::{CompilationResult, ExpResources, CompilationExternals};
 
 struct State {
     //the gas used in this trace

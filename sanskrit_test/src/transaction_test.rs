@@ -118,7 +118,7 @@ mod tests {
 
 
         heap = heap.reuse();
-        let txt_bundle_alloc = heap.new_virtual_arena(CONFIG.max_transaction_memory);
+        let txt_bundle_alloc = heap.new_virtual_arena(CONFIG.max_txt_alloc);
         let txt_bundle= ScriptSystem::parse_bundle(&bundle,&txt_bundle_alloc)?;
         let ctx = Context {
             store: &s,
@@ -167,7 +167,7 @@ mod tests {
             let mut heap = Heap::new(CONFIG.calc_heap_size(2),2.0);
             let bundle = comp.create_bundle(&hashes, &heap);
             heap = heap.reuse();
-            let txt_bundle_alloc = heap.new_virtual_arena(CONFIG.max_transaction_memory);
+            let txt_bundle_alloc = heap.new_virtual_arena(CONFIG.max_txt_alloc);
             let txt_bundle= ScriptSystem::parse_bundle(&bundle,&txt_bundle_alloc).unwrap();
             let ctx = Context {
                 store: &s,
@@ -421,13 +421,13 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected="A type from the current module is required to be applied to a protected generic")]
+    #[should_panic(expected="A type from the current module is required to be applied to a guarded generic")]
     fn fail_prot_call() {
         parse_and_compile_and_run("testFailProtectedCall").unwrap();
     }
 
     #[test]
-    #[should_panic(expected="A type from the current module is required to be applied to a protected generic")]
+    #[should_panic(expected="A type from the current module is required to be applied to a guarded generic")]
     fn fail_prot_call2() {
         parse_and_compile_and_run("testFailProtectedCall2").unwrap();
     }
@@ -495,7 +495,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected="transaction returns must be primitives or top values")]
+    #[should_panic(expected="Stored return must be an entry")]
     fn store_cap_fail2() {
         parse_and_compile_and_run("testFailNoIndex2").unwrap();
     }
