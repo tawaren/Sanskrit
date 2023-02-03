@@ -1,6 +1,5 @@
 #![no_std]
 #![feature(nll)]
-#![feature(const_if_match)]
 
 extern crate byteorder;
 extern crate sanskrit_common;

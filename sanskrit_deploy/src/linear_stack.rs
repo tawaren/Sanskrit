@@ -22,7 +22,6 @@ use sanskrit_common::model::ValueRef;
 use alloc::vec::Vec;
 use alloc::rc::Rc;
 use core::cell::Cell;
-use sanskrit_core::accounting::Accounting;
 
 
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
@@ -36,12 +35,11 @@ pub enum Status {
 #[derive(Eq, PartialEq, Debug)]
 pub struct Elem<T:Clone> {status:Rc<Cell<Status>>, locked:bool, mark:bool, value:T}
 
-pub struct LinearStack<'a, T:Clone> {
+pub struct LinearStack<T:Clone> {
     stack:Vec<Elem<T>>,           //The actual Elems
     frames:Vec<Frame>,            //Frame borders, to record consumes in branches
     status_owned:Rc<Cell<Status>>,
-    status_borrowed:Rc<Cell<Status>>,
-    accounting:&'a Accounting,
+    status_borrowed:Rc<Cell<Status>>
 }
 
 struct Frame{
@@ -57,11 +55,11 @@ struct Frame{
 pub struct BlockInfo(usize);                                    // usize is Block Start Index
 
 pub struct BranchInfo<T:Clone>{
-    locks:Option<usize>,
     results:Option<(Vec<T>,  usize)>,           // usize are the expected number of marked consumes expected by the branches
     remaining_branches: usize
 }
 
+pub struct LockInfo(usize);
 
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub enum FetchMode {
@@ -125,9 +123,9 @@ impl<T:Clone> Elem<T> {
     }
 }
 
-impl<'acc, T:Clone+Eq> LinearStack<'acc, T>  {
+impl<T:Clone+Eq> LinearStack<T>  {
     //Generates an empty Stack
-    pub fn new(accounting:&'acc Accounting) -> Self {
+    pub fn new() -> Self {
         LinearStack {
             stack: vec![],
             frames:vec![Frame{
@@ -138,7 +136,6 @@ impl<'acc, T:Clone+Eq> LinearStack<'acc, T>  {
             }],
             status_owned: Rc::new(Cell::new(Status::Owned)),
             status_borrowed: Rc::new(Cell::new(Status::Borrowed)),
-            accounting
         }
     }
 
@@ -166,13 +163,11 @@ impl<'acc, T:Clone+Eq> LinearStack<'acc, T>  {
     }
 
     fn push_elem(&mut self, elem: Elem<T>) -> Result<()> {
-        self.accounting.stack_elems(1)?;
         self.stack.push(elem);
         Ok(())
     }
 
     fn push_elems(&mut self, elem: Vec<Elem<T>>) -> Result<()> {
-        self.accounting.stack_elems(elem.len())?;
         self.stack.extend(elem);
         Ok(())
     }
@@ -207,6 +202,19 @@ impl<'acc, T:Clone+Eq> LinearStack<'acc, T>  {
 
         //consume it
         self.stack[res].consume(consume_status)
+    }
+
+    pub fn lock(&mut self, locked:ValueRef) -> Result<LockInfo> {
+        //get the elem to lock
+        let index = self.absolute_index(locked)?;
+        //lock the elem
+        self.stack[index].lock()?;
+        Ok(LockInfo(index))
+    }
+
+    pub fn unlock(&mut self, info:LockInfo){
+        //lock the elem
+        self.stack[info.0].unlock();
     }
 
     //calcs the absolute index from a relative one (relative to the end) -- bernouli index to vec index
@@ -441,7 +449,7 @@ impl<'acc, T:Clone+Eq> LinearStack<'acc, T>  {
 
     //open a new frame which does branch, it also starts the first branch immediately
     //the returned branch info then can be used to switch to the next branch or ending the branching
-    fn start_branching_internal(&mut self, branches:usize, locks:Option<usize>) -> BranchInfo<T> {
+    pub fn start_branching(&mut self, branches:usize) -> BranchInfo<T> {
         //Remember the frames start
         let start_index = self.stack_depth();
 
@@ -461,25 +469,7 @@ impl<'acc, T:Clone+Eq> LinearStack<'acc, T>  {
             new_marks: 0,
             remarked: 0
         });
-        BranchInfo{ results: None, locks, remaining_branches: branches }
-    }
-
-    //open a new frame which does branch, it also starts the first branch immediately
-    //the returned branch info then can be used to switch to the next branch or ending the branching
-    pub fn start_branching(&mut self, branches:usize) -> BranchInfo<T> {
-        self.start_branching_internal(branches, None)
-    }
-
-    //open a new frame which does branch, it also starts the first branch immediately
-    //it temporarly makes an element unavaiable until the branching finishes
-    //the returned branch info then can be used to switch to the next branch or ending the branching
-    pub fn start_locked_branching(&mut self, branches:usize, locked:ValueRef) -> Result<BranchInfo<T>> {
-        //get the elem to lock
-        let index = self.absolute_index(locked)?;
-        //lock the elem
-        self.stack[index].lock()?;
-        //star the branch
-        Ok(self.start_branching_internal(branches, Some(index)))
+        BranchInfo{ results: None, remaining_branches: branches }
     }
 
     //Helper to exit/ret a branch and check the returns (must be the same)
@@ -563,9 +553,9 @@ impl<'acc, T:Clone+Eq> LinearStack<'acc, T>  {
         let mut frame = self.frames.pop().unwrap();
 
         //Release locks if any
-        if let Some(idx) = br.locks {
+       /* if let Some(idx) = br.locks {
             self.stack[idx].unlock();
-        }
+        }*/
 
         //Clean up the branch
         self.ret_branch(&mut br, rets, &mut frame)

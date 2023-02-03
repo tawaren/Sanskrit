@@ -3,6 +3,8 @@
 
 pub mod bench;
 pub mod externals;
+pub mod crypto;
+
 extern crate test;
 #[macro_use]
 extern crate lazy_static;
@@ -98,7 +100,8 @@ mod test_utils {
 
 }
 
-use crate::bench::tests::*;
+use crate::bench::opcodes::*;
+use crate::bench::validate::limit_tests::benchs::*;
 
 fn main() {
     /*add::measure_gas(10000);
@@ -122,9 +125,25 @@ fn main() {
     ret::measure_gas(10000);
     call::measure_gas(10000);
     get::measure_gas(10000);
-    pack::measure_gas(10000);*/
+    pack::measure_gas(10000);
     join_hash::measure_gas(10000);
     plain_hash::measure_gas(10000);
-    //switch::measure_gas(1000);
+    switch::measure_gas(1000);*/
+
+
+    bench_01_first_bench(4000);
+    bench_02_first_bench(2000);
+    bench_04_first_bench(1000);
+    bench_08_first_bench(1000);
+    bench_10_first_bench(1000);
+    bench_20_first_bench(1000);
+    bench_40_first_bench(1000);
+    bench_01_last_bench(2000);
+    bench_02_last_bench(1000);
+    bench_04_last_bench(1000);
+    bench_08_last_bench(1000);
+    bench_10_last_bench(1000);
+    bench_20_last_bench(500);
+    bench_40_last_bench(250);
 
 }

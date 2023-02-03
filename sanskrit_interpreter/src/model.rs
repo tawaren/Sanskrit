@@ -73,7 +73,7 @@ pub enum OpCode<#[AllocLifetime] 'b> {
     Lte(Kind, ValueRef,ValueRef),                                   //Compares two values to decide if one is less than or equal the other
     Gte(Kind, ValueRef,ValueRef),                                   //Compares two values to decide if one is greater or equal than the other
     ToData(Kind, ValueRef),                                         //Transforms Integers & Uniques to data
-    FromData(Kind, ValueRef),                                        //Transforms Data to Integers & Uniques
+    FromData(Kind, ValueRef),                                       //Transforms Data to Integers & Uniques
     //Gas Testing Operands
     Id(ValueRef),                                                   //Makes a Copy of the input (this is for testing) -- Establishes a Baseline
     SysInvoke(u8, SlicePtr<'b,ValueRef>),

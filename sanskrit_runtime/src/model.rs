@@ -3,19 +3,13 @@ use sanskrit_common::encoding::*;
 use sanskrit_common::errors::*;
 use TransactionBundle;
 
+#[cfg(feature = "deployer")]
 #[derive(Clone, Debug, Parsable, Serializable, VirtualSize)]
 pub struct DeployTransaction<#[AllocLifetime] 'c> {
+    //todo: add max_loads & max_byte_loads
+    //todo: add max_stores & max_byte_stores
     pub typ:DeployType,
     pub data: SlicePtr<'c, u8>,
-    //Accounting
-    pub max_load_bytes:u32,
-    pub max_store_bytes:u32,
-    pub max_process_bytes:u32,
-    pub max_stack_elems:u32,
-    pub max_block_nesting:u32,
-    //Limits Compiling (only needed for transactions)
-    pub max_contained_functions:u32,          //todo: shall we hardcode these
-    pub max_compile_block_nesting:u32,        //todo: shall we hardcode these
 }
 
 
@@ -79,6 +73,7 @@ pub enum SectionType {
     Custom
 }
 
+#[cfg(feature = "deployer")]
 #[derive(Clone, Copy, Debug, Parsable, Serializable, VirtualSize)]
 pub enum DeployType {
     Module,

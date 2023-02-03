@@ -9,7 +9,7 @@ use hashing::*;
 //Allows it to be flexible from Temporary in Memory, over stateless in Memory to persistent
 pub trait Store {
     //Check if something is their
-    fn contains(&self, class:StorageClass, key: &Hash) -> bool;
+    //fn contains(&self, class:StorageClass, key: &Hash) -> bool;
     //Check if something is their
     fn delete(&self, class:StorageClass, key: &Hash) -> Result<()>;
     //Gets a value out and uses P as Parser

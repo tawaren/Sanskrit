@@ -12,7 +12,6 @@ use sanskrit_common::encoding::NoCustomAlloc;
 use model::*;
 use model::linking::{Link, Component};
 use core::marker::PhantomData;
-use accounting::Accounting;
 use hashbrown::HashMap;
 
 pub struct Loader<'a, S:Store + 'a> {
@@ -22,9 +21,6 @@ pub struct Loader<'a, S:Store + 'a> {
     dedup_hash:RefCell<CrcDeDup<ModuleLink>>,
     modules:RefCell<HashMap<Hash,Crc<Module>>>,
     store:&'a S, // a reference to the store in case a module is not cached
-    //Accounting
-    //The Accounting
-    pub accounting: &'a Accounting,
     // Object loaders
     // deduplication
     dedup_type:RefCell<CrcDeDup<ResolvedType>>,
@@ -54,7 +50,7 @@ impl<'a, S:Store + 'a> Loader<'a,S> {
 
     //A new partially loaded Storage Cache
     //it starts out with the module currently processed
-    pub fn new_incremental(store:&'a S,  link:Hash, module:Module, accounting:&'a Accounting) -> Self{
+    pub fn new_incremental(store:&'a S,  link:Hash, module:Module) -> Self{
         //A new empty cache
         let mut modules = HashMap::new();
         //Insert the Module
@@ -64,7 +60,6 @@ impl<'a, S:Store + 'a> Loader<'a,S> {
         Loader {
             modules:RefCell::new(modules),
             store,
-            accounting,
             dedup_type: RefCell::new(CrcDeDup::new()),
             dedup_call: RefCell::new(CrcDeDup::new()),
             dedup_perm: RefCell::new(CrcDeDup::new()),
@@ -81,12 +76,11 @@ impl<'a, S:Store + 'a> Loader<'a,S> {
     }
 
     //A new fully loaded storage cache
-    pub fn new_complete(store:&'a S, accounting:&'a Accounting) -> Self{
+    pub fn new_complete(store:&'a S) -> Self{
         //Works As: current need to use this and all other that can be used from this can not use this
         Loader {
             modules:RefCell::new(HashMap::new()),
             store,
-            accounting,
             dedup_type: RefCell::new(CrcDeDup::new()),
             dedup_call: RefCell::new(CrcDeDup::new()),
             dedup_perm: RefCell::new(CrcDeDup::new()),
@@ -109,11 +103,6 @@ impl<'a, S:Store + 'a> Loader<'a,S> {
         if !modules.contains_key(&hash) {
             //get the module from the store by its hash
             let module = self.store.parsed_get::<Module,NoCustomAlloc>(StorageClass::Module,&hash, usize::max_value(), &NoCustomAlloc())?;
-            // account for the load
-            match module.byte_size {
-                None => return error(||"Byte size missing"),
-                Some(size) => self.accounting.load_bytes(size)?
-            }
             //Ref count it and insert it
             let res = Crc{elem:Rc::new(module)};
             modules.insert(hash,res.clone());

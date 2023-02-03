@@ -12,20 +12,6 @@ mod tests {
     use test::Bencher;
     use sanskrit_memory_store::BTreeMapStore;
     use std::env::current_dir;
-    use sanskrit_core::accounting::Accounting;
-    use std::cell::Cell;
-
-    fn max_accounting() -> Accounting {
-        Accounting {
-            load_byte_budget: Cell::new(usize::max_value()),
-            store_byte_budget: Cell::new(usize::max_value()),
-            process_byte_budget: Cell::new(usize::max_value()),
-            stack_elem_budget: Cell::new(usize::max_value()),
-            nesting_limit: 10,
-            input_limit: 1000000,
-            max_nesting: Cell::new(0),
-        }
-    }
 
     fn parse_and_deploy(id:&str) -> Result<()>{
         parse_and_deploy_template(id,true)
@@ -46,7 +32,6 @@ mod tests {
         comp.parse_module_tree(id.clone(), system_level+1);
         comp.compile_module_tree().unwrap();
         let s = BTreeMapStore::new();
-        let accounting = max_accounting();
         for (c_id, sys_mode, r) in comp.get_module_results() {
             if c_id == id {
                 let fb_path = out_folder.join(&id.0.to_lowercase()).with_extension("bin");
@@ -57,7 +42,7 @@ mod tests {
                 asm.write_all(format!("{:?}",Parser::parse_fully::<Module,NoCustomAlloc>(&r,usize::max_value(), &NoCustomAlloc()).unwrap()).as_bytes()).unwrap();
             }
             println!("Deploying module {:?} of {} Bytes with system_mode = {}", c_id, r.len(), sys_mode);
-            let res = deploy_module(&s, &accounting,r, sys_mode, true)?;
+            let res = deploy_module(&s,r, sys_mode, true)?;
 
             if c_id == id {
                 let fh_path = out_folder.join(&id.0.to_lowercase()).with_extension("hash");
@@ -79,9 +64,8 @@ mod tests {
         let res = comp.get_module_results().into_iter().map(|(_,sys_mode,r)|(sys_mode,r)).collect::<Vec<_>>();
         b.iter(|| {
             let s = BTreeMapStore::new();
-            let accounting = max_accounting();
             for (sys_mode,r) in res.clone() {
-                deploy_module(&s, &accounting, r, sys_mode, true).unwrap();
+                deploy_module(&s,r, sys_mode, true).unwrap();
             }
         });
         Ok(())
@@ -512,6 +496,18 @@ mod tests {
     #[should_panic(expected="Unpack must target a data type with a single constructor")]
     fn union_unpack_fail() {
         parse_and_deploy("testFailUnpackType7").unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected="Consumed, borrowed, or locked element can not be consumed")]
+    fn view_fail() {
+        parse_and_deploy("testFailView").unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected="Consumed or locked element can not be locked")]
+    fn view_2_fail() {
+        parse_and_deploy("testFailView2").unwrap();
     }
 
     #[test]

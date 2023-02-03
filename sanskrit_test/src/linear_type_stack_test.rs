@@ -9,45 +9,31 @@ mod tests {
     use std::ops::DerefMut;
     use std::ops::Deref;
     use sanskrit_core::model::bitsets::{CapSet, BitSet};
-    use sanskrit_core::accounting::Accounting;
-    use std::cell::Cell;
 
-    fn max_accounting() -> Accounting {
-        Accounting {
-            load_byte_budget: Cell::new(usize::max_value()),
-            store_byte_budget: Cell::new(usize::max_value()),
-            process_byte_budget: Cell::new(usize::max_value()),
-            stack_elem_budget: Cell::new(usize::max_value()),
-            nesting_limit: 10,
-            input_limit: 1000000,
-            max_nesting: Cell::new(0),
-        }
-    }
-    
-    struct Tester<'a> {
+    struct Tester {
         dedup: CrcDeDup<ResolvedType>,
-        inner: LinearStack<'a, Crc<ResolvedType>>,
+        inner: LinearStack<Crc<ResolvedType>>,
         types: Vec<Crc<ResolvedType>>
     }
 
-    impl<'a> Deref for Tester<'a>{
-        type Target = LinearStack<'a, Crc<ResolvedType>>;
-        fn deref(&self) -> &LinearStack<'a, Crc<ResolvedType>> {
+    impl Deref for Tester{
+        type Target = LinearStack<Crc<ResolvedType>>;
+        fn deref(&self) -> &LinearStack<Crc<ResolvedType>> {
             &self.inner
         }
     }
 
-    impl<'a>  DerefMut for Tester<'a> {
-        fn deref_mut(&mut self) -> &mut LinearStack<'a, Crc<ResolvedType>>{
+    impl DerefMut for Tester {
+        fn deref_mut(&mut self) -> &mut LinearStack<Crc<ResolvedType>>{
             &mut self.inner
         }
     }
 
-    impl<'a> Tester<'a> {
-        pub fn new(accounting: &'a Accounting) -> Self {
+    impl Tester {
+        pub fn new() -> Self {
             Tester{
                 dedup: CrcDeDup::new(),
-                inner: LinearStack::new(accounting),
+                inner: LinearStack::new(),
                 types: Vec::new(),
             }
         }
@@ -99,8 +85,8 @@ mod tests {
 
     }
 
-    fn test<'a, F:FnOnce(& mut Tester<'a>) -> (Vec<Crc<ResolvedType>>, Vec<Crc<ResolvedType>>)>(accounting:&'a Accounting, f:F){
-        let mut tester = Tester::new(accounting);
+    fn test<F:FnOnce(& mut Tester) -> (Vec<Crc<ResolvedType>>, Vec<Crc<ResolvedType>>)>(f:F){
+        let mut tester = Tester::new();
         //Generate some garbage that should be untouched by test
         for _ in 0..20 {
             tester.provide_borrowed();
@@ -135,8 +121,7 @@ mod tests {
     #[test]
     #[should_panic(expected="Consumed, borrowed, or locked element can not be consumed")]
     fn consume_twice_test() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             stack.provide_owned();
             stack.drop(ValueRef(0)).unwrap();
             stack.drop(ValueRef(0)).unwrap();
@@ -147,8 +132,7 @@ mod tests {
     #[test]
     #[should_panic(expected="Consumed, borrowed, or locked element can not be consumed")]
     fn consume_twice_test2() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             stack.provide_owned();
             let t = stack.introduce_new();
             stack.unpack(ValueRef(0), &vec![t], FetchMode::Consume).unwrap();
@@ -160,8 +144,7 @@ mod tests {
     #[test]
     #[should_panic(expected="Consumed, borrowed, or locked element can not be consumed")]
     fn consume_twice_test3() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             stack.provide_owned();
             let t = stack.introduce_new();
             stack.drop(ValueRef(0)).unwrap();
@@ -173,8 +156,7 @@ mod tests {
     #[test]
     #[should_panic(expected="Consumed, borrowed, or locked element can not be consumed")]
     fn consume_twice_test4() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             stack.provide_owned();
             let t = stack.introduce_new();
             stack.pack(&[ValueRef(0)], t, FetchMode::Consume).unwrap();
@@ -186,8 +168,7 @@ mod tests {
     #[test]
     #[should_panic(expected="Consumed, borrowed, or locked element can not be consumed")]
     fn consume_twice_test5() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             stack.provide_owned();
             let t = stack.introduce_new();
             stack.drop(ValueRef(0)).unwrap();
@@ -199,8 +180,7 @@ mod tests {
     #[test]
     #[should_panic(expected="Consumed, borrowed, or locked element can not be consumed")]
     fn consume_twice_test6() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             stack.provide_owned();
             let t = stack.introduce_new();
             stack.pack(&[ValueRef(0),ValueRef(0)], t, FetchMode::Consume).unwrap();
@@ -211,8 +191,7 @@ mod tests {
     #[test]
     #[should_panic(expected="Consumed, borrowed, or locked element can not be consumed")]
     fn consume_twice_test7() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             stack.provide_owned();
             let t = stack.introduce_new();
             stack.transform(ValueRef(0), t, FetchMode::Consume).unwrap();
@@ -224,8 +203,7 @@ mod tests {
     #[test]
     #[should_panic(expected="Consumed, borrowed, or locked element can not be consumed")]
     fn consume_twice_test8() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             stack.provide_owned();
             let t = stack.introduce_new();
             stack.drop(ValueRef(0)).unwrap();
@@ -237,8 +215,7 @@ mod tests {
     #[test]
     #[should_panic(expected="Consumed, borrowed, or locked element can not be consumed")]
     fn consume_twice() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             stack.provide_owned();
             let t = stack.introduce_new();
             stack.pack(&[ValueRef(0),ValueRef(0)], t, FetchMode::Consume).unwrap();
@@ -249,8 +226,7 @@ mod tests {
     #[test]
     #[should_panic(expected="Can only discard Consumed or Borrowed values on return")]
     fn free_unconsumed2() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             let block = stack.start_block();
             stack.provide_owned();
             stack.end_block(block, 0).unwrap();
@@ -263,8 +239,7 @@ mod tests {
     #[test]
     #[should_panic(expected="Consumed, borrowed, or locked element can not be consumed")]
     fn return_consumed() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             let block = stack.start_block();
             stack.provide_owned();
             let t = stack.introduce_new();
@@ -279,8 +254,7 @@ mod tests {
     #[test]
     #[should_panic(expected="Only owned values can be the result of an expression")]
     fn return_consumed2() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             let block = stack.start_block();
             stack.provide_owned();
             stack.drop(ValueRef(0)).unwrap();
@@ -292,8 +266,7 @@ mod tests {
     #[test]
     #[should_panic(expected="Consumed, borrowed, or locked element can not be consumed")]
     fn return_consumed3() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             let block = stack.start_block();
             stack.provide_owned();
             let t = stack.introduce_new();
@@ -312,8 +285,7 @@ mod tests {
     #[test]
     #[should_panic(expected="Only owned values can be the result of an expression")]
     fn return_borrowed() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             let block = stack.start_block();
             stack.provide_borrowed();
             stack.end_block(block, 1).unwrap();
@@ -324,8 +296,7 @@ mod tests {
     #[test]
     #[should_panic(expected="Consumed, borrowed, or locked element can not be consumed")]
     fn return_borrowed2() {
-        let accounting = max_accounting();
-                test(&accounting,|stack|{
+          test(|stack|{
             let block = stack.start_block();
             stack.provide_borrowed();
             let t = stack.introduce_new();
@@ -344,8 +315,7 @@ mod tests {
     #[test]
     #[should_panic(expected="Stack access out of bounds")]
     fn reach_outside() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             stack.drop(ValueRef(20)).unwrap();
             (vec![], vec![])
         });
@@ -354,8 +324,7 @@ mod tests {
     #[test]
     #[should_panic(expected="Stack access out of bounds")]
     fn reach_outside2() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             let t = stack.introduce_new();
             stack.transform(ValueRef(20), t, FetchMode::Consume).unwrap();
             (vec![], vec![stack.owned(0)])
@@ -365,8 +334,7 @@ mod tests {
     #[test]
     #[should_panic(expected="Stack access out of bounds")]
     fn reach_outside3() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             let t = stack.introduce_new();
             stack.unpack(ValueRef(20), &[t], FetchMode::Consume).unwrap();
             (vec![], vec![stack.owned(0)])
@@ -377,8 +345,7 @@ mod tests {
     #[test]
     #[should_panic(expected="Stack access out of bounds")]
     fn reach_outside4() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             stack.fetch(ValueRef(20), FetchMode::Copy).unwrap();
             (vec![], vec![stack.owned(0)])
         });
@@ -387,8 +354,7 @@ mod tests {
     #[test]
     #[should_panic(expected="Stack access out of bounds")]
     fn reach_outside5() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             let t = stack.introduce_new();
             stack.pack(&[ValueRef(20)], t, FetchMode::Consume).unwrap();
             (vec![], vec![stack.owned(0)])
@@ -401,8 +367,7 @@ mod tests {
     #[test]
     #[should_panic(expected="A consumed, locked or hidden element can not be hidden")]
     fn hide_test() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             stack.provide_owned();
             stack.consume_params(&[(ValueRef(0), false), (ValueRef(0), false)]).unwrap();
             (vec![], vec![])
@@ -413,8 +378,7 @@ mod tests {
     #[test]
     #[should_panic(expected="Consumed, borrowed, or locked element can not be consumed")]
     fn double_frame_return_test() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             let block = stack.start_block();
             stack.provide_owned();
             stack.fetch(ValueRef(0), FetchMode::Consume).unwrap();
@@ -430,8 +394,7 @@ mod tests {
     #[test]
     #[should_panic(expected="Branches must produce same returns")]
     fn mismatching_branch_return_test() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             let mut branching = stack.start_branching(2);
                 stack.provide_owned();
             stack.next_branch(&mut branching, 1).unwrap();
@@ -444,8 +407,7 @@ mod tests {
     #[test]
     #[should_panic(expected="Branches must produce same returns")]
     fn mismatching_branch_return_test2() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             stack.provide_owned();
             let mut branching = stack.start_branching(2);
                 let t1 = stack.introduce_new();
@@ -461,8 +423,7 @@ mod tests {
     #[test]
     #[should_panic(expected="Branches must produce same returns")]
     fn mismatching_branch_return_test3() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             let t0 = stack.introduce_new();
             let t1 = stack.introduce_new();
             let mut branching = stack.start_branching(2);
@@ -481,8 +442,7 @@ mod tests {
     #[test]
     #[should_panic(expected="Branches must consume same stack slots")]
     fn mismatching_branch_capture_test() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             let t0 = stack.introduce_new();
             stack.provide(t0.clone()).unwrap();
             stack.provide(t0.clone()).unwrap();
@@ -499,8 +459,7 @@ mod tests {
     #[test]
     #[should_panic(expected="Branches must consume same stack slots")]
     fn mismatching_branch_capture_test2() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             let t0 = stack.introduce_new();
             stack.provide(t0.clone()).unwrap();
             let t1 = stack.introduce_new();
@@ -521,8 +480,7 @@ mod tests {
     #[test]
     #[should_panic(expected="Number of elements on stack must match number of parameters")]
     fn signature_size_missmatch() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             stack.provide_owned();
             (vec![], vec![])
         });
@@ -532,8 +490,7 @@ mod tests {
     #[test]
     #[should_panic(expected="Number of elements on stack must match number of parameters")]
     fn signature_size_missmatch3() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             (vec![stack.param(0)], vec![])
         });
     }
@@ -542,8 +499,7 @@ mod tests {
     #[test]
     #[should_panic(expected="Returns must be owned at the end of a function body")]
     fn signature_result_mode_missmatch() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             stack.provide_owned();
             stack.drop(ValueRef(0)).unwrap();
             (vec![], vec![stack.owned(0)])
@@ -560,8 +516,7 @@ mod tests {
 
     #[test]
     fn consume_slot() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             stack.provide_owned();
             let t = stack.introduce_new();
             stack.transform(ValueRef(0), t, FetchMode::Consume).unwrap();
@@ -571,8 +526,7 @@ mod tests {
 
     #[test]
     fn consume_slot2() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             stack.provide_owned();
             let t = stack.introduce_new();
             stack.pack(&[ValueRef(0)], t, FetchMode::Consume).unwrap();
@@ -582,8 +536,7 @@ mod tests {
 
     #[test]
     fn consume_slot3() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             stack.provide_owned();
             stack.provide_owned();
             let t = stack.introduce_new();
@@ -594,8 +547,7 @@ mod tests {
 
     #[test]
     fn consume_slot4() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             stack.provide_owned();
             let t = stack.introduce_new();
             stack.unpack(ValueRef(0), &[t], FetchMode::Consume).unwrap();
@@ -606,8 +558,7 @@ mod tests {
 
     #[test]
     fn consume_slot5() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             stack.provide_owned();
             let t0 = stack.introduce_new();
             let t1 = stack.introduce_new();
@@ -618,8 +569,7 @@ mod tests {
 
     #[test]
     fn consume_slot6() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             stack.provide_owned();
             stack.drop(ValueRef(0)).unwrap();
             (vec![stack.param(0)], vec![])
@@ -629,12 +579,9 @@ mod tests {
     //[not] "Only consumed and not locked elem slots can be freed"
     //[not] "Only consumed and not locked elem slots can be freed"
 
-
-
     #[test]
     fn free_consumed5() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             let block = stack.start_block();
             stack.provide_owned();
             stack.drop(ValueRef(0)).unwrap();
@@ -645,8 +592,7 @@ mod tests {
 
     #[test]
     fn free_consumed7() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             let block = stack.start_block();
             stack.provide_owned();
             let t = stack.introduce_new();
@@ -658,8 +604,7 @@ mod tests {
 
     #[test]
     fn free_consumed8() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             let block = stack.start_block();
             stack.provide_owned();
             let t = stack.introduce_new();
@@ -671,8 +616,7 @@ mod tests {
 
     #[test]
     fn free_consumed9() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             let block = stack.start_block();
             stack.provide_owned();
             let t = stack.introduce_new();
@@ -684,8 +628,7 @@ mod tests {
 
     #[test]
     fn free_consumed10() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             let mut branching = stack.start_branching(2);
             stack.provide_owned();
                 stack.drop(ValueRef(0)).unwrap();
@@ -699,8 +642,7 @@ mod tests {
 
     #[test]
     fn free_consumed11() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             let mut branching = stack.start_branching(2);
             stack.provide_owned();
                 stack.drop(ValueRef(0)).unwrap();
@@ -714,8 +656,7 @@ mod tests {
 
     #[test]
     fn free_consumed12() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             let t0 = stack.introduce_new();
             let t1 = stack.introduce_new();
             let mut branching = stack.start_branching(2);
@@ -731,8 +672,7 @@ mod tests {
 
     #[test]
     fn free_consumed13() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             let t0 = stack.introduce_new();
             let t1 = stack.introduce_new();
             let mut branching = stack.start_branching(2);
@@ -748,8 +688,7 @@ mod tests {
 
     #[test]
     fn free_consumed14() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             let t0 = stack.introduce_new();
             let t1 = stack.introduce_new();
             let mut branching = stack.start_branching(2);
@@ -768,8 +707,7 @@ mod tests {
 
     #[test]
     fn return_unconsumed_test() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             let block = stack.start_block();
             stack.provide_owned();
             stack.end_block(block, 1).unwrap();
@@ -779,8 +717,7 @@ mod tests {
 
     #[test]
     fn return_unconsumed_test2() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             let t = stack.introduce_new();
             let mut branching = stack.start_branching(2);
                 stack.provide(t.clone()).unwrap();
@@ -795,8 +732,7 @@ mod tests {
     // [Not] "Can not access already moved slot"
     #[test]
     fn access_elem() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             stack.provide_borrowed();
             assert_eq!(stack.value_of(ValueRef(0)).unwrap(), stack.get_type(0));
             (vec![stack.param(0)], vec![])
@@ -805,8 +741,7 @@ mod tests {
 
     #[test]
     fn access_elem2() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             stack.provide_borrowed();
             stack.fetch(ValueRef(0), FetchMode::Copy).unwrap();
             (vec![stack.param(0)], vec![stack.owned(0)])
@@ -818,8 +753,7 @@ mod tests {
 
     #[test]
     fn apply_once() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             stack.provide_owned();
             stack.provide_borrowed();
             stack.consume_params(&[(ValueRef(1), true),(ValueRef(0), false)]).unwrap();
@@ -829,8 +763,7 @@ mod tests {
 
     #[test]
     fn apply_once2() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             stack.provide_owned();
             stack.provide_owned();
             stack.consume_params(&[(ValueRef(1), true),(ValueRef(0), true)]).unwrap();
@@ -840,8 +773,7 @@ mod tests {
 
     #[test]
     fn apply_once3() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             stack.provide_borrowed();
             stack.provide_borrowed();
             stack.consume_params(&[(ValueRef(1), false),(ValueRef(0), false)]).unwrap();
@@ -855,8 +787,7 @@ mod tests {
 
     #[test]
     fn return_elems() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             let block = stack.start_block();
             stack.provide_owned();
             stack.provide_owned();
@@ -868,8 +799,7 @@ mod tests {
 
     #[test]
     fn return_elems2() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             let t0 = stack.introduce_new();
             let t1 = stack.introduce_new();
             let t2 = stack.introduce_new();
@@ -892,8 +822,7 @@ mod tests {
 
     #[test]
     fn return_elems3() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             let t0 = stack.introduce_new();
             let t1 = stack.introduce_new();
             let mut branching = stack.start_branching(2);
@@ -909,8 +838,7 @@ mod tests {
 
     #[test]
     fn return_elems4() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             stack.provide_owned();
             stack.provide_owned();
             let t = stack.introduce_new();
@@ -927,8 +855,7 @@ mod tests {
 
     #[test]
     fn return_elems5() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             stack.provide_owned();
             stack.provide_owned();
             let t = stack.introduce_new();
@@ -947,8 +874,7 @@ mod tests {
     //value_of
     #[test]
     fn value_of_test() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             let t = stack.introduce_new();
             stack.borrow(t.clone()).unwrap();
             assert_eq!(stack.value_of(ValueRef(0)).unwrap(),t);
@@ -958,8 +884,7 @@ mod tests {
 
     #[test]
     fn value_of_test2() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             let t = stack.introduce_new();
             stack.borrow(t.clone()).unwrap();
             stack.fetch(ValueRef(0), FetchMode::Copy).unwrap();
@@ -972,8 +897,7 @@ mod tests {
     //copy
     #[test]
     fn copy_test() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             stack.provide_borrowed();
             stack.fetch(ValueRef(0), FetchMode::Copy).unwrap();
             (vec![stack.param(0)], vec![stack.owned(0)])
@@ -982,8 +906,7 @@ mod tests {
 
     #[test]
     fn copy_test2() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             stack.provide_borrowed();
             stack.fetch(ValueRef(0), FetchMode::Copy).unwrap();
             stack.fetch(ValueRef(0), FetchMode::Copy).unwrap();
@@ -996,8 +919,7 @@ mod tests {
     //provide
     #[test]
     fn provide_test() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             let t = stack.introduce_new();
             stack.borrow(t).unwrap();
             (vec![stack.param(0)], vec![])
@@ -1006,8 +928,7 @@ mod tests {
 
     #[test]
     fn provide_test2() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             let t = stack.introduce_new();
             stack.provide(t).unwrap();
             (vec![], vec![stack.owned(0)])
@@ -1016,8 +937,7 @@ mod tests {
 
     #[test]
     fn provide_test3() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+        test(|stack|{
             let t0 = stack.introduce_new();
             let t1 = stack.introduce_new();
             stack.borrow(t0.clone()).unwrap();
@@ -1030,8 +950,7 @@ mod tests {
 
     #[test]
     fn provide_test4() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+        test(|stack|{
             let t0 = stack.introduce_new();
             let t1 = stack.introduce_new();
             stack.borrow(t0.clone()).unwrap();
@@ -1045,8 +964,7 @@ mod tests {
     //drop
     #[test]
     fn drop_test() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+        test(|stack|{
             stack.provide_owned();
             stack.drop(ValueRef(0)).unwrap();
             (vec![stack.param(0)], vec![])
@@ -1055,8 +973,7 @@ mod tests {
 
     #[test]
     fn drop_test2() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+        test(|stack|{
             stack.provide_borrowed();
             stack.provide_owned();
             stack.provide_borrowed();
@@ -1072,8 +989,7 @@ mod tests {
     // transform
     #[test]
     fn transform_test() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+        test(|stack|{
             stack.provide_owned();
             let t = stack.introduce_new();
             stack.transform(ValueRef(0), t, FetchMode::Consume).unwrap();
@@ -1084,8 +1000,7 @@ mod tests {
     //fetch
     #[test]
     fn fetch_test() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+        test(|stack|{
             stack.provide_owned();
             stack.fetch(ValueRef(0),FetchMode::Consume).unwrap();
             (vec![stack.param(0)], vec![stack.owned(0)])
@@ -1096,8 +1011,7 @@ mod tests {
     //pack
     #[test]
     fn pack_test() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+        test(|stack|{
             stack.provide_owned();
             let t = stack.introduce_new();
             stack.pack(&[ValueRef(0)], t, FetchMode::Consume).unwrap();
@@ -1108,8 +1022,7 @@ mod tests {
     //pack
     #[test]
     fn pack_test2() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+        test(|stack|{
             stack.provide_owned();
             stack.provide_owned();
             stack.provide_owned();
@@ -1122,8 +1035,7 @@ mod tests {
     //unpack
     #[test]
     fn unpack_test() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+        test(|stack|{
             stack.provide_owned();
             let t = stack.introduce_new();
             stack.unpack(ValueRef(0),&[t],FetchMode::Consume).unwrap();
@@ -1134,8 +1046,7 @@ mod tests {
     //blocks
     #[test]
     fn block_test() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+        test(|stack|{
             let block = stack.start_block();
             stack.provide_owned();
             stack.end_block(block, 1).unwrap();
@@ -1145,8 +1056,7 @@ mod tests {
 
     #[test]
     fn block_test3() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+        test(|stack|{
             stack.provide_owned();
             let block = stack.start_block();
             let t = stack.introduce_new();
@@ -1158,8 +1068,7 @@ mod tests {
 
     #[test]
     fn block_test5() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+        test(|stack|{
             let block = stack.start_block();
             stack.provide_owned();
             stack.provide_owned();
@@ -1173,8 +1082,7 @@ mod tests {
     //branching
     #[test]
     fn branching_test() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+        test(|stack|{
             let t0 = stack.introduce_new();
             let t1 = stack.introduce_new();
             let mut branching = stack.start_branching(3);
@@ -1195,8 +1103,7 @@ mod tests {
 
     #[test]
     fn branching_test2() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+          test(|stack|{
             let t0 = stack.introduce_new();
             let t1 = stack.introduce_new();
             stack.provide(t1.clone()).unwrap();
@@ -1221,8 +1128,7 @@ mod tests {
     //apply
     #[test]
     fn apply_test() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+        test(|stack|{
             stack.provide_owned();
             stack.provide_borrowed();
             stack.provide_borrowed();
@@ -1236,8 +1142,7 @@ mod tests {
     //Make some nested Bigger tests touching on multiple aspects
     #[test]
     fn different_deps() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+        test(|stack|{
             let t0 = stack.introduce_new();
             let t1 = stack.introduce_new();
             let t2 = stack.introduce_new();
@@ -1270,8 +1175,7 @@ mod tests {
 
     #[test]
     fn different_deps2() {
-        let accounting = max_accounting();
-        test(&accounting,|stack|{
+         test(|stack|{
             let t0 = stack.introduce_new();
             let t1 = stack.introduce_new();
             let t2 = stack.introduce_new();

@@ -19,17 +19,15 @@ use sanskrit_common::errors::*;
 use sanskrit_core::model::resolved::ResolvedType;
 use sanskrit_common::encoding::NoCustomAlloc;
 use sanskrit_core::utils::Crc;
-use sanskrit_core::accounting::Accounting;
 use sanskrit_common::arena::HeapArena;
-use limiter::Limiter;
 use externals::CompilationExternals;
 
 //Entry point that compiles all types and public functions of a module
-pub fn compile_transaction<'b, 'h, S:Store, CE:CompilationExternals>(transaction_hash:&Hash, store:&S, accounting:&Accounting, limiter:&Limiter, alloc:&'b HeapArena<'h>) -> Result<TransactionDescriptor<'b>>{
+pub fn compile_transaction<'b, 'h, S:Store, CE:CompilationExternals>(transaction_hash:&Hash, store:&S, alloc:&'b HeapArena<'h>) -> Result<TransactionDescriptor<'b>>{
 
     //load the module
-    let fun:FunctionComponent = store.parsed_get(StorageClass::Transaction, transaction_hash, usize::max_value(), &NoCustomAlloc())?;
-    let resolver = Loader::new_complete(store, &accounting);
+    let fun:FunctionComponent = store.parsed_get(StorageClass::Transaction, transaction_hash, usize::MAX, &NoCustomAlloc())?;
+    let resolver = Loader::new_complete(store);
 
     //generate descriptors for all internal functions
     if fun.scope != Accessibility::Global {
@@ -41,7 +39,7 @@ pub fn compile_transaction<'b, 'h, S:Store, CE:CompilationExternals>(transaction
                 //Prepare the context
                 let context = Context::from_top_component(&fun, &resolver)?;
                 //call the generator
-                generate_transaction_descriptor::<_,CE>(&fun, code, &context, &alloc, limiter)
+                generate_transaction_descriptor::<_,CE>(&fun, code, &context, &alloc)
             },
         }
     }
@@ -49,7 +47,7 @@ pub fn compile_transaction<'b, 'h, S:Store, CE:CompilationExternals>(transaction
 }
 
 //generates a function descriptor
-fn generate_transaction_descriptor<'b,'h, S:Store,CE:CompilationExternals>(fun:&FunctionComponent, code:&SExp, ctx:&Context<S>, alloc:&'b HeapArena<'h>, limiter:&Limiter) -> Result<TransactionDescriptor<'b>> {
+fn generate_transaction_descriptor<'b,'h, S:Store,CE:CompilationExternals>(fun:&FunctionComponent, code:&SExp, ctx:&Context<S>, alloc:&'b HeapArena<'h>) -> Result<TransactionDescriptor<'b>> {
     
     //collect the params type builder
     let mut params = alloc.slice_builder(fun.shared.params.len())?;
@@ -87,7 +85,7 @@ fn generate_transaction_descriptor<'b,'h, S:Store,CE:CompilationExternals>(fun:&
     }
     let returns = returns.finish();
     //do the compaction process
-    let (functions,ressources) = Compactor::compact::<_,CE>(fun, code,  &ctx.store, alloc, limiter)?;
+    let (functions,ressources) = Compactor::compact::<_,CE>(fun, code,  &ctx.store, alloc)?;
 
     if functions.len() > u16::max_value() as usize {
         return error(||"Number of functions out of range")

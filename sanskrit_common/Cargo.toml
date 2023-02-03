@@ -9,11 +9,11 @@ std = []
 string_errors = []
 panic_errors = []
 
-
 [dependencies]
 blake3 = { version = "0.3.7", default-features = false }
 byteorder = { version = "1.3.4", features = ["i128"], default-features = false }
 arrayref = "0.3.6"
+
 
 [dependencies.sanskrit_derive]
 path = "../sanskrit_derive"

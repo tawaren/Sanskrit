@@ -1,0 +1,62 @@
+[package]
+name = "sanskrit_pallet"
+version = "0.1.0"
+authors = ["tawaren <markus.knecht85@gmail.com>"]
+
+[package.metadata.docs.rs]
+targets = ['x86_64-unknown-linux-gnu']
+
+# alias "parity-scale-code" to "codec"
+[dependencies.codec]
+default-features = false
+features = ['derive']
+package = 'parity-scale-codec'
+version = '1.3.4'
+
+[dependencies]
+frame-support = { default-features = false, version = '2.0.0' }
+frame-system = { default-features = false, version = '2.0.0' }
+byteorder = { version = "1.3.4", features = ["i128"], default-features = false }
+ed25519-dalek = { version = "1.0.1", default-features = false, features = ["u64_backend"] }
+sha2 = { version = "0.9.1", default-features = false }
+rand = { version = "0.7.3", default-features = false }
+
+
+[features]
+default = ['std']
+std = [
+    'codec/std',
+    'frame-support/std',
+    'frame-system/std',
+]
+
+[dependencies.sanskrit_compile]
+path = "../sanskrit_compile"
+version = "0.1.0"
+default-features = false
+
+[dependencies.sanskrit_deploy]
+path = "../sanskrit_deploy"
+version = "0.1.0"
+default-features = false
+
+[dependencies.sanskrit_runtime]
+path = "../sanskrit_runtime"
+version = "0.1.0"
+default-features = false
+features =["deployer"]
+
+[dependencies.sanskrit_interpreter]
+path = "../sanskrit_interpreter"
+version = "0.1.0"
+default-features = false
+
+[dependencies.sanskrit_core]
+path = "../sanskrit_core"
+version = "0.1.0"
+default-features = false
+
+[dependencies.sanskrit_common]
+path = "../sanskrit_common"
+version = "0.1.0"
+

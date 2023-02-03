@@ -263,7 +263,7 @@ fn impl_parsable_macro(ast:&DeriveInput) -> TokenStream {
             quote!{
                 Ok(match p.consume_byte()? {
                     #(#cases,)*
-                    x => return error(||"Can not parse unknown enum variant")
+                    x => return error(||"Can not parse unknown enum variant") //panic!("{:?} in {:?}",x, stringify!(#prefix))
                 })
             }
         },

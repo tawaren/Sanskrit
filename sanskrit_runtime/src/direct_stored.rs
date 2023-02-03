@@ -26,8 +26,8 @@ pub trait SystemDataManager<B:TransactionBundle> {
     fn providable_size(typ:Ptr<RuntimeType>) -> Result<u32>;
     fn providable_gas(typ:Ptr<RuntimeType>) -> Result<u64>;
     fn is_chain_value(typ:Ptr<RuntimeType>) -> bool;
-    fn provided_value_key(typ:Ptr<RuntimeType>, section_no:u8,  txt_no:u8) -> Option<Vec<u8>>;
-    fn create_provided_value<'a,'h>(bundle:&B, typ:Ptr<RuntimeType>, alloc: &'a VirtualHeapArena<'h>, block_no: u64, section_no:u8,  txt_no:u8) -> Result<Entry<'a>>;
+    fn provided_value_key(typ:Ptr<RuntimeType>, section_no:u8,  txt_no:u8, p_num:u8) -> Option<Vec<u8>>;
+    fn create_provided_value<'a,'h>(bundle:&B, typ:Ptr<RuntimeType>, alloc: &'a VirtualHeapArena<'h>, block_no: u64, section_no:u8,  txt_no:u8, p_num:u8) -> Result<Entry<'a>>;
 }
 
 pub struct StatefulEntryStoreVerifier<B:TransactionBundle, SDM: SystemDataManager<B>>{
@@ -84,8 +84,8 @@ impl<S:Store,B:TransactionBundle, SDM: SystemDataManager<B>> TransactionVerifica
         SDM::is_chain_value(typ)
     }
 
-    fn verify_providable(&self, _ctx:&Context<S,B>, typ:Ptr<RuntimeType>, section_no:u8,  txt_no:u8) -> Result<(u64,u32)> {
-        match SDM::provided_value_key(typ, section_no, txt_no) {
+    fn verify_providable(&self, _ctx:&Context<S,B>, typ:Ptr<RuntimeType>, section_no:u8,  txt_no:u8, p_num:u8) -> Result<(u64,u32)> {
+        match SDM::provided_value_key(typ, section_no, txt_no, p_num) {
             Some(key) => {
                 if self.used_keys.borrow().contains(&key) {
                     return error(||"provided value already used")
@@ -129,8 +129,8 @@ impl<S:Store,B:TransactionBundle, SDM: SystemDataManager<B>> TransactionExecutio
         ctx.store.parsed_get(StorageClass::Descriptor, target, CONFIG.max_structural_dept, heap)
     }
 
-    fn create_provided_value<'a,'h>(&self, ctx: &Context<S,B>, typ: Ptr<RuntimeType>, alloc: &'a VirtualHeapArena<'h>, block_no: u64, section_no:u8,  txt_no:u8) -> Result<Entry<'a>> {
-        SDM::create_provided_value(ctx.txt_bundle, typ, alloc, block_no, section_no, txt_no)
+    fn create_provided_value<'a,'h>(&self, ctx: &Context<S,B>, typ: Ptr<RuntimeType>, alloc: &'a VirtualHeapArena<'h>, block_no: u64, section_no:u8,  txt_no:u8, p_num:u8) -> Result<Entry<'a>> {
+        SDM::create_provided_value(ctx.txt_bundle, typ, alloc, block_no, section_no, txt_no, p_num)
     }
 
 

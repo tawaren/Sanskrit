@@ -1,9 +1,9 @@
 use sanskrit_common::errors::*;
 use sanskrit_interpreter::externals::{RuntimeExternals, ExecutionInterface};
-use sanskrit_interpreter::externals::crypto::{plain_hash, join_hash, ecdsa_verify};
 use sanskrit_common::hashing::HashingDomain;
 use sanskrit_common::model::ValueRef;
 use sanskrit_interpreter::model::Kind;
+use crate::crypto::{plain_hash, join_hash, ecdsa_verify};
 
 pub struct BenchExternals;
 impl RuntimeExternals for BenchExternals {

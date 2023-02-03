@@ -14,11 +14,12 @@ members = [
         "sanskrit_local_server",
         "sanskrit_bench",
         "sanskrit_wasm_deploy_compile",
-        "sanskrit_wasm_test"
+        "sanskrit_wasm_runner",
+        "sanskrit_pallet",
 ]
 
 [profile.release]
 panic = "abort"
 lto = true
 debug = false
-opt-level = "s"
+opt-level = 3

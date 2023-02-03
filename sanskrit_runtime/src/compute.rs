@@ -36,7 +36,7 @@ pub trait TransactionExecutionContext<S:Store,B:TransactionBundle> {
     fn read_transaction_desc<'d, A:ParserAllocator>(&self, ctx:&Context<S,B>, target:&Hash, heap:&'d A) -> Result<TransactionDescriptor<'d>>;
     //create a provided value
     //Todo: Do we need some extra info??? in order to select
-    fn create_provided_value<'a,'h>(&self, ctx:&Context<S,B>, typ:Ptr<RuntimeType>, alloc:&'a VirtualHeapArena<'h>, block_no:u64, section_no:u8,  txt_no:u8) -> Result<Entry<'a>>;
+    fn create_provided_value<'a,'h>(&self, ctx:&Context<S,B>, typ:Ptr<RuntimeType>, alloc:&'a VirtualHeapArena<'h>, block_no:u64, section_no:u8,  txt_no:u8, p_num:u8) -> Result<Entry<'a>>;
     //loads an entry
     fn chain_value_load<'b>(&self, ctx:&Context<S,B>, index:u16, param:TxTParam, parameter_heap:&'b VirtualHeapArena) -> Result<Entry<'b>>;
     //deletes an entry
@@ -128,7 +128,7 @@ fn execute_transaction<'c, L: Tracker, SYS:SystemContext<'c>>(env:&ExecutionEnvi
     //push everything required onto the stack
     let mut deletes = Vec::with_capacity(txt_desc.params.len());
 
-    for (p,p_typ) in txt_desc.params.iter().zip(txt.params.iter()) {
+    for (p_num, (p,p_typ)) in txt_desc.params.iter().zip(txt.params.iter()).enumerate() {
         match p_typ {
             ParamRef::Load(ParamMode::Consume,index) => {
                 //We delete at end so others can copy and in case it produces an error it must still be their
@@ -145,7 +145,7 @@ fn execute_transaction<'c, L: Tracker, SYS:SystemContext<'c>>(env:&ExecutionEnvi
             },
 
             ParamRef::Provided => {
-                let data = exec_store.create_provided_value(ctx, p.typ, &env.parameter_heap, block_no, sec_no, txt_no)?;
+                let data = exec_store.create_provided_value(ctx, p.typ, &env.parameter_heap, block_no, sec_no, txt_no, p_num as u8)?;
                 tracker.parameter_load(p_typ, p, &data);
                 interpreter_stack.push(data)?;
             },

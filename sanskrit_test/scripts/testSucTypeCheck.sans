@@ -24,6 +24,24 @@ module TestSucTypeCheck{
        return (a2,b2);
    };
 
+   fun TestFun6[<Value, Copy, Unbound> A](a:TestSucAdt.Wrapper[A]):(c:A){
+        b = view a:TestSucAdt.Wrapper[A];
+        c = copy b;
+        return c;
+   };
+
+   fun TestFun61[<Value, Unbound> A](a:%TestSucAdt.Wrapper[A]):(c:%A){
+        b = view a:%TestSucAdt.Wrapper[A];
+        c = copy b;
+        return c;
+   };
+
+   fun TestFun62[<Value, Unbound> A](a:TestSucAdt.Wrapper[%A]):(c:%A){
+        b = view a:TestSucAdt.Wrapper[%A];
+        c = copy b;
+        return c;
+   };
+
    fun TestFun7[<Value, Unbound> A](consume a:TestSucAdt.Wrapper[A]):(b:A){
         return unpack a:TestSucAdt.Wrapper[A];
    };

@@ -8,7 +8,8 @@ use sanskrit_common::model::*;
 use sanskrit_common::store::*;
 use sanskrit_core::utils::Crc;
 use sanskrit_core::loader::{Loader, FetchCache};
-use limiter::Limiter;
+
+const FUNCTION_LIMIT:usize = u16::max_value() as usize;
 
 pub enum Action {
     PushDependencies(Crc<ModuleLink>,u8),
@@ -26,7 +27,7 @@ pub struct Collector {
 }
 
 impl Collector {
-    pub fn collect<S:Store>(fun:&FunctionComponent, store:&Loader<S>, limiter:&Limiter) -> Result<Vec<FetchCache<FunctionComponent>>>{
+    pub fn collect<S:Store>(fun:&FunctionComponent, store:&Loader<S>) -> Result<Vec<FetchCache<FunctionComponent>>>{
         let mut col = Collector {
             stack: Vec::new(),
             recorded_funs: BTreeSet::new(),
@@ -49,12 +50,11 @@ impl Collector {
                     col.recorded_funs.insert(key.clone());
                     //ensure we do not go over the limit
                     if col.functions.len() >= u16::max_value() as usize {return error(||"Number of functions out of range")}
-                    if col.functions.len() >= limiter.max_functions {return error(||"Size limit exceeded")}
+                    if col.functions.len() >= FUNCTION_LIMIT {return error(||"Size limit exceeded")}
                     col.functions.push(fun_cache)
                 }
             }
         }
-        limiter.produced_functions.set(col.functions.len());
         Ok(col.functions)
     }
 

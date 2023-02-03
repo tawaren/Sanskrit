@@ -20,35 +20,29 @@ use alloc::vec::Vec;
 use sanskrit_core::resolver::Context;
 use sanskrit_common::model::*;
 use sanskrit_core::utils::Crc;
-use sanskrit_core::accounting::Accounting;
+
+//Todo: Make Configurable
+//used to ensure that rheir is a stack size that prevents stack overflows
+const MAX_NESTING_DEPTH:usize = 50;
 
 pub struct TypeCheckerContext<'b, S:Store + 'b> {
     context: Context<'b, S>,                     //The Resolved Components from the input
-    stack: LinearStack<'b, Crc<ResolvedType>>,   //The current stack layout
+    stack: LinearStack<Crc<ResolvedType>>,   //The current stack layout
     transactional:bool,
     depth:usize,
-    max_depth:usize, //for reporting only
     limit:usize,
 }
 
 impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
     //Creates a new Empty context
-    pub fn new(accounting:&'b Accounting, context: Context<'b, S>) -> Self {
+    pub fn new(context: Context<'b, S>) -> Self {
         //Define some reused types and capabilities
         TypeCheckerContext {
             context,
-            stack: LinearStack::new(accounting),
+            stack: LinearStack::new(),
             transactional: false,
             depth: 0,
-            max_depth: 0,
-            limit: accounting.nesting_limit
-        }
-    }
-
-    pub fn report_depth(&self, accounting:&Accounting) {
-        //Define some reused types and capabilities
-        if self.max_depth > accounting.max_nesting.get() {
-            accounting.max_nesting.set(self.max_depth)
+            limit: MAX_NESTING_DEPTH
         }
     }
 
@@ -231,15 +225,17 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
         if self.depth > self.limit {
             return error(||"Limit for block nesting reached")
         }
-        //this is only for reporting to figure out max depth by executing
-        if self.depth > self.max_depth {
-            self.max_depth = self.depth
-        }
         //catch the last size
         let mut rets = 0;
+        //prepare the lock_holder
+        let mut lock_holder:Vec<LockInfo> = Vec::new();
         //Type check the opcodes leading up to this Return
         for op in exp.0.iter() {
-            rets = self.type_check_op_code(op)?
+            rets = self.type_check_op_code(op, &mut lock_holder)?
+        }
+
+        for lock in lock_holder {
+            self.stack.unlock(lock)
         }
 
         for v in (0..(rets as u16)).rev() {
@@ -258,7 +254,7 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
     }
 
     //The heavy lifter that type checks op code
-    fn type_check_op_code(&mut self, code: &OpCode) -> Result<u8> {
+    fn type_check_op_code(&mut self, code: &OpCode, lock_holder:&mut Vec<LockInfo>) -> Result<u8> {
         //Branch on the opcode type and check it
         match *code {
             OpCode::Lit(ref data, perm) => self.lit(data, perm),
@@ -268,9 +264,10 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
             OpCode::Return(ref values) => self._return(values),
             OpCode::Discard(value) => self.discard(value),
             OpCode::DiscardMany(ref values) => self.discard_many(values),
-            OpCode::Unpack(value, perm) => self.unpack(value, perm, FetchMode::Consume),
-            OpCode::CopyUnpack(value, perm) => self.unpack(value, perm, FetchMode::Copy),
-            OpCode::Inspect(value, perm, ref cases) => self.switch(value, perm, cases, None),
+            OpCode::InspectUnpack(value, perm) => self.unpack(value, perm, None, lock_holder),
+            OpCode::Unpack(value, perm) => self.unpack(value, perm, Some(FetchMode::Consume), lock_holder),
+            OpCode::CopyUnpack(value, perm) => self.unpack(value, perm, Some(FetchMode::Copy), lock_holder),
+            OpCode::InspectSwitch(value, perm, ref cases) => self.switch(value, perm, cases, None),
             OpCode::Switch(value, perm, ref cases) => self.switch(value, perm, cases, Some(FetchMode::Consume)),
             OpCode::CopySwitch(value, perm, ref cases) => self.switch(value, perm, cases, Some(FetchMode::Copy)),
             OpCode::Pack(perm, tag, ref values) => self.pack(perm, tag, values, FetchMode::Consume),
@@ -286,7 +283,6 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
             OpCode::TryInvokeSig(fun,perm,  ref vals, ref suc, ref fail) => self.try_invoke_sig(fun, perm, vals, suc, fail),
             OpCode::RepeatedInvoke(_, perm, ref vals, cond, _) => self.invoke(perm,vals, Some(cond)),
             OpCode::RepeatedTryInvoke(_, perm, ref vals, cond, _, ref suc, ref fail)  => self.try_invoke(perm,vals, suc, fail, Some(cond))
-
         }
     }
 
@@ -410,15 +406,15 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
         Ok(0)
     }
 
-    fn unpack(&mut self, value:ValueRef, perm:PermRef, mode:FetchMode) -> Result<u8> {
+    fn unpack(&mut self, value:ValueRef, perm:PermRef, mode:Option<FetchMode>, lock_holder:&mut Vec<LockInfo>) -> Result<u8> {
         //Get the Resolved Type of the value
         let r_typ = self.stack.value_of(value)?;
         //get the perm
         let r_perm = perm.fetch(&self.context)?;
         //Calc the required permission
         let perm_type = match mode {
-            FetchMode::Consume => Permission::Consume,
-            FetchMode::Copy => Permission::Inspect,
+            Some(FetchMode::Consume) => Permission::Consume,
+            Some(FetchMode::Copy) | None => Permission::Inspect,
         };
 
         //check that it is of the right type
@@ -434,14 +430,21 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
         };
 
         //Get the resolved constructors
-        if FetchMode::Copy == mode {
+        if Some(FetchMode::Copy) == mode {
             //Copied values need the copy capability
             if !r_typ.get_caps().contains(Capability::Copy) {
                 return error(||"Copy unpack requires copy capability for input")
             }
         }
         //Tell the stack to execute the operation (will take care of borrow vs consume)
-        self.stack.unpack(value, &r_ctr[0],mode)?;
+        match mode {
+            Some(m) => self.stack.unpack(value, &r_ctr[0],m)?,
+            None => {
+                lock_holder.push(self.stack.lock(value)?);
+                self.stack.inspect(value, &r_ctr[0])?;
+            }
+        }
+
         assert!(r_ctr[0].len() <= u8::max_value() as usize);
         Ok(r_ctr[0].len() as u8)
     }
@@ -467,8 +470,8 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
         let r_ctr = r_perm.get_ctrs()?;
 
         //Field get is not defined for types with less then one field in a single ctr
-        if r_ctr.len() == 0{
-            return error(||"Requested field does not exist")
+        if r_ctr.len() != 1{
+            return error(||"Field must target a data type with a single constructor")
         };
 
         //get the value typ
@@ -532,11 +535,13 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
         let start_height = self.stack.stack_depth();
         //just a helper to make the loop simpler -- represents the types from the previous case (loop iter)
         let mut loop_res:Option<u8> = None;
-        //Tell the stack that a the control flow branches
-        let mut branching = match mode {
-            Some(_) => self.stack.start_branching(cases.len()),
-            None => self.stack.start_locked_branching( cases.len(),value)?
+        //lock value in case of inspect
+        let lock = match mode {
+            None => Some(self.stack.lock(value)?),
+            Some(_) => None
         };
+        //Tell the stack that a the control flow branches
+        let mut branching = self.stack.start_branching(cases.len());
         //Process all the branches
         // Note: The stack ensures that each branch returns the same Elements (this includes their type)
         for (i,case) in cases.iter().enumerate() {
@@ -562,6 +567,11 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
         let res = loop_res.unwrap();
         //discard unneeded items
         self.clean_frame( res,start_height)?;
+        //unlock value in case of inspect
+        match lock {
+            Some(lock_info) => self.stack.unlock(lock_info),
+            None => {}
+        };
         //finish the branching, leaves the stack with the common elements
         self.stack.end_branching(branching, res)?;
         Ok(res)

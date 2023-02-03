@@ -183,8 +183,12 @@ impl<'b, S:Store + 'b> Context<'b, S> {
     fn resolve_all(&mut self, imports:&[Imports]) -> Result<()> {
         for import in imports {
             match *import {
-                Imports::Module(ref module) => self.resolve_module_plain((*module).clone())?,
-                Imports::Generics(gens) => self.resolve_generics(gens)?,
+                Imports::Module(ref module) => {
+                    self.resolve_module_plain((*module).clone())?;
+                },
+                Imports::Generics(gens) => {
+                    self.resolve_generics(gens)?;
+                },
                 Imports::Public(ref public) => {
                     self.resolve_modules(&public.modules)?;
                     self.resolve_types(&public.types)?;
@@ -203,7 +207,9 @@ impl<'b, S:Store + 'b> Context<'b, S> {
     fn resolve_module_plain(&mut self, res:Crc<ModuleLink>) -> Result<()> {
         //Make sure the module is loaded and accounted even if not used
         match *res {
-            ModuleLink::Remote(hash) => {self.store.get_module(hash)?;},
+            ModuleLink::Remote(hash) => {
+                self.store.get_module(hash)?;
+            },
             ModuleLink::This(_) => {},
         }
         self.cache.mref_cache.push(res);
@@ -219,7 +225,8 @@ impl<'b, S:Store + 'b> Context<'b, S> {
 
     fn resolve_modules(&mut self, imps:&[ModuleLink]) -> Result<()>  {
         for imp in imps {
-            self.resolve_module_plain(self.store.dedup_module_link(imp.clone()))?;
+            let dedup = self.store.dedup_module_link(imp.clone());
+            self.resolve_module_plain(dedup)?;
         }
         Ok(())
     }
@@ -417,8 +424,6 @@ impl<'b, S:Store + 'b> Context<'b, S> {
         let comp = comp_cache.retrieve();
         //get its context with the applies as substitutions
         let context = comp_cache.substituted_context(&applies,&self.store)?;
-        // account for the process
-        self.store.accounting.process_bytes(comp.get_signature_byte_size()?)?;
         //Create the sig
         Ok(self.store.dedup_signature(ResolvedSignature {
             //Map the params to the resolved type
@@ -483,8 +488,6 @@ impl<'b, S:Store + 'b> Context<'b, S> {
                 let adt = adt_cache.retrieve();
                 //get its context with the applies as substitutions
                 let context = adt_cache.substituted_context(&applies,&self.store)?;
-                // account for the process
-                self.store.accounting.process_bytes(adt.get_signature_byte_size()?)?;
                 //Create the Ctr
                 match adt.body {
                     DataImpl::Internal { ref constructors, .. } => {

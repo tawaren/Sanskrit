@@ -164,6 +164,15 @@ impl OpCode {
                 Ok(ROpCode::DiscardMany(inputs))
             },
 
+            OpCode::View(ref assigs, ref val, ref typ) => {
+                let from_v = env.get_id_pos(&val).unwrap();
+                let r_typ = imp.import_perm_ref(&(Perm::Inspect,typ.clone()))?;
+                for assig in assigs {
+                    env.push_new(assig.clone());
+                }
+                Ok(ROpCode::InspectUnpack(from_v, r_typ))
+            },
+
             OpCode::Unpack(ref assigs, ref val, ref typ) => {
                 let from_v = env.get_id_pos(&val).unwrap();
                 let r_typ = imp.import_perm_ref(&(Perm::Consume,typ.clone()))?;
@@ -202,7 +211,7 @@ impl OpCode {
                 for assig in assigs {
                     env.push_new(assig.clone());
                 }
-                Ok(ROpCode::Inspect(from_v, r_typ, exprs))
+                Ok(ROpCode::InspectSwitch(from_v, r_typ, exprs))
             },
 
             OpCode::Pack(ref res_id, ref typ, ref ctr_id, ref vals) => {

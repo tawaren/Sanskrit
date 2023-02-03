@@ -45,7 +45,7 @@ pub trait TransactionVerificationContext<S:Store, B:TransactionBundle> {
     //checks if a type represents a chain storable entry
     fn is_chain_value(&self, ctx:&Context<S,B>, typ:Ptr<RuntimeType>) -> bool;
     //checks if a type represents a providable entry (returns gas to create & size on haep)
-    fn verify_providable(&self, ctx:&Context<S,B>, typ:Ptr<RuntimeType>, section_no:u8,  txt_no:u8) -> Result<(u64,u32)>;
+    fn verify_providable(&self, ctx:&Context<S,B>, typ:Ptr<RuntimeType>, section_no:u8,  txt_no:u8, p_num:u8) -> Result<(u64,u32)>;
 
 }
 
@@ -193,7 +193,7 @@ fn verify_transaction<'c, SYS:SystemContext<'c>>(env:&VerificationEnvironment, a
 
     let mut gas = txt_desc.gas_cost as u64;
 
-    for (p,p_typ) in txt_desc.params.iter().zip(txt.params.iter()) {
+    for (p_num, (p,p_typ)) in txt_desc.params.iter().zip(txt.params.iter()).enumerate() {
         match p_typ {
             ParamRef::Load(ParamMode::Consume,index) => {
                 let first_access = check_store_type(env, *index, *p)?;
@@ -263,7 +263,7 @@ fn verify_transaction<'c, SYS:SystemContext<'c>>(env:&VerificationEnvironment, a
             },
 
             ParamRef::Provided => {
-                let (cost,size) = acc_ctx.verify_providable(ctx, p.typ, sec_no, txt_no)?;
+                let (cost,size) = acc_ctx.verify_providable(ctx, p.typ, sec_no, txt_no, p_num as u8)?;
                 gas += cost;
                 env.param_heap.set(env.param_heap.get() + size);
             },

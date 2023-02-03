@@ -7,19 +7,27 @@ extern crate num_traits;
 //extern crate ed25519_dalek;
 //extern crate sha2;
 extern crate sanskrit_core;
+#[cfg(feature = "deployer")]
 extern crate sanskrit_deploy;
+#[cfg(feature = "deployer")]
 extern crate sanskrit_compile;
+
 extern crate sanskrit_interpreter;
 extern crate sanskrit_common;
 #[macro_use]
 extern crate sanskrit_derive;
 extern crate alloc;
 
-
-use sanskrit_common::store::{Store, StorageClass};
+#[cfg(feature = "deployer")]
+use sanskrit_common::store::StorageClass;
+use sanskrit_common::store::Store;
 use sanskrit_common::errors::*;
-use sanskrit_common::encoding::{Parser, ParserAllocator};
-use model::{Transaction, ParamRef, RetType, BundleSection, DeployTransaction, DeployType};
+#[cfg(feature = "deployer")]
+use sanskrit_common::encoding::Parser;
+use sanskrit_common::encoding::ParserAllocator;
+use model::{Transaction, ParamRef, RetType, BundleSection};
+#[cfg(feature = "deployer")]
+use model::{DeployTransaction, DeployType};
 use sanskrit_common::arena::*;
 use sanskrit_interpreter::model::{Entry, TxTParam, TxTReturn, TransactionDescriptor};
 
@@ -28,11 +36,12 @@ use verify::{verify_repeated, verify_once, TransactionVerificationContext};
 use compute::{execute_once, TransactionExecutionContext};
 use sanskrit_common::model::{Hash, SlicePtr};
 use sanskrit_interpreter::interpreter::Frame;
-use sanskrit_core::accounting::Accounting;
-use core::cell::Cell;
+#[cfg(feature = "deployer")]
 use sanskrit_deploy::{deploy_module, deploy_function};
-use sanskrit_compile::limiter::Limiter;
+#[cfg(feature = "deployer")]
 use sanskrit_compile::compile_function;
+#[cfg(feature = "deployer")]
+use sanskrit_compile::externals::CompilationExternals;
 
 pub mod model;
 pub mod system;
@@ -184,7 +193,8 @@ pub fn execute<'c, 'd:'c, L: Tracker,SYS:SystemContext<'c>>(ctx:Context<SYS::S, 
     Ok(())
 }
 
-pub fn deploy<'c, SYS:SystemContext<'c>>(store:&SYS::S, deploy_data:&[u8], heap:&Heap, system_mode_on:bool) -> Result<()> {
+#[cfg(feature = "deployer")]
+pub fn deploy<'c, S:Store, CE:CompilationExternals>(store:&S, deploy_data:&[u8], heap:&Heap, system_mode_on:bool) -> Result<Hash> {
     //Check that it is inside limit
     if deploy_data.len() > CONFIG.max_bundle_size { return error(||"Transaction Bundle to big")}
     //Static allocations (could be done once)
@@ -193,38 +203,24 @@ pub fn deploy<'c, SYS:SystemContext<'c>>(store:&SYS::S, deploy_data:&[u8], heap:
     //Parse the transaction
     let deploy_txt:DeployTransaction = Parser::parse_fully(deploy_data, CONFIG.max_structural_dept, &deploy_txt_alloc)?;
 
-    let accounting = Accounting {
-        load_byte_budget: Cell::new(deploy_txt.max_load_bytes as usize),
-        store_byte_budget: Cell::new(deploy_txt.max_store_bytes as usize),
-        process_byte_budget: Cell::new(deploy_txt.max_process_bytes as usize),
-        stack_elem_budget: Cell::new(deploy_txt.max_stack_elems as usize),
-        max_nesting: Cell::new(0),
-        nesting_limit: deploy_txt.max_block_nesting as usize,
-        input_limit: deploy_txt.data.len()
-    };
-    match deploy_txt.typ {
+    Ok(match deploy_txt.typ {
         DeployType::Module => {
             //todo: I do not like the to_vec here (as we have it in memory twice now)
             //but without having seperate Transaction type it is hard not to do this
             //todo: we may consider passing &[u8] into store and copy there if necessary (but this gives lifetime hell)
-            deploy_module(store, &accounting, deploy_txt.data.to_vec(), system_mode_on, true)?;
+            let res = deploy_module(store, deploy_txt.data.to_vec(), system_mode_on, true)?;
             store.commit(StorageClass::Module);
+            res
         },
         DeployType::Transaction => {
             //todo: I do not like the to_vec here (as we have it in memory twice now)
             //but without having seperate Transaction type it is hard not to do this
             //todo: we may consider passing &[u8] into store and copy there if necessary (but this gives lifetime hell)
-            let target = deploy_function(store, &accounting, deploy_txt.data.to_vec(), true)?;
-            let limiter = Limiter {
-                max_functions: deploy_txt.max_contained_functions as usize,
-                max_nesting: deploy_txt.max_compile_block_nesting as usize,
-                max_used_nesting: Cell::new(0),
-                produced_functions: Cell::new(0)
-            };
-            compile_function::<_,SYS::CE>(store, &accounting,&limiter, target, true)?;
+            let target = deploy_function(store, deploy_txt.data.to_vec(), true)?;
+            let (res,_) = compile_function::<_,CE>(store, target, true)?;
             store.commit(StorageClass::Transaction);
             store.commit(StorageClass::Descriptor);
+            res
         }
-    }
-    Ok(())
+    })
 }

@@ -1,0 +1,13 @@
+module TestFailView2 {
+
+    type X[A] {
+        X(A);
+    };
+
+
+    private fun Test[<Value, Unbound> A](a:.X[A]):(b:A){
+       b = view a:.X[A];
+       c = view a:.X[A];
+       return c;
+    };
+}

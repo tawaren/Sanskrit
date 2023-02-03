@@ -137,11 +137,11 @@ impl<'c> SystemDataManager<BundleWithHash<'c>> for ScriptSystemDataManager {
     }
 
     //This means we can only provide 1 value per Txt
-    fn provided_value_key(_typ: Ptr<RuntimeType>, section_no:u8,  txt_no:u8) -> Option<Vec<u8>> {
+    fn provided_value_key(_typ: Ptr<RuntimeType>, section_no:u8,  txt_no:u8, p_num:u8) -> Option<Vec<u8>> {
         Some(vec![section_no,txt_no])
     }
 
-    fn create_provided_value<'a, 'h>(bundle: &BundleWithHash, _typ: Ptr<RuntimeType>, alloc: &'a VirtualHeapArena<'h>, block_no: u64, section_no:u8,  txt_no:u8) -> Result<Entry<'a>> {
+    fn create_provided_value<'a, 'h>(bundle: &BundleWithHash, _typ: Ptr<RuntimeType>, alloc: &'a VirtualHeapArena<'h>, block_no: u64, section_no:u8,  txt_no:u8, p_num:u8) -> Result<Entry<'a>> {
         let mut context = HashingDomain::Derive.get_domain_hasher();
         //fill the hash with first value
         context.update(&bundle.bundle_hash);
@@ -162,7 +162,6 @@ impl<'c> SystemDataManager<BundleWithHash<'c>> for ScriptSystemDataManager {
 
 pub struct ScriptSystem;
 impl<'c> SystemContext<'c> for ScriptSystem {
-    type CE = ScriptExternals;
     type RE = ScriptExternals;
     type S = BTreeMapStore;
     type B = BundleWithHash<'c>;

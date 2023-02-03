@@ -140,20 +140,6 @@ impl BTreeMapStore {
 }
 
 impl Store for BTreeMapStore {
-    //Checks if the elem is contained
-    fn contains(&self, class: StorageClass, key: &Hash) -> bool {
-        fn process(map:&Container, key:&Hash) -> bool {
-            map.contains_key(key)
-        }
-        //select the right map
-        match class {
-            StorageClass::Module => process(&self.0.borrow().modules,key),
-            StorageClass::Transaction => process(&self.0.borrow().funs, key),
-            StorageClass::Descriptor => process(&self.0.borrow().descs, key),
-            StorageClass::EntryValue => process(&self.0.borrow().elems, key),
-            StorageClass::EntryHash => process(&self.0.borrow().hashs, key),
-        }
-    }
     //delete a store entry
     fn delete(&self, class: StorageClass, key: &[u8; 20])  -> Result<()>  {
         fn process(map: &mut Container, key:&Hash) -> Result<()>  {

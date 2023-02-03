@@ -146,6 +146,7 @@ pub enum OpCode {
     CopyField(Id,Id,Lit,Type),
     Discard(Id),
     DiscardMany(Vec<Id>),
+    View(Vec<Id>, Id, Type),
     Unpack(Vec<Id>, Id, Type),
     Switch(Vec<Id>, Id, Type, Vec<Match>),
     Inspect(Vec<Id>, Id, Type, Vec<Match>),

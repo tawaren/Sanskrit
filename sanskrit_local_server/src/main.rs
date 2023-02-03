@@ -2,8 +2,6 @@
 
 extern crate rustyline;
 extern crate sanskrit_runtime;
-extern crate sanskrit_compile;
-extern crate sanskrit_deploy;
 extern crate sanskrit_common;
 extern crate sanskrit_core;
 extern crate sanskrit_interpreter;
@@ -22,10 +20,19 @@ extern crate sanskrit_derive;
 
 #[macro_use]
 extern crate lalrpop_util;
+extern crate fluid_let;
+#[cfg(feature = "wasm")]
+extern crate wasmer_runtime;
+#[cfg(feature = "embedded")]
+extern crate sanskrit_compile;
+#[cfg(feature = "embedded")]
+extern crate sanskrit_deploy;
 
 mod manager;
 mod parser_model;
 mod externals;
+#[cfg(feature = "wasm")]
+mod compiler;
 
 lalrpop_mod!(pub parser);
 
@@ -55,6 +62,8 @@ use std::collections::BTreeSet;
 use std::cell::RefCell;
 use std::rc::Rc;
 use sanskrit_common::store::StorageClass;
+#[cfg(feature = "wasm")]
+use compiler::CompilerInstance;
 
 pub const MODULE_COMMAND:u8 = 0;
 pub const TRANSACTION_COMMAND:u8 = 1;
@@ -88,7 +97,7 @@ fn handle_data<R:Read>(state: &mut State, reader:&mut R) -> Result<Vec<Hash>>{
             let data:ModuleNames = Parser::parse_fully(&meta_data_bytes,6,&NoCustomAlloc())?;
             let name = (data.0).0;
             let bytes = read_length_prefixed_array(reader)?;
-            let hash = state.deploy_module(bytes, false)?;
+            let hash = state.deploy_module(bytes, false, None)?;
             println!("Mapping Module with hash {:?} to name {}", encode(&hash),&name);
             convert_error(state.tracking.data_names.insert(hash.clone(),meta_data_bytes))?;
             convert_error(state.module_name_mapping.insert(name,&hash.clone()))?;
@@ -107,7 +116,7 @@ fn handle_data<R:Read>(state: &mut State, reader:&mut R) -> Result<Vec<Hash>>{
                     return error(||"unknown system module identifier")
                 }
                 let bytes = read_length_prefixed_array(reader)?;
-                let hash = state.deploy_module(bytes, true)?;
+                let hash = state.deploy_module(bytes, true, Some(sys_id))?;
                 let sys_impl = externals::SYS_MODS[sys_id as usize];
                 sys_impl(hash.clone());
                 convert_error(state.system_entries.insert(&[sys_id], &hash))?;
@@ -117,7 +126,7 @@ fn handle_data<R:Read>(state: &mut State, reader:&mut R) -> Result<Vec<Hash>>{
                 (hash, e_hash)
             } else {
                 let bytes = read_length_prefixed_array(reader)?;
-                let hash = state.deploy_module(bytes, true)?;
+                let hash = state.deploy_module(bytes, true, None)?;
                 let e_hash = encode(&hash);
                 println!("Registered System Module {} with Hash {:?}",name, e_hash);
                 (hash, e_hash)
@@ -298,7 +307,7 @@ fn process_bundle_line(line:String, bundle_state:Rc<RefCell<(BTreeSet<String>,Ve
             }
             return Ok(ProcRes::End)
         }
-        "bench" => {
+        "bench_code" => {
             let mut local_state = convert_error(shared_state.lock())?;
             let (_, ref txts) = *bundle_state.borrow_mut();
             match local_state.bench_transaction(&txts) {
@@ -318,6 +327,37 @@ fn process_bundle_line(line:String, bundle_state:Rc<RefCell<(BTreeSet<String>,Ve
     Ok(ProcRes::Continue)
 }
 
+#[cfg(feature = "wasm")]
+fn register_system_modules(state:&State) -> std::io::Result<()> {
+    for entry in state.system_entries.iter() {
+        let (k,e) = entry?;
+        let sys_id = k[0];
+        let hash = hash_from_slice(&e);
+        let sys_impl = externals::SYS_MODS[sys_id as usize];
+        sys_impl(hash.clone());
+        match state.instance.register(hash.clone(), 100000, sys_id as isize) {
+            Ok(_) => {}
+            Err(_) => {}
+        };
+        let e_hash = encode(&hash);
+        println!("Re-Registered Module with Hash {:?} as System Module with Number {:?}",e_hash,sys_id);
+    }
+    Ok(())
+}
+
+#[cfg(feature = "embedded")]
+fn register_system_modules(state:&State) -> std::io::Result<()> {
+    for entry in state.system_entries.iter() {
+        let (k,e) = entry?;
+        let sys_id = k[0];
+        let hash = hash_from_slice(&e);
+        let sys_impl = externals::SYS_MODS[sys_id as usize];
+        sys_impl(hash.clone());
+        let e_hash = encode(&hash);
+        println!("Re-Registered Module with Hash {:?} as System Module with Number {:?}",e_hash,sys_id);
+    }
+    Ok(())
+}
 
 pub fn main() -> std::io::Result<()> {
     let args: Vec<String> = env::args().collect();
@@ -345,6 +385,8 @@ pub fn main() -> std::io::Result<()> {
     auto_flushes.insert(StorageClass::Descriptor);
 
     let state = State {
+        #[cfg(feature = "wasm")]
+        instance: CompilerInstance::new().unwrap(),
         store: SledStore::new(&db_folder, auto_flushes),
         accounts:sled::open(account_db)?,
         system_entries:sled::open(sys_entry_db)?,
@@ -359,15 +401,7 @@ pub fn main() -> std::io::Result<()> {
         meta_data:sled::open(meta_db)?,
     };
 
-    for entry in state.system_entries.iter() {
-        let (k,e) = entry?;
-        let sys_id = k[0];
-        let hash = hash_from_slice(&e);
-        let sys_impl = externals::SYS_MODS[sys_id as usize];
-        sys_impl(hash.clone());
-        let e_hash = encode(&hash);
-        println!("Re-Registered Module with Hash {:?} as System Module with Number {:?}",e_hash,sys_id);
-    }
+    register_system_modules(&state)?;
 
     let shared_state = Arc::new(Mutex::new(state));
     let listener_state = Arc::clone(&shared_state);

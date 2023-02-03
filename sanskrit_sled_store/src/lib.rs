@@ -75,43 +75,6 @@ impl Container {
         }
     }
 
-    pub fn clear(&mut self) {
-        self.persisted.clear().unwrap();
-        self.pending.clear();
-    }
-
-    pub fn report(&mut self) -> ChangeReport {
-        let mut entries_difference = 0;
-        let mut bytes_difference = 0;
-        for (key, value) in &self.pending {
-            match value {
-                None => match self.persisted.get(key).unwrap() {
-                    None => {},
-                    Some(rem_data) => {
-                        entries_difference -= 1;
-                        bytes_difference -= rem_data.len() as isize;
-                    }
-                },
-                Some(data) => {
-                    entries_difference += 1;
-                    bytes_difference += data.len() as isize;
-                    match self.persisted.get(key).unwrap() {
-                        None => {},
-                        Some(rem_data) => {
-                            entries_difference -= 1;
-                            bytes_difference -= rem_data.len() as isize;
-                        }
-                    }
-                }
-            };
-        }
-
-        ChangeReport {
-            entries_difference,
-            bytes_difference
-        }
-    }
-
     pub fn commit(&mut self) {
         let mut res = BTreeMap::new();
         mem::swap(&mut res, &mut self.pending);
@@ -182,20 +145,6 @@ impl SledStore {
 
 
 impl Store for SledStore {
-    //Checks if the elem is contained
-    fn contains(&self, class: StorageClass, key: &Hash) -> bool {
-        fn process(map:&Container, key:&Hash) -> bool {
-            map.contains_key(key)
-        }
-        //select the right map
-        match class {
-            StorageClass::Module => process(&self.0.borrow().modules,key),
-            StorageClass::Transaction => process(&self.0.borrow().funs, key),
-            StorageClass::Descriptor => process(&self.0.borrow().descs, key),
-            StorageClass::EntryValue => process(&self.0.borrow().elems, key),
-            StorageClass::EntryHash => process(&self.0.borrow().hashs, key),
-        }
-    }
     //delete a store entry
     fn delete(&self, class: StorageClass, key: &[u8; 20])  -> Result<()>  {
         fn process(map: &mut Container, key:&Hash) -> Result<()>  {

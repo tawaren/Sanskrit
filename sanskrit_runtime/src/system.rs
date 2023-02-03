@@ -5,14 +5,13 @@ use compute::TransactionExecutionContext;
 use TransactionBundle;
 use sanskrit_common::encoding::ParserAllocator;
 use sanskrit_common::errors::*;
-use sanskrit_compile::externals::CompilationExternals;
+
 
 
 pub trait SystemContext<'c> {
-    type CE:CompilationExternals;
     type RE:RuntimeExternals;
     type S:Store;
-    type B: TransactionBundle;
+    type B:TransactionBundle;
     type VC:TransactionVerificationContext<Self::S, Self::B>;
     type EC:TransactionExecutionContext<Self::S, Self::B>;
 

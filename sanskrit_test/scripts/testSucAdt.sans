@@ -1,7 +1,7 @@
 module TestSucAdt {
     type Phantom;
 
-    public(consume) type <Copy, Drop, Persist, Value, Unbound>  Wrapper[X] {
+    public(consume,inspect) type <Copy, Drop, Persist, Value, Unbound>  Wrapper[X] {
         Ctr(X);
     };
 

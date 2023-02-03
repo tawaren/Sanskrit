@@ -3,8 +3,9 @@
 use sanskrit_sled_store::SledStore;
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
-use sanskrit_deploy::{deploy_module, deploy_function};
-use sanskrit_runtime::{execute, Tracker, CONFIG, read_transaction_desc, deploy, Context};
+use sanskrit_runtime::{execute, Tracker, CONFIG, read_transaction_desc, Context};
+#[cfg(feature = "embedded")]
+use sanskrit_runtime::deploy;
 use sanskrit_common::store::*;
 use sanskrit_common::encoding::*;
 use sanskrit_common::model::*;
@@ -18,13 +19,13 @@ use hex::encode;
 use sanskrit_common::arena::{Heap, VirtualHeapArena};
 use sanskrit_common::hashing::HashingDomain;
 
-use sanskrit_runtime::model::{DeployTransaction, DeployType, ParamRef, ParamMode, RetType, BundleSection, SectionType, Transaction, TransactionBundleCore, BaseTransactionBundle};
-use sanskrit_core::accounting::Accounting;
-use std::cell::Cell;
-use sanskrit_compile::compile_function;
-use sanskrit_compile::limiter::Limiter;
+use sanskrit_runtime::model::{ParamRef, ParamMode, RetType, BundleSection, SectionType, Transaction, TransactionBundleCore, BaseTransactionBundle};
+#[cfg(feature = "embedded")]
+use sanskrit_runtime::model::{DeployTransaction, DeployType};
 use sanskrit_interpreter::model::{Entry, TxTParam, TxTReturn, TransactionDescriptor, ValueSchema, Adt};
 use externals::{ServerSystem, ServerSystemDataManager, get_ed_dsa_module};
+#[cfg(feature = "embedded")]
+use externals::ServerExternals;
 use std::time::Instant;
 use std::ops::{Deref, Add};
 use std::convert::TryInto;
@@ -35,6 +36,10 @@ use ed25519_dalek::ed25519::SIGNATURE_LENGTH;
 use sanskrit_runtime::system::SystemContext;
 use sanskrit_runtime::direct_stored::SystemDataManager;
 use externals::crypto::{raw_plain_hash, raw_join_hash};
+#[cfg(feature = "wasm")]
+use compiler::CompilerInstance;
+#[cfg(feature = "embedded")]
+use sanskrit_deploy::deploy_module;
 
 pub struct Tx {
     pub desc:Hash,
@@ -82,6 +87,8 @@ pub struct TrackingState {
 }
 
 pub struct State {
+    #[cfg(feature = "wasm")]
+    pub instance:CompilerInstance,
     pub store:SledStore,
     pub accounts:Db,
     pub system_entries:Db,
@@ -227,47 +234,6 @@ const MAX_PARSE_DEPTH:usize = 1024;
 
 impl State {
 
-    fn max_accounting(input_limit:usize) -> Accounting{
-        Accounting{
-            load_byte_budget: Cell::new(usize::max_value()),
-            store_byte_budget: Cell::new(usize::max_value()),
-            process_byte_budget: Cell::new(usize::max_value()),
-            stack_elem_budget: Cell::new(usize::max_value()),
-            //these two are a bit counter intuitive
-            max_nesting: Cell::new(0),
-            nesting_limit: usize::max_value(),
-            input_limit
-        }
-    }
-
-    fn max_limiter() -> Limiter {
-        Limiter {
-            max_functions: usize::max_value(),
-            max_nesting: usize::max_value(),
-            max_used_nesting: Cell::new(0),
-            produced_functions: Cell::new(0)
-        }
-    }
-
-    fn deploy_txt(typ:DeployType, data: &[u8], eval_accounting:Accounting, eval_limiter:Option<Limiter>) -> DeployTransaction {
-        let (max_contained_functions, max_compile_block_nesting) = match eval_limiter {
-            None => (0,0),
-            Some(limiter) => (limiter.produced_functions.get() as u32, limiter.max_used_nesting.get() as u32),
-        };
-
-        DeployTransaction{
-            typ,
-            data: SlicePtr::wrap(data),
-            max_load_bytes: (usize::max_value() - eval_accounting.load_byte_budget.get()) as u32,
-            max_store_bytes: (usize::max_value() - eval_accounting.store_byte_budget.get()) as u32,
-            max_process_bytes: (usize::max_value() - eval_accounting.process_byte_budget.get()) as u32,
-            max_stack_elems: (usize::max_value() - eval_accounting.stack_elem_budget.get()) as u32,
-            max_block_nesting: eval_accounting.max_nesting.get() as u32,
-            //We do not compile anything so we can leave 0
-            max_contained_functions,
-            max_compile_block_nesting
-        }
-    }
 
     pub fn execute_bundle(&mut self, bundle:&[u8], block_no:u64, heap:&Heap) -> Result<()> {
         let txt_bundle_alloc = heap.new_virtual_arena(CONFIG.max_bundle_size);
@@ -279,50 +245,76 @@ impl State {
         execute::<_, ServerSystem>(ctx,block_no, &heap, &mut self.tracking)
     }
 
-    pub fn execute_deploy(&mut self, bundle:&[u8], system_mode_on:bool) -> Result<()> {
-        let heap = Heap::new(CONFIG.calc_heap_size(2),2.0);
-        deploy::<ServerSystem>(&self.store, &bundle, &heap, system_mode_on)
+    #[cfg(feature = "wasm")]
+    pub fn deploy_module(&mut self, module:Vec<u8>, system_mode_on:bool, system_id:Option<u8>) -> Result<Hash> {
+        let now = Instant::now();
+        let (hash, gas) = if system_mode_on {
+            //Todo: Configure gas read from somewhere??
+            self.instance.compile_system_module(&module, &self.store, system_id.map(|id|id as usize), 100000000,10000)?
+        } else {
+            self.instance.compile_module(&module, &self.store, 100000000,10000)?
+        };
+        let end = now.elapsed().as_micros();
+        println!("deployed Module with hash {:?} of size {:?} in {:?} us using {:?} gas", encode(&hash),module.len(),end, gas);
+        Ok(hash)
     }
 
-    pub fn deploy_module(&mut self, module:Vec<u8>, system_mode_on:bool) -> Result<Hash> {
+    #[cfg(feature = "wasm")]
+    pub fn deploy_transaction(&mut self, transaction:Vec<u8>) -> Result<(Hash,Hash)> {
+        let now = Instant::now();
+        //Todo: Configure gas read from somewhere??
+        let (t_hash, hash, gas) = self.instance.compile_transaction(&transaction,&self.store, 100000000,10000)?;
+        let end = now.elapsed().as_micros();
+        println!("deployed transaction in {:?} us using {:?} gas", end, gas);
+        let desc_size = self.store.get( StorageClass::Descriptor, &t_hash,|d|d.len())?;
+        println!("  - function with hash {:?} of size {:?}", encode(&hash), transaction.len());
+        println!("  - descriptor with hash {:?} of size {:?}", encode(&t_hash), desc_size);
+        Ok((hash,t_hash))
+    }
+
+    #[cfg(feature = "embedded")]
+    pub fn execute_deploy(&mut self, bundle:&[u8], system_mode_on:bool) -> Result<Hash> {
+        let heap = Heap::new(CONFIG.calc_heap_size(2),2.0);
+        deploy::<_, ServerExternals>(&self.store, &bundle, &heap, system_mode_on)
+    }
+
+    #[cfg(feature = "embedded")]
+    pub fn deploy_module(&mut self, module:Vec<u8>, system_mode_on:bool, _system_id:Option<u8>) -> Result<Hash> {
         let now = Instant::now();
         let hash1 = store_hash(&[&module]);
-        if !self.store.contains(StorageClass::Module, &hash1){
-            //Estimation test run
-            let accounting = Self::max_accounting(module.len());
-            deploy_module(&self.store,&accounting,module.clone(),system_mode_on,false)?;
-            self.store.rollback(StorageClass::Module);
-
-            let txt = Self::deploy_txt(DeployType::Module, &module, accounting, None);
-
-            let mut s = Serializer::new(usize::max_value());
-            txt.serialize(&mut s)?;
-            self.execute_deploy(&s.extract(), system_mode_on)?;
-            println!("deployed Module with hash {:?} of size {:?} in {:?} ms", encode(&hash1),module.len(),now.elapsed().as_millis());
-        }
+        //if !self.store.contains(StorageClass::Module, &hash1){
+        let txt = DeployTransaction{
+            typ: DeployType::Module,
+            data: SlicePtr::wrap(&module)
+        };
+        let mut s = Serializer::new(usize::max_value());
+        txt.serialize(&mut s)?;
+        self.execute_deploy(&s.extract(), system_mode_on)?;
+        let end = now.elapsed().as_micros();
+        println!("deployed Module with hash {:?} of size {:?} in {:?} us", encode(&hash1),module.len(),end);
+        //}
         Ok(hash1)
     }
 
+    #[cfg(feature = "embedded")]
     pub fn deploy_transaction(&mut self, transaction:Vec<u8>) -> Result<(Hash,Hash)> {
         let now = Instant::now();
-
-        //Estimation test run
-        let accounting = Self::max_accounting(transaction.len());
-        let limiter = Self::max_limiter();
-
-        let hash = deploy_function(&self.store,&accounting,transaction.clone(),false)?;
-        let (t_hash,t_size) = compile_function::<_,<ServerSystem as SystemContext>::CE>(&self.store, &accounting,&limiter,hash, false)?;
-        self.store.rollback(StorageClass::Transaction);
-        self.store.rollback(StorageClass::Descriptor);
-        let txt = Self::deploy_txt(DeployType::Transaction, &transaction, accounting, Some(limiter));
+        let hash = store_hash(&[&transaction]);
+        let txt = DeployTransaction{
+            typ: DeployType::Transaction,
+            data: SlicePtr::wrap(&transaction)
+        };
         let mut s = Serializer::new(usize::max_value());
         txt.serialize(&mut s)?;
-        self.execute_deploy(&s.extract(), false)?;
-        println!("deployed transaction in {:?} ms", now.elapsed().as_millis());
+        let t_hash = self.execute_deploy(&s.extract(), false)?;
+        let end = now.elapsed().as_micros();
+        println!("deployed transaction in {:?} us", end);
+        let desc_size = self.store.get( StorageClass::Descriptor, &t_hash,|d|d.len())?;
         println!("  - function with hash {:?} of size {:?}", encode(&hash), transaction.len());
-        println!("  - descriptor with hash {:?} of size {:?}", encode(&t_hash),t_size);
+        println!("  - descriptor with hash {:?} of size {:?}", encode(&t_hash), desc_size);
         Ok((hash,t_hash))
     }
+
 
     fn build_core<'c>(
         gas:u64,

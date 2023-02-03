@@ -5,13 +5,11 @@ mod tests {
     use sanskrit_test_script_compiler::model::Id;
     use sanskrit_deploy::*;
     use sanskrit_compile::*;
-    use sanskrit_compile::limiter::*;
     use test::Bencher;
     use sanskrit_memory_store::BTreeMapStore;
     use std::env::current_dir;
     use sanskrit_common::arena::Heap;
     use sanskrit_test_script_compiler::script::Compiler;
-    use sanskrit_core::accounting::Accounting;
     use std::cell::Cell;
     use sanskrit_runtime::{CONFIG, execute, Tracker, Context};
     use sanskrit_common::store::StorageClass;
@@ -22,38 +20,6 @@ mod tests {
     use sanskrit_runtime::model::{Transaction, RetType, BundleSection, ParamRef};
     use sanskrit_common::encoding::Serializer;
     use sanskrit_runtime::system::SystemContext;
-
-    fn max_accounting() -> Accounting {
-        Accounting {
-            load_byte_budget: Cell::new(usize::max_value()),
-            store_byte_budget: Cell::new(usize::max_value()),
-            process_byte_budget: Cell::new(usize::max_value()),
-            stack_elem_budget: Cell::new(usize::max_value()),
-            nesting_limit: 10,
-            input_limit: 1000000,
-            max_nesting: Cell::new(0)
-        }
-    }
-
-    fn max_limiting() -> Limiter {
-        Limiter {
-            max_functions:u16::max_value() as usize,
-            max_nesting:u8::max_value() as usize,
-            max_used_nesting:Cell::new(0),
-            produced_functions: Cell::new(0)
-        }
-    }
-
-    /*
-    fn trim_newline(s: &mut String) {
-        if s.ends_with('\n') {
-            s.pop();
-            if s.ends_with('\r') {
-                s.pop();
-            }
-        }
-    }
-    */
 
     struct CheckedLogger{
         expects:Vec<String>
@@ -80,8 +46,6 @@ mod tests {
 
 
     fn parse_and_compile_and_run(id_name:&str) -> Result<()>{
-        let accounting = max_accounting();
-        let limiter =  max_limiting();
         let id = Id(id_name.into());
         let folder = current_dir().unwrap().join("transactions");
         let mut comp = Compiler::new(&folder);
@@ -93,7 +57,7 @@ mod tests {
         for (i,sys_mode, r) in mod_res {
             println!("M: {:?}",i);
 
-            deploy_module(&s, &accounting, r, sys_mode, true)?;
+            deploy_module(&s, r, sys_mode, true)?;
         }
 
         let mut heap = Heap::new(CONFIG.calc_heap_size(2),2.0);
@@ -110,8 +74,8 @@ mod tests {
 
         let mut hashes = Vec::with_capacity(txt_res.len());
         for t in txt_res {
-            let fun_id = deploy_function(&s, &accounting, t.clone(), true)?;
-            hashes.push(compile_function::<_,ScriptExternals>(&s, &accounting, &limiter,fun_id, true)?.0);
+            let fun_id = deploy_function(&s, t.clone(), true)?;
+            hashes.push(compile_function::<_,ScriptExternals>(&s,fun_id, true)?.0);
         }
 
         let bundle = comp.create_bundle(&hashes, &heap);
@@ -141,8 +105,6 @@ mod tests {
     }
 
     fn parse_and_compile_and_run_bench(id_name:&str,b: &mut Bencher) -> Result<()>{
-        let accounting = max_accounting();
-        let limiter =  max_limiting();
         let id = Id(id_name.into());
         let folder = current_dir().unwrap().join("transactions");
         let mut comp = Compiler::new(&folder);
@@ -153,13 +115,13 @@ mod tests {
         let s = BTreeMapStore::new();
         for (i,sys_mode, r) in mod_res {
             println!("M: {:?}",i);
-            deploy_module(&s, &accounting, r, sys_mode, true)?;
+            deploy_module(&s, r, sys_mode, true)?;
         }
 
         let mut hashes = Vec::with_capacity(txt_res.len());
         for t in txt_res {
-            let fun_id = deploy_function(&s, &accounting, t.clone(), true)?;
-            hashes.push(compile_function::<_,ScriptExternals>(&s, &accounting, &limiter,fun_id, true)?.0);
+            let fun_id = deploy_function(&s, t.clone(), true)?;
+            hashes.push(compile_function::<_,ScriptExternals>(&s,fun_id, true)?.0);
         }
 
 

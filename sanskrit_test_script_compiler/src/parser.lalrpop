@@ -112,6 +112,8 @@ OpCode:OpCode = {
     <id:Assign> "field" "[" <n:Lit> "]" <var:Id> ":" <typ:Type>  => OpCode::Field(id,var,n,typ),
     <id:Assign> "copy field" "[" <n:Lit> "]" <var:Id> ":" <typ:Type> => OpCode::CopyField(id,var,n,typ),
     <assigs:Assigns> "unpack" <var:Id>  ":" <typ:Type> => OpCode::Unpack(assigs,var,typ),
+    <assigs:Assigns> "view" <var:Id>  ":" <typ:Type> => OpCode::View(assigs,var,typ),
+
     <assigs:Assigns> "switch" <var:Id> ":" <typ:Type> "{" <matches:Semi<Match>> "}" => OpCode::Switch(assigs,var,typ,matches),
     <assigs:Assigns> "inspect" <var:Id> ":" <typ:Type> "{" <matches:Semi<Match>> "}" => OpCode::Inspect(assigs,var,typ,matches),
     <id:Assign> "pack" <typ:Type> "#" <ctr:Id> "(" <vars:Comma<Id>> ")" => OpCode::Pack(id,typ,ctr,vars),

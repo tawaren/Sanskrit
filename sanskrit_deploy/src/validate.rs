@@ -14,13 +14,12 @@ use code_type_checker::TypeCheckerContext;
 use sanskrit_common::model::ModuleLink;
 use sanskrit_common::model::Hash;
 use sanskrit_core::model::bitsets::{CapSet, BitSet, PermSet};
-use sanskrit_core::accounting::Accounting;
 
-pub fn validate_top_function<S:Store>(data:&[u8], store:&S, accounting:&Accounting) -> Result<()>{
+pub fn validate_top_function<S:Store>(data:&[u8], store:&S) -> Result<()>{
     //Parse the function
     let fun:FunctionComponent = Parser::parse_fully::<FunctionComponent,NoCustomAlloc>(data, usize::max_value(),&NoCustomAlloc())?;
     //Prepare the cache for this iteration
-    let resolver = Loader::new_complete(store, &accounting);
+    let resolver = Loader::new_complete(store);
     //Prepare the context
     let context = Context::from_top_component(&fun, &resolver)?;
 
@@ -29,22 +28,21 @@ pub fn validate_top_function<S:Store>(data:&[u8], store:&S, accounting:&Accounti
     validate_transaction(&fun, &context)?;
     //Do the type checking of the code in the function body
     if let CallableImpl::Internal {ref code, ..} = fun.body {
-        let mut checker = TypeCheckerContext::<S>::new(accounting, context);
+        let mut checker = TypeCheckerContext::<S>::new(context);
         /*match checker.type_check_function(&fun, code) {
             Ok(k) => k,
             Err(_) => panic!("{:?}", fun),
         }*/
         checker.type_check_function(&fun, code)?;
-        checker.report_depth(accounting);
     }
     Ok(())
 }
 
-pub fn validate<S:Store>(data:&[u8], store:&S, accounting:&Accounting, link:Hash, system_mode_on:bool) -> Result<()> {
+pub fn validate<S:Store>(data:&[u8], store:&S, link:Hash, system_mode_on:bool) -> Result<()> {
     //Parse the module
     let parsed: Module = Parser::parse_fully::<Module, NoCustomAlloc>(data, usize::max_value(), &NoCustomAlloc())?;
     //Prepare the cache for this iteration
-    let resolver = Loader::new_incremental(store, link, parsed, &accounting);
+    let resolver = Loader::new_incremental(store, link, parsed);
     //Get a reference to the cached Module
     let module = resolver.get_module(link)?;
     // get the module lnk
@@ -96,9 +94,8 @@ pub fn validate<S:Store>(data:&[u8], store:&S, accounting:&Accounting, link:Hash
             validate_function(f, &context, system_mode_on)?;
             //Do the type checking of the code in the function body
             if let CallableImpl::Internal {ref code, ..} = f.body {
-                let mut checker = TypeCheckerContext::<S>::new(accounting, context);
+                let mut checker = TypeCheckerContext::<S>::new(context);
                 checker.type_check_function(f, code)?;
-                checker.report_depth(accounting);
             }
             //Hint the cache that a new Function is available in the current module
             resolver.this_deployed_functions.set(tdf + 1);
@@ -116,9 +113,8 @@ pub fn validate<S:Store>(data:&[u8], store:&S, accounting:&Accounting, link:Hash
             validate_implement(i, &context, system_mode_on)?;
             //Do the type checking of the code in the function body
             if let CallableImpl::Internal {ref code, ..} = i.body {
-                let mut checker = TypeCheckerContext::<S>::new(accounting, context);
+                let mut checker = TypeCheckerContext::<S>::new(context);
                 checker.type_check_implement(i, code)?;
-                checker.report_depth(accounting);
             }
             //Hint the cache that a new Implement is available in the current module
             resolver.this_deployed_implements.set(tdi+1);

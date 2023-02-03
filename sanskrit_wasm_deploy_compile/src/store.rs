@@ -2,10 +2,9 @@ use sanskrit_common::model::Hash;
 use core::cell::RefCell;
 use sanskrit_common::store::*;
 use sanskrit_common::errors::*;
-use core::mem;
-use std::collections::BTreeMap;
-use crate::{contains, load, store};
-use std::borrow::Borrow;
+use crate::{load, store};
+use ::emit_error;
+use std::ops::DerefMut;
 
 //A BTreeMap backed store for development
 #[derive(Clone, Default, Debug)]
@@ -29,27 +28,32 @@ fn class_to_u8(class:StorageClass) -> u8 {
 }
 
 impl Store for ExternalStore {
-    //Checks if the elem is contained
-    fn contains(&self, class: StorageClass, key: &Hash) -> bool {
-        unsafe{contains(class_to_u8(class), key.as_ptr())}
-    }
-
     //delete a store entry
-    fn delete(&self, class: StorageClass, key: &[u8; 20])  -> Result<()>  {
+    fn delete(&self, _class: StorageClass, _key: &[u8; 20])  -> Result<()>  {
         //only needed during execution not compilation
-        unreachable!()
+        emit_error("Delete not supported");
+        unreachable!("Delete not supported")
     }
 
 
     //Gets a value out and uses P as Parser
     fn get<P,F:FnOnce(&[u8])-> P>(&self, class:StorageClass, key: &Hash, f:F) -> Result<P> {
-        let size = unsafe{load(class_to_u8(class), key.as_ptr(), self.pre_alloc.borrow_mut().as_mut_ptr(), self.pre_alloc.borrow().len())};
-        if size >= 0 {
+        //we need this scope to make sure lifetime of lock is not to long
+        //  else we get in trouble when we call this function recursively
+        let size = {
+            let mut lock = self.pre_alloc.borrow_mut();
+            let workspace: &mut [u8] = &mut lock.deref_mut()[..];
+            unsafe{load(class_to_u8(class), key.as_ptr(), workspace.as_mut_ptr(), workspace.len())}
+        };
+        let res = if size >= 0 {
             Ok(f(&self.pre_alloc.borrow()[0..(size as usize)]))
         } else {
-            self.pre_alloc.borrow_mut().resize((-size) as usize, 0);
+            {
+                self.pre_alloc.borrow_mut().resize((-size) as usize, 0);
+            }
             self.get(class,key,f)
-        }
+        };
+        res
     }
 
     //Stores a value in the store
@@ -62,15 +66,17 @@ impl Store for ExternalStore {
     }
 
 
-    fn commit(&self, class: StorageClass) {
+    fn commit(&self, _class: StorageClass) {
         //we eagerly commit for performance reasons
         //  so this should not be called
-        unreachable!()
+        emit_error("Commit not supported");
+        unreachable!("Commit not supported")
     }
 
-    fn rollback(&self, class: StorageClass) {
+    fn rollback(&self, _class: StorageClass) {
         //we eagerly commit for performance reasons
         //  so this should not be called
-        unreachable!()
+        emit_error("Rollback not supported");
+        unreachable!("Rollback not supported")
     }
 }

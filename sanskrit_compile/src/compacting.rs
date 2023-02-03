@@ -25,7 +25,6 @@ use sanskrit_core::utils::Crc;
 use sanskrit_common::encoding::VirtualSize;
 use collector::Collector;
 use sanskrit_core::loader::Loader;
-use limiter::Limiter;
 use externals::{CompilationResult, ExpResources, CompilationExternals};
 
 struct State {
@@ -59,11 +58,7 @@ pub struct Compactor<'b,'h> {
     //allocator
     alloc:&'b HeapArena<'h>,
     // block
-    block: Vec<ROpCode<'b>>,
-    // nesting (Not the same as frames, as we want to be able to eliminate frames, but the nesting is a resource limit)
-    cur_nesting:usize,
-    nesting_limit:usize,
-    max_nesting:usize
+    block: Vec<ROpCode<'b>>
 }
 
 type BranchPoint = (u64,u64,u64,u64);
@@ -188,8 +183,8 @@ impl State {
 }
 
 impl<'b,'h> Compactor<'b,'h> {
-    pub fn compact<S:Store,CE:CompilationExternals>(fun:&FunctionComponent, body:&Exp, store:&Loader<S>, alloc:&'b HeapArena<'h>, limiter:&Limiter) -> Result<(SlicePtr<'b,Ptr<'b,RExp<'b>>>, ExpResources)> {
-        let functions = Collector::collect(fun,store,limiter)?;
+    pub fn compact<S:Store,CE:CompilationExternals>(fun:&FunctionComponent, body:&Exp, store:&Loader<S>, alloc:&'b HeapArena<'h>) -> Result<(SlicePtr<'b,Ptr<'b,RExp<'b>>>, ExpResources)> {
+        let functions = Collector::collect(fun,store)?;
 
         let mut compactor = Compactor {
             state:State::new(),
@@ -197,9 +192,6 @@ impl<'b,'h> Compactor<'b,'h> {
             functions: alloc.slice_builder(functions.len()+1)?,
             alloc,
             block: Vec::new(),
-            max_nesting:0,
-            cur_nesting:0,
-            nesting_limit: limiter.max_nesting //will be set for each function
         };
 
         for fun_cache in functions {
@@ -217,8 +209,6 @@ impl<'b,'h> Compactor<'b,'h> {
 
             //compact the function
             let (processed, resources) = compactor.process_func::<_,CE>(fun_comp.shared.params.len(), body, &new_ctx)?;
-            //reset the nesting
-            compactor.reset_nesting(limiter.max_nesting);
             //find the next free number
             let next_idx = compactor.functions.len();
             //ensure we do not go over the limit
@@ -244,8 +234,6 @@ impl<'b,'h> Compactor<'b,'h> {
         compactor.functions.push(processed);
         //get all functions
         let res = compactor.functions.finish();
-        //record the nesting in case we run for discovery only
-        limiter.max_used_nesting.set(compactor.max_nesting);
         //return the result
         Ok((res,resources))
     }
@@ -297,33 +285,10 @@ impl<'b,'h> Compactor<'b,'h> {
         Ok(())
     }
 
-    fn reset_nesting(&mut self, limit:usize) {
-        self.cur_nesting = 0;
-        self.nesting_limit = limit;
-    }
-
-    fn increase_nesting(&mut self) -> Result<()> {
-        if self.cur_nesting >= self.nesting_limit {
-            return error(||"Size limit exceeded")
-        }
-        //increase the nesting
-        self.cur_nesting += 1;
-        //for figuring out max only
-        if self.cur_nesting > self.max_nesting {
-            self.max_nesting = self.cur_nesting
-        }
-        Ok(())
-    }
-
-    fn decrease_nesting(&mut self) {
-        self.cur_nesting -= 1;
-    }
-
     //compacts an expression (block)
     fn process_exp<S:Store,CE:CompilationExternals>(&mut self, exp:&Exp, ret_point:ReturnPoint, context:&Context<S>, tail_info:Option<u32>) -> Result<(Ptr<'b,RExp<'b>>, u8)>{
         // add the frame
         if tail_info.is_none() {self.state.add_frame();}
-        self.increase_nesting()?;
         //in case of a return we need to find out which opcodes we can eliminate
         let old_opcodes = mem::replace(&mut self.block, Vec::with_capacity(exp.0.len()));
         let mut actual_rets = -1;
@@ -357,7 +322,6 @@ impl<'b,'h> Compactor<'b,'h> {
         }
         // drop the frame
         if tail_info.is_none() {self.state.drop_frame();}
-        self.decrease_nesting();
         //Generate and return the optimized Expression
         Ok((self.alloc.alloc(RExp(codes)), expect_rets))
     }
@@ -375,11 +339,12 @@ impl<'b,'h> Compactor<'b,'h> {
             OpCode::UnProject(_, val) => self.copy(val),
             OpCode::Discard(_) => Ok((false, 0)),
             OpCode::DiscardMany(_) => Ok((false, 0)),
+            OpCode::InspectUnpack(val, perm) => self.unpack(val,perm,None, context),
             OpCode::Unpack(val, perm) => self.unpack(val,perm,None, context),
             OpCode::CopyUnpack(val, perm) => self.unpack(val,perm,None, context),
             OpCode::Field(val, perm, field) => self.get_field(val, perm, field, context),
             OpCode::CopyField(val, perm, field) => self.get_field(val,perm,field, context),
-            OpCode::Inspect(val, perm, ref exps) => self.switch::<_,CE>(val, perm, exps, context, tail_info),
+            OpCode::InspectSwitch(val, perm, ref exps) => self.switch::<_,CE>(val, perm, exps, context, tail_info),
             OpCode::Switch(val, perm, ref exps) => self.switch::<_,CE>(val, perm, exps, context, tail_info),
             OpCode::CopySwitch(val, perm, ref exps) => self.switch::<_,CE>(val, perm, exps, context, tail_info),
             OpCode::Pack(perm, tag, ref values) => self.pack(perm, tag,values, context),
@@ -764,7 +729,7 @@ impl<'b,'h> Compactor<'b,'h> {
                     //indicates that this is a no-op
                     CompilationResult::ReorderResult(new_order) => {
                         //fetch the aliases
-                        assert!(new_order.len() <= u8::max_value() as usize);
+                        assert!(new_order.len() <= u8::MAX as usize);
                         for (offset,fetch) in new_order.iter().enumerate() {
                             let ValueRef(param_offset) = vals[*fetch as usize];
                             let pos = self.get(param_offset as usize + offset);

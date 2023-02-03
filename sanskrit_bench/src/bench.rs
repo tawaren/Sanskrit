@@ -1,4 +1,4 @@
-pub mod tests {
+pub mod opcodes {
     pub mod op;
     pub mod call_op;
     pub mod struct_op;
@@ -52,9 +52,10 @@ pub mod tests {
 
     //Invoke Tests
     pub mod call;
+}
 
 
-
-
-
+pub mod validate {
+    pub mod limit_tests;
+    pub mod generators;
 }
