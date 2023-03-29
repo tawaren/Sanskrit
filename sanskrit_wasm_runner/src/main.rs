@@ -1,4 +1,4 @@
-extern crate wasmer_runtime;
+extern crate wasmer;
 extern crate sanskrit_memory_store;
 extern crate sanskrit_common;
 extern crate fluid_let;

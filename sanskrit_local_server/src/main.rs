@@ -1,5 +1,3 @@
-#![feature(nll)]
-
 extern crate rustyline;
 extern crate sanskrit_runtime;
 extern crate sanskrit_common;
@@ -22,11 +20,11 @@ extern crate sanskrit_derive;
 extern crate lalrpop_util;
 extern crate fluid_let;
 #[cfg(feature = "wasm")]
-extern crate wasmer_runtime;
 #[cfg(feature = "embedded")]
 extern crate sanskrit_compile;
 #[cfg(feature = "embedded")]
 extern crate sanskrit_deploy;
+extern crate wasmer;
 
 mod manager;
 mod parser_model;
@@ -90,14 +88,14 @@ fn read_length_prefixed_array<R:Read>(reader:&mut R) -> Result<Vec<u8>> {
 }
 
 
-fn handle_data<R:Read>(state: &mut State, reader:&mut R) -> Result<Vec<Hash>>{
+fn handle_data<R:Read>(state: &mut State, compiler:&mut CompilerInstance, reader:&mut R) -> Result<Vec<Hash>>{
     match convert_error(reader.read_u8())? {
         MODULE_COMMAND => {
             let meta_data_bytes = read_length_prefixed_array(reader)?;
             let data:ModuleNames = Parser::parse_fully(&meta_data_bytes,6,&NoCustomAlloc())?;
             let name = (data.0).0;
             let bytes = read_length_prefixed_array(reader)?;
-            let hash = state.deploy_module(bytes, false, None)?;
+            let hash = state.deploy_module(compiler, bytes, false, None)?;
             println!("Mapping Module with hash {:?} to name {}", encode(&hash),&name);
             convert_error(state.tracking.data_names.insert(hash.clone(),meta_data_bytes))?;
             convert_error(state.module_name_mapping.insert(name,&hash.clone()))?;
@@ -116,7 +114,7 @@ fn handle_data<R:Read>(state: &mut State, reader:&mut R) -> Result<Vec<Hash>>{
                     return error(||"unknown system module identifier")
                 }
                 let bytes = read_length_prefixed_array(reader)?;
-                let hash = state.deploy_module(bytes, true, Some(sys_id))?;
+                let hash = state.deploy_module(compiler,bytes, true, Some(sys_id))?;
                 let sys_impl = externals::SYS_MODS[sys_id as usize];
                 sys_impl(hash.clone());
                 convert_error(state.system_entries.insert(&[sys_id], &hash))?;
@@ -126,7 +124,7 @@ fn handle_data<R:Read>(state: &mut State, reader:&mut R) -> Result<Vec<Hash>>{
                 (hash, e_hash)
             } else {
                 let bytes = read_length_prefixed_array(reader)?;
-                let hash = state.deploy_module(bytes, true, None)?;
+                let hash = state.deploy_module(compiler,bytes, true, None)?;
                 let e_hash = encode(&hash);
                 println!("Registered System Module {} with Hash {:?}",name, e_hash);
                 (hash, e_hash)
@@ -142,7 +140,7 @@ fn handle_data<R:Read>(state: &mut State, reader:&mut R) -> Result<Vec<Hash>>{
             let name_bytes = read_length_prefixed_array(reader)?;
             let name = convert_error(String::from_utf8(name_bytes))?;
             let bytes = read_length_prefixed_array(reader)?;
-            let (f_hash,d_hash) = state.deploy_transaction(bytes)?;
+            let (f_hash,d_hash) = state.deploy_transaction(compiler, bytes)?;
             println!("Mapping Transaction with descriptor hash {:?} to name {}", encode(&d_hash) ,&name);
             convert_error(state.transaction_name_mapping.insert(name,&d_hash.clone()))?;
             convert_error(state.transaction_name_mapping.flush())?;
@@ -328,14 +326,14 @@ fn process_bundle_line(line:String, bundle_state:Rc<RefCell<(BTreeSet<String>,Ve
 }
 
 #[cfg(feature = "wasm")]
-fn register_system_modules(state:&State) -> std::io::Result<()> {
+fn register_system_modules(state:&State, compiler:&mut CompilerInstance) -> std::io::Result<()> {
     for entry in state.system_entries.iter() {
         let (k,e) = entry?;
         let sys_id = k[0];
         let hash = hash_from_slice(&e);
         let sys_impl = externals::SYS_MODS[sys_id as usize];
         sys_impl(hash.clone());
-        match state.instance.register(hash.clone(), 100000, sys_id as isize) {
+        match compiler.register(hash.clone(), 100000, sys_id as isize) {
             Ok(_) => {}
             Err(_) => {}
         };
@@ -346,7 +344,7 @@ fn register_system_modules(state:&State) -> std::io::Result<()> {
 }
 
 #[cfg(feature = "embedded")]
-fn register_system_modules(state:&State) -> std::io::Result<()> {
+fn register_system_modules(state:&State, _compiler:&CompilerData) -> std::io::Result<()> {
     for entry in state.system_entries.iter() {
         let (k,e) = entry?;
         let sys_id = k[0];
@@ -384,9 +382,7 @@ pub fn main() -> std::io::Result<()> {
     auto_flushes.insert(StorageClass::Module);
     auto_flushes.insert(StorageClass::Descriptor);
 
-    let state = State {
-        #[cfg(feature = "wasm")]
-        instance: CompilerInstance::new().unwrap(),
+    let mut state = State {
         store: SledStore::new(&db_folder, auto_flushes),
         accounts:sled::open(account_db)?,
         system_entries:sled::open(sys_entry_db)?,
@@ -401,30 +397,33 @@ pub fn main() -> std::io::Result<()> {
         meta_data:sled::open(meta_db)?,
     };
 
-    register_system_modules(&state)?;
-
     let shared_state = Arc::new(Mutex::new(state));
     let listener_state = Arc::clone(&shared_state);
     // accept connections and process them serially
     println!("Started Local VM");
     thread::spawn(move || {
-        let listener = TcpListener::bind("127.0.0.1:6000").unwrap();
-        for stream_res in listener.incoming() {
-            let mut stream = stream_res.unwrap();
-            let mut state = listener_state.lock().unwrap();
-            match handle_data(&mut state, &mut stream) {
-                Err(error) => {
-                    println!("{}",error_to_string(&error));
-                    stream.write_u8(ERROR_RETURN).unwrap();
-                },
-                Ok(hashes) => {
-                    stream.write_u8(SUCCESS_RETURN).unwrap();
-                    for hash in hashes {
-                        stream.write_all(&hash).unwrap();
+        CompilerInstance::with_compiler_result(|mut compiler |{
+            register_system_modules(&mut listener_state.lock().unwrap(), &mut compiler).unwrap();
+            let listener = TcpListener::bind("127.0.0.1:6000").unwrap();
+            for stream_res in listener.incoming() {
+                let mut stream = stream_res.unwrap();
+                let mut state = listener_state.lock().unwrap();
+                match handle_data(&mut state, &mut compiler, &mut stream) {
+                    Err(error) => {
+                        println!("{}",error_to_string(&error));
+                        stream.write_u8(ERROR_RETURN).unwrap();
+                    },
+                    Ok(hashes) => {
+                        stream.write_u8(SUCCESS_RETURN).unwrap();
+                        for hash in hashes {
+                            stream.write_all(&hash).unwrap();
+                        }
                     }
                 }
             }
-        }
+            Ok(())
+        })
+
     });
 
     let mut rl = Editor::<()>::new();

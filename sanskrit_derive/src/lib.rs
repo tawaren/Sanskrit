@@ -4,6 +4,7 @@ extern crate quote;
 extern crate proc_macro;
 extern crate proc_macro2;
 
+
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Data, DeriveInput};
@@ -26,16 +27,25 @@ pub fn serialize_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStre
     impl_serialize_macro(&ast).into()
 }
 
+#[proc_macro_derive(AllocParsable, attributes(ByteSize, Transient, VirtualSize, StartIndex))]
+pub fn alloc_parse_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    parse_derive_core(input, true)
+}
+
 #[proc_macro_derive(Parsable, attributes(AllocLifetime, ByteSize, Transient, VirtualSize, StartIndex))]
 pub fn parse_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    parse_derive_core(input, false)
+}
+
+fn parse_derive_core(input: proc_macro::TokenStream, auto_alloc:bool) -> proc_macro::TokenStream {
     // Construct a representation of Rust code as a syntax tree
     // that we can manipulate
     let ast:DeriveInput  = syn::parse(input).unwrap();
-
     // Build the trait implementation
-    //println!("{}",impl_parsable_macro(&ast));
-    impl_parsable_macro(&ast).into()
+    //println!("{:?}",impl_parsable_macro(&ast));
+    impl_parsable_macro(&ast, auto_alloc).into()
 }
+
 
 #[proc_macro_derive(VirtualSize)]
 pub fn virtual_size_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
@@ -45,7 +55,7 @@ pub fn virtual_size_derive(input: proc_macro::TokenStream) -> proc_macro::TokenS
 
     // Build the trait implementation
     //println!("{}",impl_virtual_size_macro(&ast));
-    impl_virtual_size_macro(&ast).into()
+     impl_virtual_size_macro(&ast).into()
 }
 
 
@@ -132,6 +142,7 @@ fn impl_serialize_macro(ast:&DeriveInput) -> TokenStream {
     let generics = &ast.generics;
     let plain = extract_plain_generics(generics);
     let argumented = extract_agumented_generics(generics, quote!{Serializable});
+
     quote!{
         impl<#(#argumented),*> Serializable for #prefix<#(#plain),*> {
              fn serialize(&self, s:&mut Serializer) -> Result<()> {
@@ -142,7 +153,7 @@ fn impl_serialize_macro(ast:&DeriveInput) -> TokenStream {
     }
 }
 
-fn impl_parsable_macro(ast:&DeriveInput) -> TokenStream {
+fn impl_parsable_macro(ast:&DeriveInput, auto_alloc:bool) -> TokenStream {
     let prefix = &ast.ident;
     let body = match ast.data {
         Data::Struct(ref ds) => {
@@ -270,9 +281,8 @@ fn impl_parsable_macro(ast:&DeriveInput) -> TokenStream {
         Data::Union(_) => unimplemented!()
     };
     let generics = &ast.generics;
-    let alloc_id = extract_alloc_lifetime(generics);
+    let alloc_id = extract_alloc_lifetime(generics, auto_alloc);
     let plain = extract_plain_generics(&ast.generics);
-
     match alloc_id {
         None => {
             let argumented = extract_agumented_generics(&ast.generics, quote!{Parsable<'p>});
@@ -336,7 +346,6 @@ fn impl_virtual_size_macro(ast:&DeriveInput) -> TokenStream {
     let generics = &ast.generics;
     let plain = extract_plain_generics(generics);
     let argumented = extract_agumented_generics(generics, quote!{VirtualSize});
-
     quote!{
         impl<#(#argumented),*> VirtualSize for #prefix<#(#plain),*> {
              const SIZE:usize = #body;
@@ -443,20 +452,24 @@ fn extract_agumented_generics(generics:&Generics, argument:TokenStream) -> Vec<T
     gens
 }
 
-fn extract_alloc_lifetime(generics:&Generics) -> Option<TokenStream> {
-    for l in generics.lifetimes() {
-        for a in &l.attrs {
-            match a.path.segments.last() {
-                None => {}
-                Some(p)  => {
-                    if p.ident == "AllocLifetime" {
-                        return Some(l.clone().lifetime.into_token_stream())
+fn extract_alloc_lifetime(generics:&Generics, auto_alloc:bool) -> Option<TokenStream> {
+    if auto_alloc {
+        generics.lifetimes().nth(0).map(|l|l.clone().lifetime.into_token_stream())
+    } else {
+        for l in generics.lifetimes() {
+            for a in &l.attrs {
+                match a.path.segments.last() {
+                    None => {}
+                    Some(p)  => {
+                        if p.ident == "AllocLifetime" {
+                            return Some(l.clone().lifetime.into_token_stream())
+                        }
                     }
                 }
             }
         }
+        None
     }
-    None
 }
 
 fn extract_named_field<'a>(name:&str, fs: impl Iterator<Item=&'a Field>) -> Option<Ident> {

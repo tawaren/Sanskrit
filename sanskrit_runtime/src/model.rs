@@ -4,8 +4,8 @@ use sanskrit_common::errors::*;
 use TransactionBundle;
 
 #[cfg(feature = "deployer")]
-#[derive(Clone, Debug, Parsable, Serializable, VirtualSize)]
-pub struct DeployTransaction<#[AllocLifetime] 'c> {
+#[derive(Clone, Debug, AllocParsable, Serializable, VirtualSize)]
+pub struct DeployTransaction</*#[AllocLifetime]*/ 'c> {
     //todo: add max_loads & max_byte_loads
     //todo: add max_stores & max_byte_stores
     pub typ:DeployType,
@@ -13,8 +13,8 @@ pub struct DeployTransaction<#[AllocLifetime] 'c> {
 }
 
 
-#[derive(Clone, Debug, Parsable, Serializable, VirtualSize)]
-pub struct TransactionBundleCore<#[AllocLifetime] 'c> {
+#[derive(Clone, Debug, AllocParsable, Serializable, VirtualSize)]
+pub struct TransactionBundleCore</*#[AllocLifetime]*/ 'c> {
     #[ByteSize]
     pub byte_size:Option<usize>,
     //freely usable by the sender
@@ -51,8 +51,8 @@ pub struct TransactionBundleCore<#[AllocLifetime] 'c> {
 //      have an Vec (with bound)
 //       it contains: Type|TypeRef for managing them between borders
 //A set of transactions
-#[derive(Clone, Debug, Parsable, Serializable, VirtualSize)]
-pub struct BaseTransactionBundle<#[AllocLifetime] 'c> {
+#[derive(Clone, Debug, AllocParsable, Serializable, VirtualSize)]
+pub struct BaseTransactionBundle</*#[AllocLifetime]*/ 'c> {
     #[ByteSize]
     pub byte_size:Option<usize>,
     //everything that is part of the hash
@@ -81,8 +81,8 @@ pub enum DeployType {
 }
 
 //A section of transactions
-#[derive(Clone, Copy, Debug, Parsable, Serializable, VirtualSize)]
-pub struct BundleSection<#[AllocLifetime] 'c> {
+#[derive(Clone, Copy, Debug, AllocParsable, Serializable, VirtualSize)]
+pub struct BundleSection</*#[AllocLifetime]*/ 'c> {
     //Section type
     pub typ:SectionType,
     //Transactions
@@ -91,8 +91,8 @@ pub struct BundleSection<#[AllocLifetime] 'c> {
 
 
 //A transaction
-#[derive(Clone, Copy, Debug, Parsable, Serializable, VirtualSize)]
-pub struct Transaction<#[AllocLifetime] 'c> {
+#[derive(Clone, Copy, Debug, AllocParsable, Serializable, VirtualSize)]
+pub struct Transaction</*#[AllocLifetime]*/ 'c> {
     //transaction type
     pub txt_desc: u16,
     //parameter source & fetch mode

@@ -1,5 +1,4 @@
 #![no_std]
-#![feature(nll)]
 
 extern crate alloc;
 extern crate sanskrit_common;
@@ -140,6 +139,7 @@ impl BTreeMapStore {
 }
 
 impl Store for BTreeMapStore {
+
     //delete a store entry
     fn delete(&self, class: StorageClass, key: &[u8; 20])  -> Result<()>  {
         fn process(map: &mut Container, key:&Hash) -> Result<()>  {

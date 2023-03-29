@@ -87,8 +87,6 @@ pub struct TrackingState {
 }
 
 pub struct State {
-    #[cfg(feature = "wasm")]
-    pub instance:CompilerInstance,
     pub store:SledStore,
     pub accounts:Db,
     pub system_entries:Db,
@@ -246,13 +244,13 @@ impl State {
     }
 
     #[cfg(feature = "wasm")]
-    pub fn deploy_module(&mut self, module:Vec<u8>, system_mode_on:bool, system_id:Option<u8>) -> Result<Hash> {
+    pub fn deploy_module(&mut self, compiler:&mut CompilerInstance, module:Vec<u8>, system_mode_on:bool, system_id:Option<u8>) -> Result<Hash> {
         let now = Instant::now();
         let (hash, gas) = if system_mode_on {
             //Todo: Configure gas read from somewhere??
-            self.instance.compile_system_module(&module, &self.store, system_id.map(|id|id as usize), 100000000,10000)?
+            compiler.compile_system_module(&module, &self.store, system_id.map(|id|id as usize), 100000000,10000)?
         } else {
-            self.instance.compile_module(&module, &self.store, 100000000,10000)?
+            compiler.compile_module(&module, &self.store, 100000000,10000)?
         };
         let end = now.elapsed().as_micros();
         println!("deployed Module with hash {:?} of size {:?} in {:?} us using {:?} gas", encode(&hash),module.len(),end, gas);
@@ -260,10 +258,10 @@ impl State {
     }
 
     #[cfg(feature = "wasm")]
-    pub fn deploy_transaction(&mut self, transaction:Vec<u8>) -> Result<(Hash,Hash)> {
+    pub fn deploy_transaction(&mut self, compiler:&mut CompilerInstance, transaction:Vec<u8>) -> Result<(Hash,Hash)> {
         let now = Instant::now();
         //Todo: Configure gas read from somewhere??
-        let (t_hash, hash, gas) = self.instance.compile_transaction(&transaction,&self.store, 100000000,10000)?;
+        let (t_hash, hash, gas) = compiler.compile_transaction(&transaction,&self.store, 100000000,10000)?;
         let end = now.elapsed().as_micros();
         println!("deployed transaction in {:?} us using {:?} gas", end, gas);
         let desc_size = self.store.get( StorageClass::Descriptor, &t_hash,|d|d.len())?;

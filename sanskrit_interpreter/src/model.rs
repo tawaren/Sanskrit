@@ -2,9 +2,10 @@ use sanskrit_common::model::*;
 use sanskrit_common::encoding::*;
 use sanskrit_common::errors::*;
 
+// AllocParsable is a workaround to Parsable as AllocLifetime stopped working (it takes the first generic param as AllocLifetime)
 //A Block
-#[derive(Copy, Clone, Debug, Parsable, Serializable, VirtualSize)]
-pub struct Exp<#[AllocLifetime] 'b>(pub SlicePtr<'b, OpCode<'b>>);
+#[derive(Copy, Clone, Debug, AllocParsable, Serializable, VirtualSize)]
+pub struct Exp</*#[AllocLifetime]*/ 'b>(pub SlicePtr<'b, OpCode<'b>>);
 
 //Description for a literal type
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Parsable, Serializable, VirtualSize)]
@@ -40,8 +41,8 @@ pub enum Kind {
     Data
 }
 
-#[derive(Copy, Clone, Debug, Parsable, Serializable, VirtualSize)]
-pub enum OpCode<#[AllocLifetime] 'b> {
+#[derive(Copy, Clone, Debug, AllocParsable, Serializable, VirtualSize)]
+pub enum OpCode</*#[AllocLifetime]*/ 'b> {
     Void,                                                          //A opcode that produces something that is never used
     Data(SlicePtr<'b,u8>),                                         //A opcode that produces a literal
     SpecialLit(SlicePtr<'b,u8>, LitDesc),                          //An opcode that produces an external literal
@@ -80,8 +81,8 @@ pub enum OpCode<#[AllocLifetime] 'b> {
     TypedSysInvoke(u8, Kind, SlicePtr<'b,ValueRef>)
 }
 
-#[derive(Copy, Clone, Debug, Parsable, Serializable, VirtualSize)]
-pub struct TransactionDescriptor<#[AllocLifetime] 'c> {
+#[derive(Copy, Clone, Debug, AllocParsable, Serializable, VirtualSize)]
+pub struct TransactionDescriptor</*#[AllocLifetime]*/ 'c> {
     #[ByteSize]
     pub byte_size:Option<usize>,
     #[VirtualSize]
@@ -95,8 +96,8 @@ pub struct TransactionDescriptor<#[AllocLifetime] 'c> {
     pub functions:SlicePtr<'c,Ptr<'c, Exp<'c>>>,        //multiple functions (calls are embeded)
 }
 
-#[derive(Copy, Clone, Debug, Parsable, Serializable, VirtualSize)]
-pub struct TxTParam<#[AllocLifetime] 'c> {
+#[derive(Copy, Clone, Debug, AllocParsable, Serializable, VirtualSize)]
+pub struct TxTParam</*#[AllocLifetime]*/ 'c> {
     pub primitive:bool,
     pub copy:bool,
     pub drop:bool,
@@ -105,8 +106,8 @@ pub struct TxTParam<#[AllocLifetime] 'c> {
     pub desc:Ptr<'c, ValueSchema<'c>>
 }
 
-#[derive(Copy, Clone, Debug, Parsable, Serializable, VirtualSize)]
-pub struct TxTReturn<#[AllocLifetime] 'c> {
+#[derive(Copy, Clone, Debug, AllocParsable, Serializable, VirtualSize)]
+pub struct TxTReturn</*#[AllocLifetime]*/ 'c> {
     pub primitive:bool,
     pub copy:bool,
     pub drop:bool,
@@ -115,16 +116,16 @@ pub struct TxTReturn<#[AllocLifetime] 'c> {
 }
 
 //The Option<Hash> are type indexes and field indexes respectively
-#[derive(Clone, Copy, Eq, PartialEq, Debug, Parsable, Serializable, VirtualSize)]
-pub enum ValueSchema<#[AllocLifetime] 'a> {
+#[derive(Clone, Copy, Eq, PartialEq, Debug, AllocParsable, Serializable, VirtualSize)]
+pub enum ValueSchema</*#[AllocLifetime]*/ 'a> {
     Adt(Option<Ptr<'a,(Hash,u8)>>, SlicePtr<'a, SlicePtr<'a, (SlicePtr<'a,u8>, Ptr<'a, ValueSchema<'a>>)>>),
     Data(u16),
     Unsigned(u8),
     Signed(u8)
 }
 
-#[derive(Clone, Copy, Eq, PartialEq, Debug, Parsable, Serializable, VirtualSize)]
-pub enum RuntimeType<#[AllocLifetime] 'a> {
+#[derive(Clone, Copy, Eq, PartialEq, Debug, AllocParsable, Serializable, VirtualSize)]
+pub enum RuntimeType</*#[AllocLifetime]*/ 'a> {
     Custom {
         module: Hash,
         offset: u8,

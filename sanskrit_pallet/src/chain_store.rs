@@ -26,10 +26,10 @@ impl Container {
     pub fn get(&self, key:&Hash) -> Result<Vec<u8>> {
         match self.pending.get(key) {
             None => match get(self.class, key){
-                None => error(||"Value was not in store"),
+                None => error(||format!("Value for key {} was not in store", key)),
                 Some(res) => Ok(res)
             },
-            Some(None) => error(||"Value was not in store"),
+            Some(None) => error(||format!("Value for key {} was not in store", key)),
             Some(Some(res)) => Ok(res.clone()),
         }
     }
@@ -39,10 +39,10 @@ impl Container {
         if self.pending.contains_key(&key) || !contains_key(self.class, &key) {
             match self.pending.insert(key, Some(value)) {
                 None | Some(None)=> Ok(()),
-                Some(Some(_)) => error(||"Value was already in store")
+                Some(Some(_)) => error(||format!("Value for key {} was already in store", key))
             }
         } else  {
-            error(||"Value was already in store")
+            error(||format!("Value for key {} was already in store", key))
         }
     }
 
@@ -58,7 +58,7 @@ impl Container {
             self.pending.insert(key.clone(), None);
             Ok(())
         } else {
-            error(||"Value was not in store")
+            error(||format!("Value for key {} was not in store", key))
         }
     }
 

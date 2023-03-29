@@ -24,7 +24,7 @@ pub fn pre_error(){}
 
 //A Generic Error
 #[cfg(not(feature = "string_errors"))]
-pub fn error<T,F:FnOnce()-> &str>(msg:F) -> Result<T>{
+pub fn error<T,F:FnOnce()-> &'static str>(_msg:F) -> Result<T>{
     pre_error();
     Err(())
 }
@@ -36,7 +36,7 @@ pub fn error<'a, T,F:FnOnce()-> &'a str>(msg:F) -> Result<T>{
 }
 
 #[cfg(not(feature = "string_errors"))]
-pub fn error_to_string(err:&()) -> &str {
+pub fn error_to_string(_err:&()) -> &str {
     "error was not captured"
 }
 

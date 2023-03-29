@@ -1,5 +1,4 @@
 #![no_std]
-#![feature(nll)]
 
 #[macro_use]
 extern crate alloc;

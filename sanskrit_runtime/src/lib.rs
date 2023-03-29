@@ -1,5 +1,4 @@
 #![no_std]
-#![feature(nll)]
 
 extern crate arrayref;
 extern crate byteorder;

@@ -161,7 +161,6 @@ impl Store for SledStore {
         }
     }
 
-
     //Gets a value out and uses P as Parser
     fn get<P,F:FnOnce(&[u8])-> P>(&self, class:StorageClass, key: &Hash, f:F) -> Result<P> {
         fn process<P,F:FnOnce(&[u8])-> P>(map: &Container, key:&Hash, f:F) -> Result<P> {

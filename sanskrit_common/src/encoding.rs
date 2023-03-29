@@ -3,6 +3,7 @@ use alloc::boxed::Box;
 use alloc::borrow::ToOwned;
 use alloc::collections::BTreeSet;
 use alloc::collections::BTreeMap;
+use alloc::format;
 use alloc::rc::Rc;
 use byteorder::{BigEndian, ByteOrder};
 use errors::*;
@@ -51,7 +52,8 @@ impl<'a> Parser<'a> {
         let mut parser = Parser::new(data,max_depth);
         let parsed = T::parse(&mut parser, alloc)?;
         if parser.data.len() != parser.index {
-            return error(||"Decoding error: input data has not enough bytes")
+            let res = format!("Decoding error: input data has wrong size. it has {} - consumed {}", parser.data.len(), parser.index );
+            return error(||&res)
         }
         Ok(parsed)
     }

@@ -3,7 +3,6 @@
 //This contains way to store & Load stuff
 
 #![no_std]
-#![feature(nll)]
 
 extern crate blake3;
 extern crate byteorder;

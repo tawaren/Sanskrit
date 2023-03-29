@@ -14,7 +14,7 @@ extern crate sha2;
 extern crate rand;
 extern crate test;
 extern crate wasmi;
-extern crate wasmer_runtime;
+extern crate wasmer;
 #[macro_use]
 extern crate lazy_static;
 

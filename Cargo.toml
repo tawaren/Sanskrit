@@ -15,7 +15,7 @@ members = [
         "sanskrit_bench",
         "sanskrit_wasm_deploy_compile",
         "sanskrit_wasm_runner",
-        "sanskrit_pallet",
+        # "sanskrit_pallet",
 ]
 
 [profile.release]

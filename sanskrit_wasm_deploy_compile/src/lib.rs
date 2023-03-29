@@ -1,5 +1,3 @@
-#![feature(nll)]
-
 //extern crate pwasm_std;
 
 extern crate sanskrit_deploy;
@@ -26,7 +24,6 @@ mod store;
 
 extern  {
     fn load_input(ptr: *mut u8);
-
     //if return is positive we assume that it suceeded and that many bytes where llocated
     //if return is negative we assume that we did not had enough space and allocate that many space then reexecute load
     fn load(class:u8, ptr_key_hash: *const u8, target_ptr: *mut u8, reserved_space:usize) -> isize;
