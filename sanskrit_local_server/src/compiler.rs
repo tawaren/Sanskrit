@@ -1,8 +1,10 @@
+#[cfg(feature = "wasm")]
 static WASM: &'static [u8] = include_bytes!("../wasm/sanskrit_wasm_deploy_compile_gas.wasm");
 
 //Todo: see -- https://docs.wasmer.io/integrations/examples/host-functions
 
 use std::borrow::BorrowMut;
+#[cfg(feature = "wasm")]
 use wasmer::{imports, Function, Memory, Instance, Module, MemoryView, WasmPtr, FunctionEnvMut, FunctionEnv, AsStoreMut};
 use std::cell::{RefCell, Cell};
 use std::fmt;
@@ -35,8 +37,8 @@ impl fmt::Display for ExitCode {
 
 impl std::error::Error for ExitCode {}
 
-#[cfg(feature = "embedded")]
-struct InstanceEnv { }
+//#[cfg(feature = "embedded")]
+//struct InstanceEnv { }
 
 #[cfg(feature = "wasm")]
 struct InstanceEnv {
@@ -47,6 +49,7 @@ struct InstanceEnv {
 fluid_let!(static INPUT: Vec<u8>);
 fluid_let!(static STORAGE: SledStore);
 
+#[cfg(feature = "wasm")]
 impl  InstanceEnv{
     fn get_memory(&self) -> Result<MemoryView, ExitCode> {
         match &self.memory {
@@ -59,6 +62,7 @@ impl  InstanceEnv{
     }
 }
 
+#[cfg(feature = "wasm")]
 pub struct CompilerInstance<'a>{
     instance: Instance,
     env: &'a mut InstanceEnv,
@@ -66,7 +70,18 @@ pub struct CompilerInstance<'a>{
     compile: wasmer::TypedFunction<(u32,u32,u32,u32,i32), u32>,
 }
 
+#[cfg(feature = "embedded")]
+pub struct CompilerInstance{ }
 
+#[cfg(feature = "embedded")]
+impl CompilerInstance {
+    pub fn with_compiler_result<R>(f: impl FnOnce(&mut Self) -> SResult<R>) -> SResult<R> {
+        let mut inst = CompilerInstance {};
+        f(&mut inst)
+    }
+}
+
+#[cfg(feature = "wasm")]
 impl<'a> CompilerInstance<'a> {
 
     thread_local! {
@@ -136,7 +151,6 @@ impl<'a> CompilerInstance<'a> {
         Ok(())
     }
 
-
     fn gas(gas:i32) ->Result<(), ExitCode> {
         Self::GAS.with(|c|{
             //todo: add self cost? either here ore in instrumentation
@@ -166,12 +180,6 @@ impl<'a> CompilerInstance<'a> {
         Err(ExitCode(1))
     }
 
-    #[cfg(feature = "embedded")]
-    pub fn with_compiler_result<R>(f: impl FnOnce(&mut Self) -> SResult<R>) -> SResult<R> {
-        let mut inst = InstanceEnv {};
-        f(&mut inst)
-    }
-    #[cfg(feature = "wasm")]
     pub fn with_compiler_result<R>(f: impl FnOnce(&mut Self) -> SResult<R>) -> SResult<R> {
 
         let mut store = wasmer::Store::default();

@@ -18,12 +18,13 @@ use sanskrit_core::model::resolved::*;
 use sanskrit_common::errors::*;
 use sanskrit_common::model::*;
 use sanskrit_common::store::*;
-use core::mem;
+//use core::mem;
+use std::mem;
 use sanskrit_common::arena::*;
 use gas_table::gas;
 use sanskrit_core::utils::Crc;
 use sanskrit_common::encoding::VirtualSize;
-use collector::Collector;
+use collector::{Collector, CollectResult};
 use sanskrit_core::loader::Loader;
 use externals::{CompilationResult, ExpResources, CompilationExternals};
 
@@ -52,8 +53,9 @@ pub struct Compactor<'b,'h> {
     //state
     state:State,
     //all the embedded functions and where to find them at runtime
-    fun_mapping:BTreeMap<(Crc<ModuleLink>,u8),(u16,u8,ExpResources)>,
-    //the code of all the embedded function
+    // boolean marks implements
+    fun_mapping:BTreeMap<(Crc<ModuleLink>,u8,bool),(u16,u8,ExpResources)>,
+    //the code of all the embedded functions
     functions:SliceBuilder<'b,Ptr<'b,RExp<'b>>>,
     //allocator
     alloc:&'b HeapArena<'h>,
@@ -185,7 +187,6 @@ impl State {
 impl<'b,'h> Compactor<'b,'h> {
     pub fn compact<S:Store,CE:CompilationExternals>(fun:&FunctionComponent, body:&Exp, store:&Loader<S>, alloc:&'b HeapArena<'h>) -> Result<(SlicePtr<'b,Ptr<'b,RExp<'b>>>, ExpResources)> {
         let functions = Collector::collect(fun,store)?;
-
         let mut compactor = Compactor {
             state:State::new(),
             fun_mapping: BTreeMap::new(),
@@ -194,33 +195,58 @@ impl<'b,'h> Compactor<'b,'h> {
             block: Vec::new(),
         };
 
-        for fun_cache in functions {
-            let module = fun_cache.module().clone();
-            let fun_comp = fun_cache.retrieve();
-            //we should not get eliminatable functions
-            assert!(!fun_comp.shared.returns.is_empty() || fun_comp.shared.transactional);
-            //get the targets context
-            let new_ctx = Context::from_module_component(fun_comp, &module, true, store)?;
-            //get the body
-            let body = match fun_comp.body {
-                CallableImpl::External => unreachable!("top level functions should not be returned by Collector::collect(fun,store,limiter)?"),
-                CallableImpl::Internal {ref code, ..} => code
+        for col_res in functions {
+            let (key, processed, resources, returns) = match col_res {
+                CollectResult::Function(fun_cache) => {
+                    let module = fun_cache.module().clone();
+                    let fun_comp = fun_cache.retrieve();
+                    //we should not get eliminatable functions
+                    assert!(!fun_comp.shared.returns.is_empty() || fun_comp.shared.transactional);
+                    //get the targets context
+                    let new_ctx = Context::from_module_component(fun_comp, &module, true, store)?;
+                    //get the body
+                    let body = match fun_comp.body {
+                        CallableImpl::External => unreachable!("top level functions should not be returned by Collector::collect(fun,store,limiter)?"),
+                        CallableImpl::Internal {ref code, ..} => code
+                    };
+
+                    //compact the function
+                    let (processed, resources) = compactor.process_func::<_,CE>(fun_comp.shared.params.len(), body, &new_ctx)?;
+                    //remember the info
+                    ((module,fun_cache.offset(), false), processed, resources, fun_comp.shared.returns.len() as u8)
+                },
+                CollectResult::Implement(impl_cache) => {
+                    let module = impl_cache.module().clone();
+                    let impl_comp = impl_cache.retrieve();
+                    //get the targets context
+                    let new_ctx = Context::from_module_component(impl_comp, &module, true, store)?;
+                    //get the body
+                    let body = match impl_comp.body {
+                        CallableImpl::External => unreachable!("top level implement should not be returned by Collector::collect(fun,store,limiter)?"),
+                        CallableImpl::Internal {ref code, ..} => code
+                    };
+                    //get perm
+                    let r_perm = impl_comp.sig.fetch(&new_ctx)?;
+                    //get the signature
+                    let sig = r_perm.get_sig()?;
+                    //compute the params
+                    let num_params = impl_comp.params.len() + sig.params.len();
+                    //compact the function
+                    let (processed, resources) = compactor.process_func::<_,CE>(num_params, body, &new_ctx)?;
+                    //remember the info
+                    ((module,impl_cache.offset(), true), processed, resources, 1)
+                }
             };
 
-            //compact the function
-            let (processed, resources) = compactor.process_func::<_,CE>(fun_comp.shared.params.len(), body, &new_ctx)?;
             //find the next free number
             let next_idx = compactor.functions.len();
             //ensure we do not go over the limit
-            if next_idx > u16::max_value() as usize {return error(||"Number of functions out of range")}
+            if next_idx > u16::MAX as usize {return error(||"Number of functions out of range")}
             //fill the slot with the compacted function
             compactor.functions.push(processed);
-            //remember the info
-            let key = (module,fun_cache.offset());
-
             let old = compactor.fun_mapping.insert(key, (
                 next_idx as u16,
-                fun_comp.shared.returns.len() as u8,
+                returns,
                 resources
             ));
             //  for the case that someone gets the idea to allow recursion
@@ -463,7 +489,7 @@ impl<'b,'h> Compactor<'b,'h> {
         let r_perm = perm.fetch(context)?;
         //get the str information
         let r_ctr = r_perm.get_ctrs()?;
-        //check if it i a wrapper
+        //check if it is a wrapper
         if r_ctr.len() == 1 && r_ctr[0].len() == 1 {
             //if a wrapper just push the compile time stack as the elem already is on the runtime stack
             let pos = self.get(val.0 as usize);
@@ -515,7 +541,7 @@ impl<'b,'h> Compactor<'b,'h> {
         let r_perm = perm.fetch(context)?;
         //get the str information
         let ctrs = r_perm.get_ctrs()?;
-        //check if it i a wrapper
+        //check if it is a wrapper
         if ctrs.len() == 1 && ctrs[0].len() == 1 {
             //if a wrapper just push the compile time stack as the elem already is on the runtime stack
             let pos = self.get(val.0 as usize);
@@ -568,7 +594,7 @@ impl<'b,'h> Compactor<'b,'h> {
         let r_perm = perm.fetch(context)?;
         //get the str information
         let r_ctr = r_perm.get_ctrs()?;
-        //check if it i a wrapper
+        //check if it is a wrapper
         if r_ctr.len() == 1 && r_ctr[0].len() == 1 {
             //if a wrapper just push the compile time stack as the elem already is on the runtime stack
             let pos = self.get(val.0 as usize);
@@ -746,7 +772,7 @@ impl<'b,'h> Compactor<'b,'h> {
             },
             CallableImpl::Internal { .. } => {
                 //extract the module Hash (needed by emit & context)
-                if let Some((index,rets, resources)) = self.fun_mapping.get(&(module.clone(),offset)) {
+                if let Some((index,rets, resources)) = self.fun_mapping.get(&(module.clone(),offset,false)) {
                     //account for the ressources
                     match tail_info {
                         Some(frame_start) => self.state.include_tail_call_resources(frame_start,*resources, 1),
@@ -782,7 +808,7 @@ impl<'b,'h> Compactor<'b,'h> {
             CallableImpl::External => unimplemented!(),
             CallableImpl::Internal { .. } => {
                 //extract the module Hash (needed by emit & context)
-                if let Some((index,rets, resources)) = self.fun_mapping.get(&(module.clone(),offset)) {
+                if let Some((index,rets, resources)) = self.fun_mapping.get(&(module.clone(),offset, false)) {
                     //account for the ressources
                     match tail_info {
                         Some(frame_start) => self.state.include_tail_call_resources(frame_start,*resources, reps as u64),
@@ -813,7 +839,7 @@ impl<'b,'h> Compactor<'b,'h> {
             (ROpCode::Void,gas::void())
         } else {
             //extract the module Hash (needed by emit & context)
-            if let Some((index,_, resources)) = self.fun_mapping.get(&(module.clone(),offset)) {
+            if let Some((index,_, resources)) = self.fun_mapping.get(&(module.clone(),offset, true)) {
                 //adapted values
                 let adapted = self.alloc.iter_alloc_slice(vals.iter().map(|val|self.translate_ref(*val)))?;
                 //account for the packing of the pre applied values

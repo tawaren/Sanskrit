@@ -8,7 +8,7 @@ build = "build.rs"
 lalrpop = { version =  "0.19.1", features = ["lexer"] }
 
 [features]
-default = ["std", "wasm"]
+default = ["std", "embedded"]
 std = []
 wasm = ["wasmer"]
 embedded = ["sanskrit_runtime/deployer", "sanskrit_deploy", "sanskrit_compile"]

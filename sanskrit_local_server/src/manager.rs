@@ -36,7 +36,6 @@ use ed25519_dalek::ed25519::SIGNATURE_LENGTH;
 use sanskrit_runtime::system::SystemContext;
 use sanskrit_runtime::direct_stored::SystemDataManager;
 use externals::crypto::{raw_plain_hash, raw_join_hash};
-#[cfg(feature = "wasm")]
 use compiler::CompilerInstance;
 #[cfg(feature = "embedded")]
 use sanskrit_deploy::deploy_module;
@@ -193,7 +192,7 @@ impl Tracker for TrackingState {
         let name = self.exec_state.return_names.pop_front().unwrap();
         match r_typ {
             RetType::Store => {
-                let id = unsafe {value.adt.1.get(0).unwrap().data.deref()}.try_into().unwrap();
+                let id = hash_from_slice(unsafe {value.adt.1.get(0).unwrap().data.deref()});
                 let pretty = pretty_print_data(value, &r_desc.desc);
                 self.exec_state.produced_elems.insert(name, (id, pretty));
             },
@@ -231,8 +230,6 @@ impl Tracker for TrackingState {
 const MAX_PARSE_DEPTH:usize = 1024;
 
 impl State {
-
-
     pub fn execute_bundle(&mut self, bundle:&[u8], block_no:u64, heap:&Heap) -> Result<()> {
         let txt_bundle_alloc = heap.new_virtual_arena(CONFIG.max_bundle_size);
         let txt_bundle= ServerSystem::parse_bundle(&bundle,&txt_bundle_alloc)?;
@@ -277,7 +274,7 @@ impl State {
     }
 
     #[cfg(feature = "embedded")]
-    pub fn deploy_module(&mut self, module:Vec<u8>, system_mode_on:bool, _system_id:Option<u8>) -> Result<Hash> {
+    pub fn deploy_module(&mut self, _compiler:&mut CompilerInstance, module:Vec<u8>, system_mode_on:bool, _system_id:Option<u8>) -> Result<Hash> {
         let now = Instant::now();
         let hash1 = store_hash(&[&module]);
         //if !self.store.contains(StorageClass::Module, &hash1){
@@ -295,7 +292,7 @@ impl State {
     }
 
     #[cfg(feature = "embedded")]
-    pub fn deploy_transaction(&mut self, transaction:Vec<u8>) -> Result<(Hash,Hash)> {
+    pub fn deploy_transaction(&mut self, _compiler:&mut CompilerInstance, transaction:Vec<u8>) -> Result<(Hash,Hash)> {
         let now = Instant::now();
         let hash = store_hash(&[&transaction]);
         let txt = DeployTransaction{

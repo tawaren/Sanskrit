@@ -19,17 +19,16 @@ extern crate sanskrit_derive;
 #[macro_use]
 extern crate lalrpop_util;
 extern crate fluid_let;
-#[cfg(feature = "wasm")]
 #[cfg(feature = "embedded")]
 extern crate sanskrit_compile;
 #[cfg(feature = "embedded")]
 extern crate sanskrit_deploy;
+#[cfg(feature = "wasm")]
 extern crate wasmer;
 
 mod manager;
 mod parser_model;
 mod externals;
-#[cfg(feature = "wasm")]
 mod compiler;
 
 lalrpop_mod!(pub parser);
@@ -60,7 +59,6 @@ use std::collections::BTreeSet;
 use std::cell::RefCell;
 use std::rc::Rc;
 use sanskrit_common::store::StorageClass;
-#[cfg(feature = "wasm")]
 use compiler::CompilerInstance;
 
 pub const MODULE_COMMAND:u8 = 0;
@@ -344,7 +342,7 @@ fn register_system_modules(state:&State, compiler:&mut CompilerInstance) -> std:
 }
 
 #[cfg(feature = "embedded")]
-fn register_system_modules(state:&State, _compiler:&CompilerData) -> std::io::Result<()> {
+fn register_system_modules(state:&State, _compiler:&mut CompilerInstance) -> std::io::Result<()> {
     for entry in state.system_entries.iter() {
         let (k,e) = entry?;
         let sys_id = k[0];
@@ -356,6 +354,12 @@ fn register_system_modules(state:&State, _compiler:&CompilerData) -> std::io::Re
     }
     Ok(())
 }
+
+#[cfg(feature = "embedded")]
+static MODE:&str = "embedded";
+
+#[cfg(feature = "wasm")]
+static MODE:&str = "wasm";
 
 pub fn main() -> std::io::Result<()> {
     let args: Vec<String> = env::args().collect();
@@ -382,7 +386,7 @@ pub fn main() -> std::io::Result<()> {
     auto_flushes.insert(StorageClass::Module);
     auto_flushes.insert(StorageClass::Descriptor);
 
-    let mut state = State {
+    let state = State {
         store: SledStore::new(&db_folder, auto_flushes),
         accounts:sled::open(account_db)?,
         system_entries:sled::open(sys_entry_db)?,
@@ -400,7 +404,7 @@ pub fn main() -> std::io::Result<()> {
     let shared_state = Arc::new(Mutex::new(state));
     let listener_state = Arc::clone(&shared_state);
     // accept connections and process them serially
-    println!("Started Local VM");
+    println!("Started Local VM in {} mode", MODE);
     thread::spawn(move || {
         CompilerInstance::with_compiler_result(|mut compiler |{
             register_system_modules(&mut listener_state.lock().unwrap(), &mut compiler).unwrap();

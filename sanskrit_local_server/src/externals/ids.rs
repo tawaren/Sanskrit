@@ -44,7 +44,8 @@ impl External for Ids{
             global external function privateModuleIdDerive(priv:PrivateModuleId, hash:Hash):PrivateId
             global external function moduleIdDerive(id:ModuleId, hash:Hash):Id
             */
-            _=> Ok(just_gas_and_mem(70, Hash::SIZE as u64, OpCode::SysInvoke(0, params))),
+            _ =>  Ok(just_gas_and_mem(70, Hash::SIZE as u64, OpCode::SysInvoke(0, params))),
+
         }
     }
 }

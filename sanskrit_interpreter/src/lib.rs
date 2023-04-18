@@ -1,4 +1,4 @@
-#![no_std]
+//#![no_std]
 
 extern crate byteorder;
 extern crate sanskrit_common;
