@@ -11,7 +11,6 @@ extern crate sanskrit_memory_store;
 extern crate byteorder;
 extern crate hex;
 extern crate itertools;
-extern crate test;
 extern crate arrayref;
 extern crate ed25519_dalek;
 extern crate sha2;

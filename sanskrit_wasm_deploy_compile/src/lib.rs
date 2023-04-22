@@ -106,3 +106,6 @@ fn process_txt_deploy(txt:Vec<u8>, pre_alloc:usize) -> Result<Vec<u8>> {
     let res = store.get(StorageClass::Descriptor, &t_hash, |d|d.to_vec())?;
     Ok(res)
 }
+
+//Todo: Have a feature that also includes the interprete
+// Maybe a seperate package??

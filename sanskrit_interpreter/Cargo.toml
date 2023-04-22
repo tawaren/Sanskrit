@@ -10,7 +10,11 @@ codegen-units = 1
 panic = 'abort'
 
 [features]
-default = ["std"]
+default = ["std","advanced"]
+#provides advanced features that are not described in thesis
+advanced = ["dynamic_gas"]
+#not tested yet
+dynamic_gas = []
 std = []
 
 [dependencies]

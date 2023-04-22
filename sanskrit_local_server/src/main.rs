@@ -405,6 +405,10 @@ pub fn main() -> std::io::Result<()> {
     let listener_state = Arc::clone(&shared_state);
     // accept connections and process them serially
     println!("Started Local VM in {} mode", MODE);
+    #[cfg(feature = "dynamic_gas")]
+    println!("Dynamic gas measurement enabled");
+
+
     thread::spawn(move || {
         CompilerInstance::with_compiler_result(|mut compiler |{
             register_system_modules(&mut listener_state.lock().unwrap(), &mut compiler).unwrap();

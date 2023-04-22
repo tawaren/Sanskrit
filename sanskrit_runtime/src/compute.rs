@@ -5,7 +5,7 @@ use sanskrit_common::model::{Hash, Ptr, SlicePtr};
 //use ed25519_dalek::*;
 //use sha2::{Sha512};
 use sanskrit_common::arena::*;
-use sanskrit_interpreter::interpreter::{Frame, ExecutionContext};
+use sanskrit_interpreter::interpreter::{Frame, ExecutionContext, InterpreterResult};
 use sanskrit_interpreter::model::{Entry, TransactionDescriptor, TxTParam, TxTReturn, RuntimeType};
 use alloc::vec::Vec;
 
@@ -50,7 +50,7 @@ pub trait TransactionExecutionContext<S:Store,B:TransactionBundle> {
 }
 
 //Executes a transaction
-pub fn execute_once<'c, L: Tracker, SYS:SystemContext<'c>>(exec_store:&SYS::EC, ctx:&Context<SYS::S, SYS::B>, block_no:u64, heap:&Heap, tracker:&mut L) -> Result<()> {
+pub fn execute_once<'c, L: Tracker, SYS:SystemContext<'c>>(exec_store:&SYS::EC, ctx:&Context<SYS::S, SYS::B>, block_no:u64, heap:&Heap, tracker:&mut L) -> InterpreterResult {
     //Create Allocator
     //create heaps: based on bundle input
     let structural_arena = heap.new_arena(
@@ -85,6 +85,9 @@ pub fn execute_once<'c, L: Tracker, SYS:SystemContext<'c>>(exec_store:&SYS::EC, 
         scratch_pad
     };
 
+    #[cfg(feature = "dynamic_gas")]
+    let mut used_gas:u64 = 0;
+
     let mut sec_no = 0;
     for txt_section in ctx.txt_bundle.sections().iter() {
         tracker.section_start(txt_section);
@@ -92,6 +95,9 @@ pub fn execute_once<'c, L: Tracker, SYS:SystemContext<'c>>(exec_store:&SYS::EC, 
         for txt in txt_section.txts.iter() {
             tracker.transaction_start(txt);
             match execute_transaction::<_, SYS>(&exec_env, exec_store, ctx, txt, block_no, sec_no, txt_no, tracker) {
+                #[cfg(feature = "dynamic_gas")]
+                Ok(gas) => used_gas = u64::saturating_add(used_gas, gas),
+                #[cfg(not(feature = "dynamic_gas"))]
                 Ok(_) => {},
                 Err(err) => {
                     exec_store.revert(ctx);
@@ -113,10 +119,13 @@ pub fn execute_once<'c, L: Tracker, SYS:SystemContext<'c>>(exec_store:&SYS::EC, 
         sec_no+=1;
 
     }
-    Ok(())
+    #[cfg(feature = "dynamic_gas")]
+    return Ok(used_gas);
+    #[cfg(not(feature = "dynamic_gas"))]
+    return Ok(());
 }
 
-fn execute_transaction<'c, L: Tracker, SYS:SystemContext<'c>>(env:&ExecutionEnvironment, exec_store:&SYS::EC, ctx:&Context<SYS::S, SYS::B>, txt:&Transaction, block_no:u64, sec_no:u8, txt_no:u8,  tracker:&mut L) -> Result<()>{
+fn execute_transaction<'c, L: Tracker, SYS:SystemContext<'c>>(env:&ExecutionEnvironment, exec_store:&SYS::EC, ctx:&Context<SYS::S, SYS::B>, txt:&Transaction, block_no:u64, sec_no:u8, txt_no:u8,  tracker:&mut L) -> InterpreterResult{
 
     //Prepare all the Memory
     let txt_desc:TransactionDescriptor = env.descs[txt.txt_desc as usize];
@@ -169,7 +178,13 @@ fn execute_transaction<'c, L: Tracker, SYS:SystemContext<'c>>(env:&ExecutionEnvi
         };
     }
 
-    ExecutionContext::interpret::<SYS::RE>(&txt_desc.functions, &mut interpreter_stack, &mut frame_stack, &mut return_stack, &env.runtime_heap)?;
+    let res = ExecutionContext::interpret::<SYS::RE>(&txt_desc.functions, &mut interpreter_stack, &mut frame_stack, &mut return_stack, &env.runtime_heap)?;
+    #[cfg(feature = "dynamic_gas")]
+    if res > txt_desc.gas_cost as u64 {
+        panic!("used gas:{} - max gas:{} - txt:{:?}",res,txt_desc.gas_cost,&txt_desc.functions);
+    }
+    #[cfg(feature = "dynamic_gas")]
+    assert!(res <= txt_desc.gas_cost as u64);
 
     //Now that we know it succeeds we can modify the store
     for index in deletes {
@@ -194,7 +209,7 @@ fn execute_transaction<'c, L: Tracker, SYS:SystemContext<'c>>(env:&ExecutionEnvi
             RetType::Log => tracker.return_value(r_typ, r, ret_entry),
         }
     }
-    Ok(())
+    Ok(res)
 }
 
 

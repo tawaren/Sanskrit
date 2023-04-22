@@ -39,6 +39,7 @@ use externals::crypto::{raw_plain_hash, raw_join_hash};
 use compiler::CompilerInstance;
 #[cfg(feature = "embedded")]
 use sanskrit_deploy::deploy_module;
+use sanskrit_interpreter::interpreter::InterpreterResult;
 
 pub struct Tx {
     pub desc:Hash,
@@ -230,7 +231,11 @@ impl Tracker for TrackingState {
 const MAX_PARSE_DEPTH:usize = 1024;
 
 impl State {
-    pub fn execute_bundle(&mut self, bundle:&[u8], block_no:u64, heap:&Heap) -> Result<()> {
+
+    //Todo: can we have a wasm version of this
+    //      Can we bundle runtime together with compile?
+    pub fn execute_bundle(&mut self, bundle:&[u8], block_no:u64, heap:&Heap) -> InterpreterResult {
+        //Todo: a wasm version would probably have its own heap internally
         let txt_bundle_alloc = heap.new_virtual_arena(CONFIG.max_bundle_size);
         let txt_bundle= ServerSystem::parse_bundle(&bundle,&txt_bundle_alloc)?;
         let ctx = Context {
@@ -385,7 +390,7 @@ impl State {
         for i in 0..n {
             self.tracking.exec_state = base_exec_state.clone();
             let full_heap = heap.new_virtual_arena(100000 as usize);
-            let bundle = self.build_transactions(txts, &full_heap, block_no+i)?;
+            let (_,bundle) = self.build_transactions(txts, &full_heap, block_no+i)?;
             let ser = Serializer::serialize_fully(&bundle,MAX_PARSE_DEPTH)?;
             heap = heap.reuse();
             let now = Instant::now();
@@ -415,13 +420,19 @@ impl State {
             None => 0,
             Some(val) => Parser::parse_fully(&val, 1, &NoCustomAlloc())?
         };
-        let bundle = self.build_transactions(txts, &full_heap, block_no)?;
+        let (exec_gas,bundle) = self.build_transactions(txts, &full_heap, block_no)?;
+        #[cfg(feature = "dynamic_gas")]
+        let total_gas = bundle.core.total_gas_cost;
         Self::print_bundle_stats(&bundle);
         let ser = Serializer::serialize_fully(&bundle,MAX_PARSE_DEPTH)?;
         heap = heap.reuse();
         println!("Starting bundle execution");
         let now = Instant::now();
-        self.execute_bundle( &ser,block_no, &heap)?;
+        let res = self.execute_bundle( &ser,block_no, &heap)?;
+        #[cfg(feature = "dynamic_gas")]
+        assert!(res <= total_gas);
+        #[cfg(feature = "dynamic_gas")]
+        println!("Interpreter execution used {} of the available {} gas", res, exec_gas);
         //we flush manually as this would be done once per block and not per txt
         println!("Bundle executed in: {}ms", now.elapsed().as_millis());
         self.store.flush(StorageClass::EntryValue);
@@ -433,7 +444,7 @@ impl State {
         Ok(())
     }
 
-    pub fn build_transactions<'c,'h>(&mut self, txts:&[Tx], full_heap:&'c VirtualHeapArena<'h>, block_no:u64) -> Result<BaseTransactionBundle<'c>>{
+    pub fn build_transactions<'c,'h>(&mut self, txts:&[Tx], full_heap:&'c VirtualHeapArena<'h>, block_no:u64) -> Result<(u64, BaseTransactionBundle<'c>)>{
         let mut transactions:Vec<Transaction> = Vec::with_capacity(txts.len());
 
         //todo: build on Heap?
@@ -453,6 +464,7 @@ impl State {
         let mut descs:Vec<Hash> = Vec::new();
         let mut txt_descs:Vec<TransactionDescriptor> = Vec::new();
         let mut desc_dedup:BTreeMap<Hash,u16> = BTreeMap::new();
+        let mut exec_gas:u64 = 0;
 
         let mut gas = CONFIG.bundle_base_cost;
         for Tx{ref desc, ref params, ref returns} in txts {
@@ -464,6 +476,8 @@ impl State {
                 let l_desc = read_transaction_desc(desc,&self.store, full_heap)?;
                 let txt_index = txt_descs.len();
                 gas += l_desc.gas_cost as u64;
+                exec_gas += l_desc.gas_cost as u64;
+
                 txt_descs.push(l_desc);
                 descs.push(*desc);
                 desc_dedup.insert(*desc, txt_index as u16);
@@ -680,11 +694,12 @@ impl State {
             witness.push(full_heap.copy_alloc_slice(&signature.to_bytes())?);
         };
         let witness_slice  = full_heap.copy_alloc_slice(&witness)?;
-        Ok(BaseTransactionBundle {
+        //Todo: only compute and return exec gas in dynamic case
+        Ok((exec_gas, BaseTransactionBundle {
             byte_size: Some(core_reparsed.byte_size.unwrap() + witness_slice.len()*(64+2) +2), //cheat here a bit so we can do stats
             core: core_reparsed,
             witness: witness_slice,
-        })
+        }))
     }
 
     pub fn get_account(&mut self, ident:&str) -> Result<Keypair> {

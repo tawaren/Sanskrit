@@ -1,5 +1,4 @@
 #![feature(test)]
-#![feature(associated_type_defaults)]
 
 extern crate sanskrit_test_script_compiler;
 extern crate sanskrit_deploy;

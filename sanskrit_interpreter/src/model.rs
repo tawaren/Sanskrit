@@ -78,7 +78,9 @@ pub enum OpCode</*#[AllocLifetime]*/ 'b> {
     //Gas Testing Operands
     Id(ValueRef),                                                   //Makes a Copy of the input (this is for testing) -- Establishes a Baseline
     SysInvoke(u8, SlicePtr<'b,ValueRef>),
-    TypedSysInvoke(u8, Kind, SlicePtr<'b,ValueRef>)
+    TypedSysInvoke(u8, Kind, SlicePtr<'b,ValueRef>),
+    #[cfg(feature = "dynamic_gas")]
+    ConsumeGas(u32)                                                 //Consumes some additional gas
 }
 
 #[derive(Copy, Clone, Debug, AllocParsable, Serializable, VirtualSize)]
@@ -93,7 +95,17 @@ pub struct TransactionDescriptor</*#[AllocLifetime]*/ 'c> {
     pub max_mem:u16,
     pub params:SlicePtr<'c,TxTParam<'c>>,
     pub returns:SlicePtr<'c,TxTReturn<'c>>,
+    #[cfg(feature = "dynamic_gas")]
+    pub functions:SlicePtr<'c,TxTFunction<'c>>,        //multiple functions (calls are embeded)
+    #[cfg(not(feature = "dynamic_gas"))]
     pub functions:SlicePtr<'c,Ptr<'c, Exp<'c>>>,        //multiple functions (calls are embeded)
+}
+
+#[cfg(feature = "dynamic_gas")]
+#[derive(Copy, Clone, Debug, AllocParsable, Serializable, VirtualSize)]
+pub struct TxTFunction</*#[AllocLifetime]*/ 'c> {
+    pub gas:u32,
+    pub body:Ptr<'c, Exp<'c>>
 }
 
 #[derive(Copy, Clone, Debug, AllocParsable, Serializable, VirtualSize)]

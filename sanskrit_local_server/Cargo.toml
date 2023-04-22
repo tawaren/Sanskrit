@@ -8,8 +8,12 @@ build = "build.rs"
 lalrpop = { version =  "0.19.1", features = ["lexer"] }
 
 [features]
-default = ["std", "embedded"]
+default = ["std", "embedded", "forward_type_ref"]
 std = []
+advanced = ["dynamic_gas", "forward_type_ref", "sanskrit_compile/advanced", "sanskrit_deploy/advanced", "sanskrit_runtime/advanced", "sanskrit_interpreter/advanced"]
+#needs to change how switches and tries work
+dynamic_gas = ["sanskrit_compile/dynamic_gas","sanskrit_runtime/dynamic_gas", "sanskrit_interpreter/dynamic_gas"]
+forward_type_ref = ["sanskrit_deploy/forward_type_ref","sanskrit_runtime/forward_type_ref"]
 wasm = ["wasmer"]
 embedded = ["sanskrit_runtime/deployer", "sanskrit_deploy", "sanskrit_compile"]
 
@@ -32,23 +36,28 @@ fluid-let = "0.1.0"
 path = "../sanskrit_compile"
 version = "0.1.0"
 optional = true
+default-features=false
 
 [dependencies.sanskrit_deploy]
 path = "../sanskrit_deploy"
 version = "0.1.0"
 optional = true
+default-features=false
 
 [dependencies.sanskrit_runtime]
 path = "../sanskrit_runtime"
 version = "0.1.0"
+default-features=false
 
 [dependencies.sanskrit_interpreter]
 path = "../sanskrit_interpreter"
 version = "0.1.0"
+default-features=false
 
 [dependencies.sanskrit_common]
 path = "../sanskrit_common"
 version = "0.1.0"
+default-features = false
 
 [dependencies.sanskrit_core]
 path = "../sanskrit_core"

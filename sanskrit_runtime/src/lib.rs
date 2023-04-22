@@ -34,7 +34,7 @@ use system::SystemContext;
 use verify::{verify_repeated, verify_once, TransactionVerificationContext};
 use compute::{execute_once, TransactionExecutionContext};
 use sanskrit_common::model::{Hash, SlicePtr};
-use sanskrit_interpreter::interpreter::Frame;
+use sanskrit_interpreter::interpreter::{Frame, InterpreterResult};
 #[cfg(feature = "deployer")]
 use sanskrit_deploy::{deploy_module, deploy_function};
 #[cfg(feature = "deployer")]
@@ -183,13 +183,12 @@ pub fn read_transaction_desc<'d, S:Store, A:ParserAllocator>(target:&Hash, store
 
 
 //Executes a transaction
-pub fn execute<'c, 'd:'c, L: Tracker,SYS:SystemContext<'c>>(ctx:Context<SYS::S, SYS::B>, block_no:u64, heap:&'d Heap, tracker:&mut L) -> Result<()> {
+pub fn execute<'c, 'd:'c, L: Tracker,SYS:SystemContext<'c>>(ctx:Context<SYS::S, SYS::B>, block_no:u64, heap:&'d Heap, tracker:&mut L) -> InterpreterResult {
     //Check that it is inside limit
     if ctx.txt_bundle.byte_size() > CONFIG.max_bundle_size { return error(||"Transaction Bundle to big")}
     verify_repeated::<SYS>( &ctx, block_no)?;
     verify_once::<SYS>(&SYS::VC::new(), &ctx, heap)?;
-    execute_once::<_,SYS>(&SYS::EC::new(), &ctx, block_no, heap, tracker)?;
-    Ok(())
+    execute_once::<_,SYS>(&SYS::EC::new(), &ctx, block_no, heap, tracker)
 }
 
 #[cfg(feature = "deployer")]

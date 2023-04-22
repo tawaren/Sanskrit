@@ -21,6 +21,7 @@ members = [
 [profile.release]
 panic = "abort"
 #lto = "fat" crashes at runtime
-lto = "thin"
+#lto = "thin" crashes at runtime as well now
+lto = false
 debug = false
 opt-level = 3
