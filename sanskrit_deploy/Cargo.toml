@@ -4,8 +4,11 @@ version = "0.1.0"
 authors = ["tawaren <markus.knecht85@gmail.com>"]
 
 [features]
-default = ["std"]
+default = ["std", "advanced"]
 std = []
+#provides advanced features that are not described in thesis
+advanced = ["forward_type_ref"]
+forward_type_ref = []
 test = []
 
 [dependencies.sanskrit_common]

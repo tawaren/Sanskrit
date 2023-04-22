@@ -93,7 +93,7 @@ impl<'b, S:Store + 'b> Context<'b, S> {
 
     //Generates a top level local Context for a Component from input
     pub fn from_module_component<T:Component>(comp:&T, module:&Crc<ModuleLink>, use_body:bool, store:&'b Loader<'b,S>) -> Result<Self> {
-        assert!(comp.get_generics().len() <= u8::max_value() as usize);
+        assert!(comp.get_generics().len() <= u8::MAX as usize);
         let top = top_level_subs(comp.get_generics());
         let public = comp.get_public_import();
         if use_body {
