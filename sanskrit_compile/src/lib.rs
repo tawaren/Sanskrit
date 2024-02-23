@@ -44,7 +44,7 @@ pub fn create_descriptor<S:Store, CE:CompilationExternals>(store:&S, function_ha
     //compiles the content
     let txt_desc = compiler::compile_transaction::<S, CE>(&function_hash, store, &alloc)?;
     //serializes the content
-    let data = Serializer::serialize_fully(&txt_desc, usize::max_value())?;
+    let data = Serializer::serialize_fully(&txt_desc, usize::MAX)?;
     //calcs the Key for the store
     let key = store_hash(&[&data]);
     Ok((key, data))

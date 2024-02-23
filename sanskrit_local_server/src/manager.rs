@@ -114,7 +114,7 @@ impl<'a> Parsable<'a> for EncString{
 
 impl Serializable for EncString{
     fn serialize(&self, s:&mut Serializer) -> Result<()> {
-        assert!(self.0.len() <= u16::max_value() as usize);
+        assert!(self.0.len() <= u16::MAX as usize);
         (self.0.len() as u16).serialize(s)?;
         s.produce_bytes(self.0.as_bytes());
         Ok(())
@@ -482,7 +482,6 @@ impl State {
 
             gas += CONFIG.entry_load_cost.compute(txt_desc.byte_size.unwrap() as u64);
 
-            //todo: make collect
             for (p, txt_p) in params.iter().zip(txt_desc.params.iter()) {
                 match p {
                     Param::Lit(data) => {

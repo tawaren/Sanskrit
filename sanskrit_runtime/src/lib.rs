@@ -138,7 +138,7 @@ impl Configuration {
         Heap::elems::<Entry>(self.max_stack_depth)
             + Heap::elems::<Frame>(self.max_stack_depth)
             + Heap::elems::<Entry>(self.return_stack)
-            + (self.max_heap_size* virt_factor)
+            + (self.max_heap_size * virt_factor)
             + (self.max_bundle_size * virt_factor)
             + (self.max_txt_alloc * virt_factor)
     }

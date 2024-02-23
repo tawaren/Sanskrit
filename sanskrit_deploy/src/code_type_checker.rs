@@ -22,11 +22,11 @@ use sanskrit_common::model::*;
 use sanskrit_core::utils::Crc;
 
 //Todo: Make Configurable
-//used to ensure that rheir is a stack size that prevents stack overflows
+//used to ensure that their is a stack size that prevents stack overflows
 const MAX_NESTING_DEPTH:usize = 50;
 
 pub struct TypeCheckerContext<'b, S:Store + 'b> {
-    context: Context<'b, S>,                     //The Resolved Components from the input
+    context: Context<'b, S>,                 //The Resolved Components from the input
     stack: LinearStack<Crc<ResolvedType>>,   //The current stack layout
     transactional:bool,
     depth:usize,

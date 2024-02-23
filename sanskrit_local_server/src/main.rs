@@ -180,7 +180,6 @@ type LineProcessor = dyn Fn(String, &VirtualHeapArena) -> Result<ProcRes>;
 fn process_line(line:String, shared_state:Arc<Mutex<State>>, full_heap:&VirtualHeapArena) -> Result<ProcRes>{
     let (command, input) = extract_command(line);
 
-    //Todo: Make multi transaction version
     match command.to_lowercase().as_ref() {
         "bundle" => {
             let state = Rc::new(RefCell::new((BTreeSet::new(),Vec::new())));

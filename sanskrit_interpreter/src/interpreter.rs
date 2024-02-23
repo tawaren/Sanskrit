@@ -150,7 +150,6 @@ impl<'transaction,'code,'interpreter,'execution,'heap> ExecutionContext<'transac
         return_stack:&'execution mut HeapStack<'interpreter,Entry<'transaction>>,
         alloc:&'transaction VirtualHeapArena<'heap>
     ) -> Result<()>{
-        println!("{:?}", functions);
         //Define some reused types and capabilities
         let context = ExecutionContext {
             functions,

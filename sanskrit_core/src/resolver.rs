@@ -321,7 +321,7 @@ impl<'b, S:Store + 'b> Context<'b, S> {
 
         //Construct the Type
         match adt.body {
-            DataImpl::Internal { ..} => {
+            DataImpl::Internal { .. } => {
                 Ok(self.store.dedup_type(ResolvedType::Data {
                     caps,
                     generic_caps,

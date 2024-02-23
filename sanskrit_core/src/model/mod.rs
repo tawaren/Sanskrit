@@ -125,7 +125,6 @@ pub struct BodyImport {
     pub public: PublicImport,
     pub callables:Vec<CallableImport>,       //Imports for use in code
     pub permissions:Vec<PermissionImport>,   //Permisions
-
 }
 
 pub enum Imports<'a> {
@@ -180,7 +179,7 @@ pub struct Case {
 pub enum Accessibility {
     Local,                    //A Visibility restricting invokes to the same Module
     Guarded(Vec<GenRef>),     //A Visibility restricting invokes to Modules that includes one of the generic types
-    Global,                     //A Visibility allowing everybody to invoke
+    Global,                   //A Visibility allowing everybody to invoke
 }
 
 //Represents a type construction
