@@ -458,7 +458,7 @@ fn extract_alloc_lifetime(generics:&Generics, auto_alloc:bool) -> Option<TokenSt
     } else {
         for l in generics.lifetimes() {
             for a in &l.attrs {
-                match a.path.segments.last() {
+                match a.path().segments.last() {
                     None => {}
                     Some(p)  => {
                         if p.ident == "AllocLifetime" {
@@ -475,7 +475,7 @@ fn extract_alloc_lifetime(generics:&Generics, auto_alloc:bool) -> Option<TokenSt
 fn extract_named_field<'a>(name:&str, fs: impl Iterator<Item=&'a Field>) -> Option<Ident> {
     for f in fs {
         for a in &f.attrs {
-            match a.path.segments.last() {
+            match a.path().segments.last() {
                 None => {}
                 Some(p)  => {
                     if p.ident == name {
@@ -492,7 +492,7 @@ fn extract_named_fields<'a>(name:&str, fs: impl Iterator<Item=&'a Field>) -> Vec
     let mut fields:Vec<Ident> = Vec::new();
     for f in fs {
         for a in &f.attrs {
-            match a.path.segments.last() {
+            match a.path().segments.last() {
                 None => {}
                 Some(p)  => {
                     if p.ident == name {

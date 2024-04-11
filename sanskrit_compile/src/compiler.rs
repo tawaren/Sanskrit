@@ -87,14 +87,14 @@ fn generate_transaction_descriptor<'b,'h, S:Store,CE:CompilationExternals>(fun:&
     //do the compaction process
     let (functions,ressources) = Compactor::compact::<_,CE>(fun, code,  &ctx.store, alloc)?;
 
-    if functions.len() > u16::max_value() as usize {
+    if functions.len() > u16::MAX as usize {
         return error(||"Number of functions out of range")
     }
 
 
-    if ressources.gas > u32::max_value() as u64 {return error(||"Consumed Gas out of range")}
-    if ressources.manifest_stack > u16::max_value() as u32 {return error(||"Required stack size out of range")}
-    if ressources.frames > u16::max_value() as u32 {return error(||"Required number of frames out of range")}
+    if ressources.gas > u32::MAX as u64 {return error(||"Consumed Gas out of range")}
+    if ressources.manifest_stack > u16::MAX as u32 {return error(||"Required stack size out of range")}
+    if ressources.frames > u16::MAX as u32 {return error(||"Required number of frames out of range")}
 
     let desc = TransactionDescriptor {
         byte_size: None,

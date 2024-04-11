@@ -11,13 +11,17 @@ panic = 'abort'
 
 [features]
 default = ["std"]
+#provides advanced features that are not described in thesis
+advanced = ["dynamic_gas"]
+#not tested yet
+dynamic_gas = []
 std = []
 
 [dependencies]
-byteorder = { version = "1.3.4", features = ["i128"], default-features = false }
-ed25519-dalek = { version = "1.0.1", default-features = false, features = ["u64_backend"] }
-sha2 = { version = "0.9.1", default-features = false }
-rand = { version = "0.7.3", default-features = false }
+byteorder = { version = "1.5.0", features = ["i128"], default-features = false }
+ed25519-dalek = { version = "2.1.1", default-features = false}
+sha2 = { version = "0.10.8", default-features = false }
+rand = { version = "0.8.5", default-features = false }
 
 [dependencies.sanskrit_common]
 path = "../sanskrit_common"

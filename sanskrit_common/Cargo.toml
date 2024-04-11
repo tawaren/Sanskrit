@@ -10,9 +10,9 @@ string_errors = []
 panic_errors = []
 
 [dependencies]
-blake3 = { version = "0.3.7", default-features = false }
-byteorder = { version = "1.3.4", features = ["i128"], default-features = false }
-arrayref = "0.3.6"
+blake3 = { version = "1.5.1", default-features = false }
+byteorder = { version = "1.5.0", features = ["i128"], default-features = false }
+arrayref = "0.3.7"
 
 
 [dependencies.sanskrit_derive]

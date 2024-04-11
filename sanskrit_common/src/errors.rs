@@ -1,6 +1,5 @@
 use core::result::Result as OResult;
 
-#[cfg(feature = "string_errors")]
 use alloc::string::String;
 #[cfg(feature = "string_errors")]
 use alloc::borrow::ToOwned;
@@ -29,10 +28,22 @@ pub fn error<T,F:FnOnce()-> &'static str>(_msg:F) -> Result<T>{
     Err(())
 }
 
+#[cfg(not(feature = "string_errors"))]
+pub fn owned_error<T,F:FnOnce()-> String>(_msg:F) -> Result<T>{
+    pre_error();
+    Err(())
+}
+
 #[cfg(feature = "string_errors")]
 pub fn error<'a, T,F:FnOnce()-> &'a str>(msg:F) -> Result<T>{
     pre_error();
     Err(msg().to_owned())
+}
+
+#[cfg(feature = "string_errors")]
+pub fn owned_error<'a, T,F:FnOnce()-> String>(msg:F) -> Result<T>{
+    pre_error();
+    Err(msg())
 }
 
 #[cfg(not(feature = "string_errors"))]

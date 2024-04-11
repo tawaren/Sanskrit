@@ -29,10 +29,6 @@ pub fn validate_top_function<S:Store>(data:&[u8], store:&S) -> Result<()>{
     //Do the type checking of the code in the function body
     if let CallableImpl::Internal {ref code, ..} = fun.body {
         let mut checker = TypeCheckerContext::<S>::new(context);
-        /*match checker.type_check_function(&fun, code) {
-            Ok(k) => k,
-            Err(_) => panic!("{:?}", fun),
-        }*/
         checker.type_check_function(&fun, code)?;
     }
     Ok(())
@@ -40,7 +36,7 @@ pub fn validate_top_function<S:Store>(data:&[u8], store:&S) -> Result<()>{
 
 pub fn validate<S:Store>(data:&[u8], store:&S, link:Hash, system_mode_on:bool) -> Result<()> {
     //Parse the module
-    let parsed: Module = Parser::parse_fully::<Module, NoCustomAlloc>(data, usize::max_value(), &NoCustomAlloc())?;
+    let parsed: Module = Parser::parse_fully::<Module, NoCustomAlloc>(data, usize::MAX, &NoCustomAlloc())?;
     //Prepare the cache for this iteration
     let resolver = Loader::new_incremental(store, link, parsed);
     //Get a reference to the cached Module
@@ -48,35 +44,45 @@ pub fn validate<S:Store>(data:&[u8], store:&S, link:Hash, system_mode_on:bool) -
     // get the module lnk
     let module_link = resolver.dedup_module_link(ModuleLink::This(link));
 
+    //Mange current sigs and adts for forward reference checking
+    let mut cur_adt_offset = 0;
+    let mut cur_sig_offset = 0;
+    #[cfg(feature = "forward_type_ref")]
+    resolver.this_deployed_data.set( module.data.len());
+    #[cfg(feature = "forward_type_ref")]
+    resolver.this_deployed_sigs.set( module.sigs.len());
+
     for sel in &module.data_sig_order.0 {
         if *sel {
-            let tdd = resolver.this_deployed_data.get();
             //check it is their
-            if tdd >= module.data.len() {
+            if cur_adt_offset >= module.data.len() {
                 return error(||"Orderer addresses unavailable Data Component")
             }
             //get it
-            let d = &module.data[tdd];
+            let d = &module.data[cur_adt_offset];
             //Prepare the context
             let context = Context::from_module_component(d, &module_link, false,&resolver)?;
             //Ensure the input is formally correct and has the expected properties
-            validate_adt(d, &context, system_mode_on)?;
+            validate_adt(d, &context, system_mode_on, #[cfg(feature = "forward_type_ref")] cur_adt_offset)?;
+            cur_adt_offset += 1;
             //Hint the cache that a new Adt is available in the current module
-            resolver.this_deployed_data.set(tdd + 1);
+            #[cfg(not(feature = "forward_type_ref"))]
+            resolver.this_deployed_data.set(cur_adt_offset);
         } else {
-            let tds = resolver.this_deployed_sigs.get();
             //check it is their
-            if tds >= module.sigs.len() {
+            if cur_sig_offset >= module.sigs.len() {
                 return error(||"Orderer addresses unavailable Signature Component")
             }
             //get it
-            let s = &module.sigs[tds];
+            let s = &module.sigs[cur_sig_offset];
             //Prepare the context
             let context = Context::from_module_component(s, &module_link, false, &resolver)?;
             //Ensure the input is formally correct and has the expected properties
             validate_sig(s, &context)?;
+            cur_sig_offset += 1;
             //Hint the cache that a new Signature is available in the current module
-            resolver.this_deployed_sigs.set(tds + 1);
+            #[cfg(not(feature = "forward_type_ref"))]
+            resolver.this_deployed_sigs.set(cur_sig_offset);
         }
     }
 
@@ -125,8 +131,11 @@ pub fn validate<S:Store>(data:&[u8], store:&S, link:Hash, system_mode_on:bool) -
 }
 
 //Checks that an Adt declaration is semantically valid
-fn validate_adt<S:Store>(adt:&DataComponent, context:&Context<S>, system_mode_on:bool ) -> Result<()>{
+fn validate_adt<S:Store>(adt:&DataComponent, context:&Context<S>, system_mode_on:bool, #[cfg(feature = "forward_type_ref")] cur_adt_offset:usize) -> Result<()>{
     //Check the import section
+    //ensure that no self referencing is used in applies unless they are phantom or literal
+    #[cfg(feature = "forward_type_ref")]
+    check_save_self_referencing(context, cur_adt_offset)?;
     //we allow no protection forwarding as adts have 2 visibilities & should not need to import create, consumes & implements
     check_type_import_integrity(context)?;
 
@@ -139,7 +148,7 @@ fn validate_adt<S:Store>(adt:&DataComponent, context:&Context<S>, system_mode_on
         DataImpl::Internal { ref constructors, .. } => {
             //All caps are allowed
             //Check constructors for phantoms and enforce recursive capabilities
-            check_ctr_fields(adt.provided_caps, constructors, context)?
+            check_ctr_fields(adt.provided_caps, constructors, context, #[cfg(feature = "forward_type_ref")] cur_adt_offset)?
         },
         DataImpl::External(_) => if !system_mode_on {
             return error(||"Deploying externals requires system mode")
@@ -309,6 +318,47 @@ fn check_generic_constraints(generics:&[Generic], applies:&[Crc<ResolvedType>]) 
     Ok(())
 }
 
+
+//Checks that there are no cycles in the apply graph
+#[cfg(feature = "forward_type_ref")]
+fn check_save_self_referencing<S:Store>(context:&Context<S>, cur_adt_offset:usize) -> Result<()> {
+    //iterate over all type imports
+    for typ in context.list_types() {
+        //resolve the type to ensure it is legit
+        match **typ {
+            //Nothing has to be checked for Generics and Virtuals they have no applies
+            ResolvedType::Generic { .. }
+            | ResolvedType::Virtual(_)
+            //Literals & sigs are the only allowed forward reference
+            // This is save as they have a Fixed Size independent of their applies
+            | ResolvedType::Lit { .. }
+            | ResolvedType::Sig { .. } => { }
+
+            //We need to ensure that their is no cycle in the data graph
+            // This is needed as the applies can appear in the constructor
+            // leading to infinitely large data structures
+            ResolvedType::Data { ref module, offset, ref applies, .. } => {
+                //Fetch the Cache Entry
+                let data_cache = context.store.get_component::<DataComponent>(&*module, offset)?;
+                //Retrieve the data component from the cache
+                let data_comp = data_cache.retrieve();
+
+                for (g,apply) in data_comp.generics.iter().zip(applies.iter()) {
+                   match g {
+                       Generic::Phantom => {},
+                       Generic::Physical(_) => ensure_backwards_ref(apply, cur_adt_offset)?
+                   }
+               }
+            },
+            ResolvedType::Projection { ref un_projected,.. } => {
+                ensure_backwards_ref(un_projected, cur_adt_offset)?;
+            }
+
+        }
+    }
+    Ok(())
+}
+
 //Checks that native imports are allowed and have correct amount and kind of arguments
 //Checks that normal imports have correct amount and kind of arguments
 fn check_type_import_integrity<S:Store>(context:&Context<S>) -> Result<()> {
@@ -394,27 +444,52 @@ fn check_cap_constraints(must_have_caps:CapSet, caps:CapSet) -> Result<()>{
 }
 
 //Checks that the fields in the constructor do not use phantoms as type and do not violate the recursive generics declared on the adt
-fn check_ctr_fields<S:Store>(provided_caps:CapSet, ctrs:&[Case], context:&Context<S>) -> Result<()> {
+fn check_ctr_fields<S:Store>(provided_caps:CapSet, ctrs:&[Case], context:&Context<S>, #[cfg(feature = "forward_type_ref")] cur_adt_offset:usize) -> Result<()> {
     //Go over all constructors
     for ctr in ctrs {
         //Go over all fields
         for field in &ctr.fields {
+            let typ = field.typ.fetch(context)?;
+            //checks that the constructor fields are not self referential
+            #[cfg(feature = "forward_type_ref")]
+            ensure_backwards_ref(&*typ, cur_adt_offset)?;
             //Resolve the field type
-            match *field.typ.fetch(context)? {
+            match *typ {
                 //if the type is generic ensure it is not a phantom
                 // Externals are always Phantom types
                 ResolvedType::Generic { is_phantom: true, .. }
                 | ResolvedType::Virtual(_) => return error(|| "Phantom types can not be used as constructor fields"),
                 // Note: generic recursive-caps is delayed (rechecked) to apply side to allow Option[T] (or even Option[Option[T]] instead of requiring DropOption[Drop T] ... PersistOption[Persist T] etc...
                 //if a regular type on non phantom generic check that it does support the caps
-                ResolvedType::Data { generic_caps, .. }
-                | ResolvedType::Sig { caps: generic_caps, .. } //For Sigs generic_caps == caps (all sigs ignore generics)
-                | ResolvedType::Lit { generic_caps, .. } => check_cap_constraints(provided_caps, generic_caps)?,
+                ResolvedType::Sig { caps: generic_caps, .. }
+                | ResolvedType::Lit { generic_caps, .. }
+                | ResolvedType::Data { generic_caps, .. } => {
+                    check_cap_constraints(provided_caps, generic_caps)?
+                },
                 ResolvedType::Generic { .. } => {},
                 //We have all capabilities on a projection
-                ResolvedType::Projection { .. } => {},
+                ResolvedType::Projection { ref un_projected, .. } => { },
             }
         }
+    }
+    Ok(())
+}
+
+//ensures that their are no cycles in type references or adt compositions
+// this is achieved by requiring that types can not point to the current or future definition in general
+#[cfg(feature = "forward_type_ref")]
+fn ensure_backwards_ref(typ:&ResolvedType, cur_adt_offset:usize) -> Result<()> {
+    match *typ {
+        //Data types additionally need to check that the constructor fields are not self referential
+        ResolvedType::Data { ref module, offset, .. } => {
+            if module.is_local_link() && cur_adt_offset <= offset as usize {
+                return error(||"Data constructors can not contain forward references involving other data types")
+            }
+        },
+        ResolvedType::Projection { ref un_projected, .. } => {
+            ensure_backwards_ref(un_projected, cur_adt_offset)?
+        },
+        _ => {}
     }
     Ok(())
 }

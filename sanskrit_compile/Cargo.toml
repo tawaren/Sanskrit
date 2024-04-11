@@ -4,8 +4,17 @@ version = "0.1.0"
 authors = ["tawaren <markus.knecht85@gmail.com>"]
 
 [features]
-default = ["std"]
+default = ["std","advanced"]
+#provides advanced features that are not described in thesis
+advanced = ["dynamic_gas", "sanskrit_interpreter/advanced"]
+#not tested yet
+dynamic_gas = ["sanskrit_interpreter/dynamic_gas"]
 std = []
+
+[dependencies.sanskrit_interpreter]
+path = "../sanskrit_interpreter"
+version = "0.1.0"
+default-features=false
 
 [dependencies.sanskrit_common]
 path = "../sanskrit_common"
@@ -16,6 +25,3 @@ default-features = false
 path = "../sanskrit_core"
 version = "0.1.0"
 
-[dependencies.sanskrit_interpreter]
-path = "../sanskrit_interpreter"
-version = "0.1.0"

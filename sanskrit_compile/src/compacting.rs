@@ -14,12 +14,15 @@ use sanskrit_core::model::*;
 use sanskrit_core::model::linking::Ref;
 use sanskrit_interpreter::model::{OpCode as ROpCode, Entry};
 use sanskrit_interpreter::model::Exp as RExp;
+#[cfg(feature = "dynamic_gas")]
+use sanskrit_interpreter::model::TxTFunction;
+
 use sanskrit_core::model::resolved::*;
 use sanskrit_common::errors::*;
 use sanskrit_common::model::*;
 use sanskrit_common::store::*;
-//use core::mem;
-use std::mem;
+use core::mem;
+//use std::mem;
 use sanskrit_common::arena::*;
 use gas_table::gas;
 use sanskrit_core::utils::Crc;
@@ -33,6 +36,14 @@ struct State {
     gas:u64,
     //the maximal number of gas used
     max_gas:u64,
+
+    //the gas used in this trace without calls
+    #[cfg(feature = "dynamic_gas")]
+    local_gas:u64,
+    //the maximal number of gas used without calls
+    #[cfg(feature = "dynamic_gas")]
+    max_local_gas:u64,
+
     //the mem used in this trace
     mem:u64,
     //the maximal number of mem used
@@ -49,6 +60,8 @@ struct State {
     stack:Vec<usize>,
 }
 
+//Todo: we need to consume dynamic Gas locally in branches of switch and try
+//      Otherwise it can happen that it is wrong
 pub struct Compactor<'b,'h> {
     //state
     state:State,
@@ -56,14 +69,21 @@ pub struct Compactor<'b,'h> {
     // boolean marks implements
     fun_mapping:BTreeMap<(Crc<ModuleLink>,u8,bool),(u16,u8,ExpResources)>,
     //the code of all the embedded functions
+    #[cfg(not(feature = "dynamic_gas"))]
     functions:SliceBuilder<'b,Ptr<'b,RExp<'b>>>,
+    #[cfg(feature = "dynamic_gas")]
+    functions:SliceBuilder<'b,TxTFunction<'b>>,
     //allocator
     alloc:&'b HeapArena<'h>,
     // block
     block: Vec<ROpCode<'b>>
 }
 
+#[cfg(not(feature = "dynamic_gas"))]
 type BranchPoint = (u64,u64,u64,u64);
+#[cfg(feature = "dynamic_gas")]
+type BranchPoint = (u64,u64,u64,u64,u64,u64);
+
 type ReturnPoint = (u32,usize);
 
 //todo: Comment
@@ -72,6 +92,10 @@ impl State {
         State {
             gas: 0,
             max_gas: 0,
+            #[cfg(feature = "dynamic_gas")]
+            local_gas: 0,
+            #[cfg(feature = "dynamic_gas")]
+            max_local_gas: 0,
             mem: 0,
             max_mem: 0,
             frames: 0,
@@ -84,7 +108,7 @@ impl State {
 
     fn push_real(&mut self) -> Result<()>{
         let pos = self.manifested_stack;
-        if pos == u16::max_value() as u32 {
+        if pos == u16::MAX as u32 {
             return error(||"Stack limit reached")
         }
 
@@ -111,10 +135,33 @@ impl State {
         self.frames -= 1;
     }
 
+    #[cfg(feature = "dynamic_gas")]
+    #[inline(always)]
+    fn use_local_gas(&mut self, local_gas:u64){
+        self.local_gas = self.local_gas.saturating_add(local_gas);
+        if self.local_gas > self.max_local_gas {
+            self.max_local_gas = self.local_gas
+        }
+    }
+
     fn use_gas(&mut self, gas:u64) {
+        self.gas = self.gas.saturating_add(gas);
+        if self.gas > self.max_gas {
+            self.max_gas = self.gas
+        }
+        #[cfg(feature = "dynamic_gas")]
+        self.use_local_gas(gas);
+    }
+
+    #[cfg(feature = "dynamic_gas")]
+    fn use_dynamic_gas(&mut self, gas:u64, local_gas:u64) {
         self.gas = self.gas.saturating_add(gas as u64);
         if self.gas > self.max_gas {
             self.max_gas = self.gas
+        }
+        self.local_gas = self.local_gas.saturating_add(local_gas as u64);
+        if self.local_gas > self.max_local_gas {
+            self.max_local_gas = self.local_gas
         }
     }
 
@@ -128,13 +175,30 @@ impl State {
     fn extract_call_resources(self) -> ExpResources {
         ExpResources {
             gas: self.max_gas,
+            #[cfg(feature = "dynamic_gas")]
+            local_gas: self.max_local_gas,
             mem: self.max_mem,
             manifest_stack: self.max_manifest_stack,
             frames: self.max_frames,
         }
     }
 
+    fn include_resources(&mut self, res:ExpResources, mult:u64) {
+        #[cfg(feature = "dynamic_gas")]
+        self.use_dynamic_gas(mult*res.gas, mult*res.local_gas);
+        #[cfg(not(feature = "dynamic_gas"))]
+        self.use_gas(mult*res.gas);
+        self.use_mem(mult*res.mem);
+        self.max_frames = self.max_frames.max(self.frames + res.frames);
+        self.max_manifest_stack = self.max_manifest_stack.max(self.manifested_stack + res.manifest_stack);
+
+    }
+
     fn include_call_resources(&mut self, res:ExpResources, mult:u64) {
+        //The whole point of local_gas is to exclude nested calls
+        #[cfg(feature = "dynamic_gas")]
+        self.use_dynamic_gas(mult*res.gas, 0);
+        #[cfg(not(feature = "dynamic_gas"))]
         self.use_gas(mult*res.gas);
         self.use_mem(mult*res.mem);
         self.max_frames = self.max_frames.max(self.frames + res.frames);
@@ -143,6 +207,10 @@ impl State {
     }
 
     fn include_tail_call_resources(&mut self, frame_start:u32, res:ExpResources, mult:u64) {
+        //The whole point of local_gas is to exclude nested calls
+        #[cfg(feature = "dynamic_gas")]
+        self.use_dynamic_gas(mult*res.gas, 0);
+        #[cfg(not(feature = "dynamic_gas"))]
         self.use_gas(mult*res.gas);
         self.use_mem(mult*res.mem);
         //-1 as we can reuse the current frame
@@ -152,7 +220,19 @@ impl State {
 
     }
 
+    #[cfg(feature = "dynamic_gas")]
+    fn start_branching(&mut self) -> BranchPoint {
+        let res = (self.gas, self.max_gas, self.local_gas, self.max_local_gas, self.mem, self.max_mem);
+        self.gas = 0;
+        self.max_gas = 0;
+        self.local_gas = 0;
+        self.max_local_gas = 0;
+        self.mem = 0;
+        self.max_mem = 0;
+        res
+    }
 
+    #[cfg(not(feature = "dynamic_gas"))]
     fn start_branching(&mut self) -> BranchPoint {
         let res = (self.gas, self.max_gas, self.mem, self.max_mem);
         self.gas = 0;
@@ -162,14 +242,33 @@ impl State {
         res
     }
 
+    #[cfg(feature = "dynamic_gas")]
+    fn next_branch(&mut self) {
+        self.gas = 0;
+        self.local_gas = 0;
+        self.mem = 0;
+    }
+
+    #[cfg(not(feature = "dynamic_gas"))]
     fn next_branch(&mut self) {
         self.gas = 0;
         self.mem = 0;
     }
 
+    #[cfg(not(feature = "dynamic_gas"))]
     fn end_branching(&mut self, (gas, max_gas, mem, max_mem):BranchPoint) {
         self.gas = gas + self.max_gas;
         self.max_gas = self.gas.max(max_gas);
+        self.mem = mem + self.max_mem;
+        self.max_mem = self.mem.max(max_mem);
+    }
+
+    #[cfg(feature = "dynamic_gas")]
+    fn end_branching(&mut self, (gas, max_gas, local_gas, max_local_gas, mem, max_mem):BranchPoint) {
+        self.gas = gas + self.max_gas;
+        self.max_gas = self.gas.max(max_gas);
+        self.local_gas = local_gas + self.max_local_gas;
+        self.max_local_gas = self.local_gas.max(max_local_gas);
         self.mem = mem + self.max_mem;
         self.max_mem = self.mem.max(max_mem);
     }
@@ -184,8 +283,15 @@ impl State {
     }
 }
 
+#[cfg(not(feature = "dynamic_gas"))]
+type CollectRes<'b> = (SlicePtr<'b,Ptr<'b,RExp<'b>>>, ExpResources);
+
+#[cfg(feature = "dynamic_gas")]
+type CollectRes<'b> = (SlicePtr<'b,TxTFunction<'b>>, ExpResources);
+
 impl<'b,'h> Compactor<'b,'h> {
-    pub fn compact<S:Store,CE:CompilationExternals>(fun:&FunctionComponent, body:&Exp, store:&Loader<S>, alloc:&'b HeapArena<'h>) -> Result<(SlicePtr<'b,Ptr<'b,RExp<'b>>>, ExpResources)> {
+
+    pub fn compact<S:Store,CE:CompilationExternals>(fun:&FunctionComponent, body:&Exp, store:&Loader<S>, alloc:&'b HeapArena<'h>) -> Result<CollectRes<'b>> {
         let functions = Collector::collect(fun,store)?;
         let mut compactor = Compactor {
             state:State::new(),
@@ -243,7 +349,18 @@ impl<'b,'h> Compactor<'b,'h> {
             //ensure we do not go over the limit
             if next_idx > u16::MAX as usize {return error(||"Number of functions out of range")}
             //fill the slot with the compacted function
+            #[cfg(not(feature = "dynamic_gas"))]
             compactor.functions.push(processed);
+
+            #[cfg(feature = "dynamic_gas")]
+            if resources.local_gas > u32::MAX as u64 {return error(||"Consumed Gas out of range")}
+            #[cfg(feature = "dynamic_gas")]
+            compactor.functions.push(TxTFunction{
+                gas: resources.local_gas as u32,
+                body: processed
+            });
+
+
             let old = compactor.fun_mapping.insert(key, (
                 next_idx as u16,
                 returns,
@@ -257,7 +374,15 @@ impl<'b,'h> Compactor<'b,'h> {
         //compact the top function
         let (processed, resources) = compactor.process_func::<_,CE>(fun.shared.params.len(), body, &top_context)?;
         //fill the slot with the compacted function
+        #[cfg(not(feature = "dynamic_gas"))]
         compactor.functions.push(processed);
+        #[cfg(feature = "dynamic_gas")]
+        if resources.local_gas > u32::MAX as u64 {return error(||"Consumed Gas out of range")}
+        #[cfg(feature = "dynamic_gas")]
+        compactor.functions.push(TxTFunction{
+            gas: resources.local_gas as u32,
+            body: processed
+        });
         //get all functions
         let res = compactor.functions.finish();
         //return the result
@@ -443,7 +568,7 @@ impl<'b,'h> Compactor<'b,'h> {
                         CompilationResult::OpCodeResult(res,code) => (res,code),
                     };
                     //process the lit gas
-                    self.state.include_call_resources(costs, 1);
+                    self.state.include_resources(costs, 1);
                     //create the runtime op
                     self.block.push(code)
                 }
@@ -455,15 +580,21 @@ impl<'b,'h> Compactor<'b,'h> {
     }
 
     fn let_<S:Store,CE:CompilationExternals>(&mut self, exp:&Exp, context:&Context<S>, tail_info:Option<u32>) -> Result<(bool,u8)> {
-        //cost
-        self.state.use_gas(gas::_let());
-        //capture current stack positions
-        let ret_point = self.state.return_point();
-        //process the nested expression
-        let (n_exp, rets) = self.process_exp::<_,CE>(exp, ret_point, context, tail_info)?;
-        //generate the let
-        self.block.push(ROpCode::Let(n_exp));
-        Ok((true,rets))
+        //if the let has only one opcode their is no need for the let
+        if exp.0.len() == 1 {
+            //process the nested expression
+            self.process_opcode::<_,CE>(&exp.0[0], context, tail_info)
+        } else {
+            //cost
+            self.state.use_gas(gas::_let());
+            //capture current stack positions
+            let ret_point = self.state.return_point();
+            //process the nested expression
+            let (n_exp, rets) = self.process_exp::<_,CE>(exp, ret_point, context, tail_info)?;
+            //generate the let
+            self.block.push(ROpCode::Let(n_exp));
+            Ok((true,rets))
+        }
     }
 
     fn copy(&mut self, val:ValueRef) -> Result<(bool,u8)> {
@@ -616,7 +747,7 @@ impl<'b,'h> Compactor<'b,'h> {
             for (tag,exp) in exps.iter().enumerate() {
                 //eliminate the stack effects of the previous branch
                 self.state.rewind(ret_point);
-                assert!(tag <= u8::max_value() as usize);
+                assert!(tag <= u8::MAX as usize);
                 //the branch has the unpacked fields
                 //We need this for gas accounting
                 max_fields = max_fields.max(r_ctr[tag as usize].len());
@@ -680,9 +811,12 @@ impl<'b,'h> Compactor<'b,'h> {
         }
     }
 
+    //Todo: where is gas cost?
     fn try<S:Store,CE:CompilationExternals>(&mut self, code:ROpCode<'b>, rets:u8, vals:&[(bool,ValueRef)], succ:&Exp, fail:&Exp, context:&Context<S>, tail_info:Option<u32>) -> Result<(bool,u8)> {
         //if the inner is a continuation we need to push a try frame
         if is_continuation(&code) {self.state.add_frame()}
+        //account for the gas of the try
+        self.state.use_gas(gas::try());
         //capture the stack
         let ret_point = self.state.return_point();
         //process the branches
@@ -711,7 +845,6 @@ impl<'b,'h> Compactor<'b,'h> {
         //if the inner is a continuation we need to drop a try frame
         if is_continuation(&code) {self.state.drop_frame()}
         //generate the runtime code
-        //generate the runtime
         self.block.push(ROpCode::Try(self.alloc.alloc(code),new_succ,new_fail));
         Ok((true,s_rets))
     }
@@ -766,7 +899,7 @@ impl<'b,'h> Compactor<'b,'h> {
                     CompilationResult::OpCodeResult(res,code) => (res,code),
                 };
                 //account for the ressources
-                self.state.include_call_resources(costs, 1);
+                self.state.include_resources(costs, 1);
                 //return the essential info
                 (code,fun_comp.shared.returns.len() as u8,gas::call(fun_comp.shared.params.len()))
             },
@@ -776,7 +909,7 @@ impl<'b,'h> Compactor<'b,'h> {
                     //account for the ressources
                     match tail_info {
                         Some(frame_start) => self.state.include_tail_call_resources(frame_start,*resources, 1),
-                        None =>  self.state.include_call_resources(*resources,1)
+                        None =>  self.state.include_call_resources(*resources, 1)
                     }
                     //return the essential info
                     (ROpCode::Invoke(*index,adapted),*rets,gas::call(fun_comp.shared.params.len()))
@@ -812,7 +945,7 @@ impl<'b,'h> Compactor<'b,'h> {
                     //account for the ressources
                     match tail_info {
                         Some(frame_start) => self.state.include_tail_call_resources(frame_start,*resources, reps as u64),
-                        None =>  self.state.include_call_resources(*resources, reps as u64)
+                        None => self.state.include_call_resources(*resources, reps as u64)
                     }
                     //return the essential info
                     (ROpCode::RepeatedInvoke(*index,adapted, cond_ref, Tag(abort_tag),reps),*rets,gas::repeated_call(fun_comp.shared.params.len(), reps as u64))
@@ -846,6 +979,7 @@ impl<'b,'h> Compactor<'b,'h> {
                 self.state.use_mem(vals.len() as u64 * Entry::SIZE as u64);
                 //account for the resources used when it is called
                 self.state.include_call_resources(*resources, 1);
+
                 //return the essential info
                 (ROpCode::CreateSig(*index,adapted),gas::sig(impl_comp.params.len()))
             } else {

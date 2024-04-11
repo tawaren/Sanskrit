@@ -59,6 +59,7 @@ mod tests {
 
             deploy_module(&s, r, sys_mode, true)?;
         }
+        println!("Deployed All");
 
         let mut heap = Heap::new(CONFIG.calc_heap_size(2),2.0);
 
@@ -73,13 +74,16 @@ mod tests {
         };
 
         let mut hashes = Vec::with_capacity(txt_res.len());
+        println!("TXS {}", txt_res.len());
+
         for t in txt_res {
+            println!("Start Deploy TxT");
             let fun_id = deploy_function(&s, t.clone(), true)?;
+            println!("End Deploy TxT");
             hashes.push(compile_function::<_,ScriptExternals>(&s,fun_id, true)?.0);
         }
 
         let bundle = comp.create_bundle(&hashes, &heap);
-
 
         heap = heap.reuse();
         let txt_bundle_alloc = heap.new_virtual_arena(CONFIG.max_txt_alloc);

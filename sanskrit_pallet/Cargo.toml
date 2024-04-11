@@ -11,15 +11,15 @@ targets = ['x86_64-unknown-linux-gnu']
 default-features = false
 features = ['derive']
 package = 'parity-scale-codec'
-version = '1.3.4'
+version = "3.6.9"
 
 [dependencies]
-frame-support = { default-features = false, version = '2.0.0' }
-frame-system = { default-features = false, version = '2.0.0' }
+frame-support = { default-features = false, version = "32.0.0" }
+frame-system = { default-features = false, version = "32.0.0" }
 byteorder = { version = "1.3.4", features = ["i128"], default-features = false }
-ed25519-dalek = { version = "1.0.1", default-features = false, features = ["u64_backend"] }
-sha2 = { version = "0.9.1", default-features = false }
-rand = { version = "0.7.3", default-features = false }
+ed25519-dalek = { version = "2.1.1", default-features = false, features = ["u64_backend"] }
+sha2 = { version = "0.10.8", default-features = false }
+rand = { version = "0.8.5", default-features = false }
 
 
 [features]

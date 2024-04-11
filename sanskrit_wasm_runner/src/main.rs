@@ -7,6 +7,7 @@ static WASM: &'static [u8] = include_bytes!("../wasm/sanskrit_wasm_deploy_compil
 static CODE_MOD: &'static [u8] = include_bytes!("../../sanskrit_test/scripts/out/bool.bin");
 
 use wasmer_runtime::{Value, imports, func, error, Memory, CompilerConfig, compile_with_config, Instance};
+
 use std::cell::{RefCell, Cell};
 use std::time::Instant;
 use sanskrit_memory_store::BTreeMapStore;

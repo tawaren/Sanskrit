@@ -1,6 +1,7 @@
+use std::convert::TryInto;
 use sanskrit_common::hashing::{Hasher, HashingDomain};
-use ed25519_dalek::{PublicKey, Verifier};
-use ed25519_dalek::ed25519::signature::Signature;
+use ed25519_dalek::{VerifyingKey, Verifier, PUBLIC_KEY_LENGTH, SIGNATURE_LENGTH};
+use ed25519_dalek::Signature;
 use sanskrit_common::model::{ValueRef, SlicePtr};
 use sanskrit_common::errors::*;
 use sanskrit_common::arena::VirtualHeapArena;
@@ -51,11 +52,19 @@ pub fn join_hash<'interpreter, 'transaction:'interpreter, 'heap:'transaction, I:
 
 pub fn ecdsa_verify<'interpreter, 'transaction:'interpreter, 'heap:'transaction, I:ExecutionInterface<'interpreter, 'transaction, 'heap>>(inter:&mut I, ValueRef(msg):ValueRef, ValueRef(pk):ValueRef, ValueRef(sig):ValueRef, tail:bool) -> Result<()>  {
     let msg_data = unsafe {inter.get(msg as usize)?.data};
-    let pk_data = unsafe {inter.get(pk as usize)?.data};
-    let sig_data = unsafe {inter.get(sig as usize)?.data};
+    let pk_data:&[u8] = &unsafe {inter.get(pk as usize)?.data};
+    let sig_data:&[u8] = &unsafe {inter.get(sig as usize)?.data};
 
-    let res = match (PublicKey::from_bytes(&pk_data), Signature::from_bytes(&sig_data)) {
-        (Ok(pk), Ok(sig)) => {
+    if pk_data.len() != PUBLIC_KEY_LENGTH {
+        return error(||"Wrong Public Key Size");
+    }
+
+    if sig_data.len() != SIGNATURE_LENGTH {
+        return error(||"Wrong Signature Size");
+    }
+
+    let res = match (VerifyingKey::from_bytes(pk_data.try_into().unwrap()), Signature::from_bytes(sig_data.try_into().unwrap())) {
+        (Ok(pk), sig) => {
             match pk.verify(&msg_data, &sig) {
                 Ok(_) => 1,
                 Err(_) => 0

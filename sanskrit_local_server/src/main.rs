@@ -215,13 +215,13 @@ fn process_line(line:String, shared_state:Arc<Mutex<State>>, full_heap:&VirtualH
         //prints account infos (creates it if it does not exist)
         "account" => {
             let kp =   convert_error(shared_state.lock())?.get_account(&input)?;
-            let pk = kp.public.to_bytes();
+            let pk = kp.verifying_key().to_bytes();
             println!("Pk: 0x{}",encode(pk));
             println!("Subject: 0x{}",encode(State::calc_subject(&pk, full_heap)?.to_vec()))
 
         },
         "accounts" =>  for (name, kp) in convert_error(shared_state.lock())?.get_accounts()? {
-            println!("{} -> 0x{}",name,encode(kp.public.to_bytes()))
+            println!("{} -> 0x{}",name,encode(kp.verifying_key().to_bytes()))
         },
 
         "transactions" =>  for name in convert_error(shared_state.lock())?.get_transactions()? {
@@ -404,6 +404,10 @@ pub fn main() -> std::io::Result<()> {
     let listener_state = Arc::clone(&shared_state);
     // accept connections and process them serially
     println!("Started Local VM in {} mode", MODE);
+    #[cfg(feature = "dynamic_gas")]
+    println!("Dynamic gas measurement enabled");
+
+
     thread::spawn(move || {
         CompilerInstance::with_compiler_result(|mut compiler |{
             register_system_modules(&mut listener_state.lock().unwrap(), &mut compiler).unwrap();
@@ -429,7 +433,7 @@ pub fn main() -> std::io::Result<()> {
 
     });
 
-    let mut rl = Editor::<()>::new();
+    let mut rl = rustyline::DefaultEditor::new().unwrap();
     if rl.load_history(&history).is_err() {
         println!("No previous history.");
     }

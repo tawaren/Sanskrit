@@ -4,9 +4,9 @@ version = "0.1.0"
 authors = ["tawaren <markus.knecht85@gmail.com>"]
 
 [dependencies]
-wasmer = "3.1.1"
+wasmer = "3.3.0"
 #wasmer-llvm-backend = "0.17.1"
-fluid-let = "0.1.0"
+fluid-let = "1.0.0"
 
 [dependencies.sanskrit_memory_store]
 path = "../sanskrit_memory_store"

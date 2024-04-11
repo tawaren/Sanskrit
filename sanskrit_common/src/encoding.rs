@@ -53,7 +53,7 @@ impl<'a> Parser<'a> {
         let parsed = T::parse(&mut parser, alloc)?;
         if parser.data.len() != parser.index {
             let res = format!("Decoding error: input data has wrong size. it has {} - consumed {}", parser.data.len(), parser.index );
-            return error(||&res)
+            return owned_error(||res)
         }
         Ok(parsed)
     }

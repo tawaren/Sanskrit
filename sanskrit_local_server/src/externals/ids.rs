@@ -2,7 +2,7 @@ use sanskrit_common::model::{Hash, SlicePtr, ValueRef, Tag};
 use sanskrit_common::arena::HeapArena;
 use sanskrit_common::errors::*;
 use sanskrit_common::encoding::*;
-use sanskrit_compile::externals::{just_gas_and_mem, CompilationResult};
+use sanskrit_compile::externals::{just_local_gas_and_mem, CompilationResult};
 use sanskrit_interpreter::model::{Entry, ValueSchema, OpCode, Kind, Exp};
 use externals::External;
 
@@ -14,7 +14,7 @@ impl External for Ids{
     local external(20) standard data PrivateId
     */
     fn compile_lit<'b, 'h>(&self, _data_idx: u8, data: SlicePtr<'b, u8>, _caller: &[u8; 20], _alloc: &'b HeapArena<'h>) -> Result<CompilationResult<'b>> {
-        Ok(just_gas_and_mem(14, 20,OpCode::Data(data)))
+        Ok(just_local_gas_and_mem(14, 20, OpCode::Data(data)))
     }
 
     fn get_literal_checker<'b, 'h>(&self, _data_idx: u8, _len: u16, _alloc: &'b HeapArena<'h>) -> Result<ValueSchema<'b>> {
@@ -24,7 +24,7 @@ impl External for Ids{
     fn compile_call<'b, 'h>(&self, fun_idx: u8, params: SlicePtr<'b, ValueRef>, caller: &[u8; 20], alloc: &'b HeapArena<'h>) -> Result<CompilationResult<'b>> {
         match fun_idx {
             //global external function moduleId():(priv:PrivateModuleId)
-            0 =>  Ok(just_gas_and_mem(13, Hash::SIZE as u64, OpCode::Data(alloc.copy_alloc_slice(caller)?))),
+            0 =>  Ok(just_local_gas_and_mem(15, Hash::SIZE as u64, OpCode::Data(alloc.copy_alloc_slice(caller)?))),
             /*
             global external function idFromData(dat:Data20):Id
             global external function idToData(id:Id):Data20
@@ -36,7 +36,7 @@ impl External for Ids{
             global external function eqId(id1:Id, id2:Id):Bool
             global external function eqModuleId(id1:ModuleId, id2:ModuleId):Bool
             */
-            x if x >= 5 && x < 7 => Ok(just_gas_and_mem(14, 0,OpCode::Eq(Kind::Data,params[0], params[1]))),
+            x if x >= 5 && x < 7 => Ok(just_local_gas_and_mem(15, 0, OpCode::Eq(Kind::Data, params[0], params[1]))),
 
             /*
             global external function privateIdderive(priv:PrivateId, hash:Hash):PrivateId
@@ -44,7 +44,7 @@ impl External for Ids{
             global external function privateModuleIdDerive(priv:PrivateModuleId, hash:Hash):PrivateId
             global external function moduleIdDerive(id:ModuleId, hash:Hash):Id
             */
-            _ =>  Ok(just_gas_and_mem(70, Hash::SIZE as u64, OpCode::SysInvoke(0, params))),
+            _ =>  Ok(just_local_gas_and_mem(120, Hash::SIZE as u64, OpCode::SysInvoke(0, params))),
 
         }
     }

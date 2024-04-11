@@ -30,7 +30,6 @@ pub struct Loader<'a, S:Store + 'a> {
     dedup_ctr:RefCell<CrcDeDup<Vec<Vec<Crc<ResolvedType>>>>>,
     //Helper to simulate partially loaded modules (necessary to detect cycles in component dependencies)
     //could be removed if turing completeness is required (but then tail call needed to prevent stack depth problems)
-    pub this_deployed_projection:Cell<usize>,
     pub this_deployed_data:Cell<usize>,
     pub this_deployed_sigs:Cell<usize>,
     pub this_deployed_functions:Cell<usize>,
@@ -66,7 +65,6 @@ impl<'a, S:Store + 'a> Loader<'a,S> {
             dedup_sig: RefCell::new(CrcDeDup::new()),
             dedup_hash: RefCell::new(CrcDeDup::new()),
             dedup_ctr: RefCell::new(CrcDeDup::new()),
-            this_deployed_projection:Cell::new(0),
             this_deployed_data: Cell::new(0),
             this_deployed_sigs: Cell::new(0),
             this_deployed_functions: Cell::new(0),
@@ -87,11 +85,10 @@ impl<'a, S:Store + 'a> Loader<'a,S> {
             dedup_sig: RefCell::new(CrcDeDup::new()),
             dedup_hash: RefCell::new(CrcDeDup::new()),
             dedup_ctr: RefCell::new(CrcDeDup::new()),
-            this_deployed_projection: Cell::new(<usize>::max_value()),    //as modules have max 255 adts this is ok
-            this_deployed_data: Cell::new(<usize>::max_value()),          //as modules have max 255 adts this is ok
-            this_deployed_sigs:Cell::new(<usize>::max_value()),           //as modules have max 255 sigs this is ok
-            this_deployed_functions:  Cell::new(<usize>::max_value()),    //as modules have max 255 funs this is ok
-            this_deployed_implements:  Cell::new(<usize>::max_value()),   //as modules have max 255 impls this is ok
+            this_deployed_data: Cell::new(<usize>::MAX),          //as modules have max 255 adts this is ok
+            this_deployed_sigs:Cell::new(<usize>::MAX),           //as modules have max 255 sigs this is ok
+            this_deployed_functions:  Cell::new(<usize>::MAX),    //as modules have max 255 funs this is ok
+            this_deployed_implements:  Cell::new(<usize>::MAX),   //as modules have max 255 impls this is ok
         }
     }
 

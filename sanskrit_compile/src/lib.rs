@@ -1,4 +1,4 @@
-//#![no_std]
+#![no_std]
 
 extern crate alloc;
 
@@ -27,13 +27,18 @@ pub fn compile_function<S:Store, CE:CompilationExternals>(store:&S, function_has
     //result size
     let size = data.len();
     //we ignore if it is already in
-    //if !store.contains(StorageClass::Descriptor, &key){
+
     //store it
-    store.set(StorageClass::Descriptor, key, data)?;
+    match store.set(StorageClass::Descriptor, key, data) {
+        Ok(_) => {}
+        //Todo: We ignore for now if it is already in the store
+        Err(_) => {}
+
+    }
     if auto_commit {
         store.commit(StorageClass::Descriptor);
     }
-    //}
+
 
     Ok((key, size))
 }

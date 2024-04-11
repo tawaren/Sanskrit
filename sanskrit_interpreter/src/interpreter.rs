@@ -15,8 +15,8 @@ pub enum Continuation<'code> {
     TryCont(&'code Exp<'code>, &'code Exp<'code>, &'code Exp<'code>, usize),
     //These are called Call instead of cont as these always are isolated frames with no access to parent
     // In theory we could differ the cont as well over an isolated flag, which would allow tail call optim
-    RepCall(&'code Exp<'code>, usize, ValueRef, Tag, u8),
-    RepTryCall(&'code Exp<'code>, &'code Exp<'code>, &'code Exp<'code>, usize, ValueRef, Tag, u8),
+    RepCall(&'code Exp<'code>, #[cfg(feature = "dynamic_gas")] u32, usize, ValueRef, Tag, u8),
+    RepTryCall(&'code Exp<'code>, &'code Exp<'code>, &'code Exp<'code>, #[cfg(feature = "dynamic_gas")] u32, usize, ValueRef, Tag, u8),
     Rollback,
 }
 
@@ -35,6 +35,8 @@ pub enum Frame<'code> {
     },
     Repeat {
         exp:&'code Exp<'code>,
+        #[cfg(feature = "dynamic_gas")]
+        gas:u32,
         stack_height:usize,
         cond_value:ValueRef,
         abort_tag:Tag,
@@ -44,7 +46,12 @@ pub enum Frame<'code> {
 
 //the context in which the code is interpreted / executed
 pub struct ExecutionContext<'transaction, 'code, 'interpreter, 'execution, 'heap> {
-    functions: &'code [Ptr<'code,Exp<'code>>],                                                      // all the code
+    #[cfg(feature = "dynamic_gas")]
+    used_gas:u64,
+    #[cfg(feature = "dynamic_gas")]
+    functions: &'code [TxTFunction<'code>],                                                     // all the code
+    #[cfg(not(feature = "dynamic_gas"))]
+    functions: &'code [Ptr<'code,Exp<'code>>],                                                  // all the code
     frames: &'execution mut HeapStack<'interpreter,Frame<'code>>,
     stack: &'execution mut HeapStack<'interpreter, Entry<'transaction> >,                       //The current stack
     alloc: &'transaction VirtualHeapArena<'heap>,
@@ -141,17 +148,27 @@ impl <'transaction,'code,'interpreter,'execution,'heap> ExecutionInterface<'inte
     }
 }
 
+#[cfg(not(feature = "dynamic_gas"))]
+pub type InterpreterResult = Result<()>;
+#[cfg(feature = "dynamic_gas")]
+pub type InterpreterResult = Result<u64>;
+
+
 impl<'transaction,'code,'interpreter,'execution,'heap> ExecutionContext<'transaction,'code,'interpreter, 'execution,'heap> {
     //Creates a new Empty context
     pub fn interpret<Ext:RuntimeExternals>(
+        #[cfg(feature = "dynamic_gas")]
+        functions: &'code [TxTFunction<'code>],
+        #[cfg(not(feature = "dynamic_gas"))]
         functions: &'code [Ptr<'code,Exp<'code>>],
         stack:&'execution mut HeapStack<'interpreter,Entry<'transaction>>,
         frames:&'execution mut HeapStack<'interpreter,Frame<'code>>,
         return_stack:&'execution mut HeapStack<'interpreter,Entry<'transaction>>,
         alloc:&'transaction VirtualHeapArena<'heap>
-    ) -> Result<()>{
+    ) -> InterpreterResult {
         //Define some reused types and capabilities
-        let context = ExecutionContext {
+        let mut context = ExecutionContext {
+            #[cfg(feature = "dynamic_gas")] used_gas:0,
             functions,
             frames,
             stack,
@@ -159,17 +176,32 @@ impl<'transaction,'code,'interpreter,'execution,'heap> ExecutionContext<'transac
             return_stack,
             try_ptr:None,
         };
-        context.execute_function::<Ext>((functions.len()-1) as u16)
+        #[cfg(feature = "dynamic_gas")]
+        context.execute_function::<Ext>((functions.len()-1) as u16)?;
+        #[cfg(feature = "dynamic_gas")]
+        return Ok(context.used_gas);
+        #[cfg(not(feature = "dynamic_gas"))]
+        return context.execute_function::<Ext>((functions.len()-1) as u16);
+    }
+
+    #[inline(always)]
+    #[cfg(feature = "dynamic_gas")]
+    fn use_gas(&mut self, gas: u32) -> () {
+        self.used_gas += gas as u64;
     }
 
     //TExecutes a function in the current context
-    fn execute_function<Ext:RuntimeExternals>(mut self, fun_idx: u16) -> Result<()> {
+    fn execute_function<Ext:RuntimeExternals>(&mut self, fun_idx: u16) -> Result<()> {
         //Cost: constant
         //assert params are on Stack for now
         let code = &self.functions[fun_idx as usize];
 
+        #[cfg(feature = "dynamic_gas")]
+        self.use_gas(code.gas);
+
         self.frames.push(Frame::Continuation {
-            exp: &code,
+            #[cfg(feature = "dynamic_gas")] exp: &code.body,
+            #[cfg(not(feature = "dynamic_gas"))]  exp: &code,
             pos: 0,
             stack_height: 0
         })?;
@@ -215,7 +247,24 @@ impl<'transaction,'code,'interpreter,'execution,'heap> ExecutionContext<'transac
                                         continue 'outer;
                                     }
                                 }
-                            }
+                            },
+                            #[cfg(feature = "dynamic_gas")]
+                            Continuation::RepCall(n_exp, gas,  n_stack_height, cond_value, abort_tag, counter) => {
+                                if !tail {
+                                    //Re-push the current Frame if we still need it later on
+                                    self.frames.push(Frame::Continuation { exp, pos, stack_height })?;
+                                    //Push the new repeat frame
+                                    self.frames.push(Frame::Repeat { exp:n_exp, gas, stack_height: n_stack_height, cond_value, abort_tag, counter})?;
+                                    //Execute the new repeat frame (params are already on the stack)
+                                    continue 'outer;
+                                } else {
+                                    //Push the new repeat frame
+                                    self.frames.push(Frame::Repeat { exp:n_exp, gas, stack_height, cond_value, abort_tag, counter})?;
+                                    //Execute the new repeat frame (ensure the old stack is cleaned first -- that is why we use break 'inner)
+                                    break 'main;
+                                }
+                            },
+                            #[cfg(not(feature = "dynamic_gas"))]
                             Continuation::RepCall(n_exp, n_stack_height, cond_value, abort_tag, counter) => {
                                 if !tail {
                                     //Re-push the current Frame if we still need it later on
@@ -230,7 +279,7 @@ impl<'transaction,'code,'interpreter,'execution,'heap> ExecutionContext<'transac
                                     //Execute the new repeat frame (ensure the old stack is cleaned first -- that is why we use break 'inner)
                                     break 'main;
                                 }
-                            }
+                            },
                             Continuation::TryCont(n_exp, succ, fail, n_stack_height) => {
                                 if !tail {
                                     //Re-push the current Frame if we still need it later omn
@@ -254,8 +303,9 @@ impl<'transaction,'code,'interpreter,'execution,'heap> ExecutionContext<'transac
                                     // Note: Try executes the try body with tail == false so the args are always on the stack
                                     continue 'outer;
                                 }
-                            }
-                            Continuation::RepTryCall(n_exp, succ, fail, n_stack_height, cond_value, abort_tag, counter) => {
+                            },
+                            #[cfg(feature = "dynamic_gas")]
+                            Continuation::RepTryCall(n_exp, succ, fail, gas, n_stack_height, cond_value, abort_tag, counter) => {
                                 if !tail {
                                     //Re-push the current Frame if we still need it later on
                                     self.frames.push(Frame::Continuation { exp, pos, stack_height })?;
@@ -264,7 +314,7 @@ impl<'transaction,'code,'interpreter,'execution,'heap> ExecutionContext<'transac
                                     //Set the try_ptr in case of a rollback
                                     self.try_ptr = Some(self.frames.len());
                                     //Push the new repeat frame
-                                    self.frames.push(Frame::Repeat { exp:n_exp, stack_height:n_stack_height, cond_value, abort_tag, counter})?;
+                                    self.frames.push(Frame::Repeat { exp:n_exp, gas, stack_height:n_stack_height, cond_value, abort_tag, counter})?;
                                     //Execute the new repeat frame (params are already on the stack)
                                     continue 'outer;
                                 } else {
@@ -273,12 +323,37 @@ impl<'transaction,'code,'interpreter,'execution,'heap> ExecutionContext<'transac
                                     //Set the try_ptr in case of a rollback
                                     self.try_ptr = Some(self.frames.len());
                                     //Push the new repeat frame
-                                    self.frames.push(Frame::Repeat { exp:n_exp, stack_height: n_stack_height, cond_value, abort_tag, counter})?;
+                                    self.frames.push(Frame::Repeat { exp:n_exp, gas, stack_height: n_stack_height, cond_value, abort_tag, counter})?;
                                     //Execute the new Frame
                                     // Note: Try executes the try body with tail == false so the args are always on the stack
                                     continue 'outer;
                                 }
                             }
+                            #[cfg(not(feature = "dynamic_gas"))]
+                            Continuation::RepTryCall(n_exp, succ, fail, n_stack_height, cond_value, abort_tag, counter) => {
+                                if !tail {
+                                    //Re-push the current Frame if we still need it later on
+                                    self.frames.push(Frame::Continuation { exp, pos, stack_height })?;
+                                    //we only revert to new stack height as the pushed continue frame will revert the rest
+                                    self.frames.push(Frame::Try { succ, fail, stack_height: n_stack_height, prev: self.try_ptr })?;
+                                    //Set the try_ptr in case of a rollback
+                                    self.try_ptr = Some(self.frames.len());
+                                    //Push the new repeat frame
+                                    self.frames.push(Frame::Repeat { exp: n_exp, stack_height: n_stack_height, cond_value, abort_tag, counter })?;
+                                    //Execute the new repeat frame (params are already on the stack)
+                                    continue 'outer;
+                                } else {
+                                    //Push a try Frame
+                                    self.frames.push(Frame::Try { succ, fail, stack_height, prev: self.try_ptr })?;
+                                    //Set the try_ptr in case of a rollback
+                                    self.try_ptr = Some(self.frames.len());
+                                    //Push the new repeat frame
+                                    self.frames.push(Frame::Repeat { exp: n_exp, stack_height: n_stack_height, cond_value, abort_tag, counter })?;
+                                    //Execute the new Frame
+                                    // Note: Try executes the try body with tail == false so the args are always on the stack
+                                    continue 'outer;
+                                }
+                            },
                             Continuation::Rollback => {
                                 if !self.execute_rollback()? {
                                     return Ok(false)
@@ -297,6 +372,28 @@ impl<'transaction,'code,'interpreter,'execution,'heap> ExecutionContext<'transac
                     self.frames.push(Frame::Continuation { exp:succ, pos:0, stack_height })?;
                     self.try_ptr = prev;
                 },
+                #[cfg(feature = "dynamic_gas")]
+                Some(Frame::Repeat {exp, gas , stack_height, cond_value:ValueRef(idx), abort_tag, counter}) => {
+                    let cond_elem = self.get(idx as usize)?;
+                    let tag = unsafe {cond_elem.adt.0};
+                    //do we need more repetitions?
+                    if tag != abort_tag.0 {
+                        //can we do more iterations?
+                        if counter != 0 {
+                            //add gas for the run
+                            self.use_gas(gas);
+                            //Re-push ourself
+                            self.frames.push(Frame::Repeat { exp, gas, stack_height, cond_value:ValueRef(idx), abort_tag, counter: counter -1})?;
+                            //Push the next iteration
+                            self.frames.push(Frame::Continuation { exp, pos: 0, stack_height })?;
+                        } else {
+                            if !self.execute_rollback()? {
+                                return Ok(false)
+                            }
+                        }
+                    }
+                },
+                #[cfg(not(feature = "dynamic_gas"))]
                 Some(Frame::Repeat {exp, stack_height, cond_value:ValueRef(idx), abort_tag, counter}) => {
                     let cond_elem = self.get(idx as usize)?;
                     let tag = unsafe {cond_elem.adt.0};
@@ -304,6 +401,7 @@ impl<'transaction,'code,'interpreter,'execution,'heap> ExecutionContext<'transac
                     if tag != abort_tag.0 {
                         //can we do more iterations?
                         if counter != 0 {
+                            //add gas for the run
                             //Re-push ourself
                             self.frames.push(Frame::Repeat { exp, stack_height, cond_value:ValueRef(idx), abort_tag, counter: counter -1})?;
                             //Push the next iteration
@@ -378,6 +476,9 @@ impl<'transaction,'code,'interpreter,'execution,'heap> ExecutionContext<'transac
             OpCode::Gte(kind, op1,op2) => self.gte(kind, op1,op2, tail),
             OpCode::SysInvoke(id, ref vals) => self.sys_call::<Ext>(id, vals, tail),
             OpCode::TypedSysInvoke(id, kind, ref vals) => self.kinded_sys_call::<Ext>(id, kind, vals, tail),
+            #[cfg(feature = "dynamic_gas")]
+            OpCode::ConsumeGas(gas) => self.gas(gas),
+
         }
     }
 
@@ -386,6 +487,13 @@ impl<'transaction,'code,'interpreter,'execution,'heap> ExecutionContext<'transac
         let stack = self.get_stack(tail);
         //we can push whatever we want
         stack.push(Entry {u8:0})?;
+        Ok(Continuation::Next)
+    }
+
+    #[cfg(feature = "dynamic_gas")]
+    fn gas(&mut self, gas:u32) -> Result<Continuation<'code>> {
+        //consume the gas
+        self.use_gas(gas);
         Ok(Continuation::Next)
     }
 
@@ -502,11 +610,21 @@ impl<'transaction,'code,'interpreter,'execution,'heap> ExecutionContext<'transac
         //must be a function pointer (static guarantee)
         //Cost: relative to: values.len()
         //get the code
+        #[cfg(not(feature = "dynamic_gas"))]
         let fun_code: &Exp = &self.functions[index as usize];
+        #[cfg(feature = "dynamic_gas")]
+        let fun = &self.functions[index as usize];
+        #[cfg(feature = "dynamic_gas")]
+        let fun_code: &Exp = &fun.body;
+        //add gas for call
+        #[cfg(feature = "dynamic_gas")]
+        self.use_gas(fun.gas);
+
+
         //fetch the height
         let stack_height = self.stack.len();
         //push the captured arguments
-        assert!(values.len()+captures.len() <= u16::max_value() as usize);
+        assert!(values.len()+captures.len() <= u16::MAX as usize);
         for elem in captures.iter() {
             self.get_stack(tail).push(*elem)?;
         }
@@ -529,11 +647,19 @@ impl<'transaction,'code,'interpreter,'execution,'heap> ExecutionContext<'transac
         //Cost: relative to: values.len()
         //Non-Native
         //get the code
+        #[cfg(not(feature = "dynamic_gas"))]
         let fun_code: &Exp = &self.functions[fun_idx as usize];
+        #[cfg(feature = "dynamic_gas")]
+        let fun = &self.functions[fun_idx as usize];
+        #[cfg(feature = "dynamic_gas")]
+        let fun_code: &Exp = &fun.body;
+        //add gas for call
+        #[cfg(feature = "dynamic_gas")]
+        self.use_gas(fun.gas);
         //fetch the height
         let stack_height = self.stack.len();
         //push the arguments
-        assert!(values.len() <= u16::max_value() as usize);
+        assert!(values.len() <= u16::MAX as usize);
         for (i,ValueRef(idx)) in values.iter().enumerate() {
             let elem = if tail {
                 self.get(*idx as usize)?
@@ -550,11 +676,16 @@ impl<'transaction,'code,'interpreter,'execution,'heap> ExecutionContext<'transac
         //Cost: relative to: values.len()
         //Non-Native
         //get the code
+        #[cfg(not(feature = "dynamic_gas"))]
         let fun_code: &Exp = &self.functions[fun_idx as usize];
+        #[cfg(feature = "dynamic_gas")]
+        let fun = &self.functions[fun_idx as usize];
+        #[cfg(feature = "dynamic_gas")]
+        let fun_code: &Exp = &fun.body;
         //fetch the height
         let stack_height = self.stack.len();
         //push the arguments
-        assert!(values.len() <= u16::max_value() as usize);
+        assert!(values.len() <= u16::MAX as usize);
         for (i,ValueRef(idx)) in values.iter().enumerate() {
             let elem = if tail {
                 self.get(*idx as usize)?
@@ -564,7 +695,7 @@ impl<'transaction,'code,'interpreter,'execution,'heap> ExecutionContext<'transac
             self.get_stack(tail).push(elem)?;
         }
         //Execute the function
-        Ok(Continuation::RepCall(fun_code, stack_height, cond_value, abort_tag, max_reps))
+        Ok(Continuation::RepCall(fun_code, #[cfg(feature = "dynamic_gas")] fun.gas, stack_height, cond_value, abort_tag, max_reps))
     }
 
     fn try<Ext:RuntimeExternals>(&mut self,  try:&'code OpCode, succ: &'code Exp, fail: &'code Exp, _tail:bool) -> Result<Continuation<'code>> {
@@ -581,14 +712,20 @@ impl<'transaction,'code,'interpreter,'execution,'heap> ExecutionContext<'transac
                 assert_eq!(n_stack_height,stack_height);
                 Ok(Continuation::TryCont(n_exp,succ,fail,stack_height))
             },
+            #[cfg(feature = "dynamic_gas")]
+            Continuation::RepCall(n_exp, gas, n_stack_height, cond_value, abort_tag, max_reps) => {
+                assert_eq!(n_stack_height,stack_height);
+                Ok(Continuation::RepTryCall(n_exp, succ, fail, gas, stack_height, cond_value, abort_tag, max_reps))
+            },
+            #[cfg(not(feature = "dynamic_gas"))]
             Continuation::RepCall(n_exp, n_stack_height, cond_value, abort_tag, max_reps) => {
                 assert_eq!(n_stack_height,stack_height);
                 Ok(Continuation::RepTryCall(n_exp, succ, fail, stack_height, cond_value, abort_tag, max_reps))
-            }
+            },
 
             //Not yet supported. Needs to be supported if we have inlining optimization
-            Continuation::TryCont(_,_,_,_) => error(||"Directly nested tries are not yet supports"),
-            Continuation::RepTryCall(_, _, _, _, _, _, _) => error(||"Directly nested tries are not yet supports"),
+            Continuation::TryCont { .. } => error(||"Directly nested tries are not yet supports"),
+            Continuation::RepTryCall { .. } => error(||"Directly nested tries are not yet supports"),
         }
     }
 
@@ -718,7 +855,6 @@ impl<'transaction,'code,'interpreter,'execution,'heap> ExecutionContext<'transac
                 self.stack.push(self.get(val.0 as usize+idx)?)?;
             };
         }
-
         Ok(Continuation::Next)
     }
 

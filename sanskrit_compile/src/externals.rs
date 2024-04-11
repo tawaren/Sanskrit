@@ -6,6 +6,8 @@ use sanskrit_common::errors::*;
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub struct ExpResources {
     pub gas:u64,
+    #[cfg(feature = "dynamic_gas")]
+    pub local_gas:u64,
     pub mem:u64,
     pub manifest_stack: u32,
     pub frames: u32,
@@ -15,6 +17,8 @@ impl ExpResources {
     pub fn empty() -> Self {
         ExpResources {
             gas: 0,
+            #[cfg(feature = "dynamic_gas")]
+            local_gas: 0,
             mem: 0,
             manifest_stack: 0,
             frames: 0
@@ -33,6 +37,7 @@ pub trait CompilationExternals {
     fn get_literal_checker<'b,'h>(module:&ModuleLink, data_idx: u8, len:u16, alloc:&'b HeapArena<'h>) -> Result<ValueSchema<'b>>;
 }
 
-pub fn just_gas_and_mem(gas:u64, mem:u64, code:OpCode) -> CompilationResult{
-    CompilationResult::OpCodeResult(ExpResources { gas, mem, manifest_stack: 0, frames: 0 }, code)
+pub fn just_local_gas_and_mem(gas:u64, mem:u64, code:OpCode) -> CompilationResult{
+    CompilationResult::OpCodeResult(ExpResources { gas, #[cfg(feature = "dynamic_gas")]
+    local_gas: gas, mem, manifest_stack: 0, frames: 0 }, code)
 }

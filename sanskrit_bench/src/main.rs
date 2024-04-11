@@ -104,7 +104,8 @@ use crate::bench::opcodes::*;
 use crate::bench::validate::limit_tests::benchs::*;
 
 fn main() {
-    /*add::measure_gas(10000);
+
+    add::measure_gas(10000);
     sub::measure_gas(10000);
     mul::measure_gas(10000);
     div::measure_gas(10000);
@@ -117,20 +118,23 @@ fn main() {
     gte::measure_gas(10000);
     lt::measure_gas(10000);
     lte::measure_gas(10000);
-    void::measure_gas(10000);
-    unpack::measure_gas(10000);
-    _let::measure_gas(10000);
-    try_succ::measure_gas(10000);
-    try_fail::measure_gas(10000);
-    ret::measure_gas(10000);
-    call::measure_gas(10000);
-    get::measure_gas(10000);
-    pack::measure_gas(10000);
-    join_hash::measure_gas(10000);
-    plain_hash::measure_gas(10000);
-    switch::measure_gas(1000);*/
+    /*
+      switch::measure_gas(1000);
+      unpack::measure_gas(10000);
+      pack::measure_gas(10000);
 
-
+      void::measure_gas(10000);
+      _let::measure_gas(10000);
+      try_succ::measure_gas(10000);
+      try_fail::measure_gas(10000);
+      ret::measure_gas(10000);
+      get::measure_gas(10000);
+      pack::measure_gas(10000);
+      join_hash::measure_gas(10000);
+      plain_hash::measure_gas(10000);
+      call::measure_gas(10000);
+       */
+    /*
     bench_01_first_bench(4000);
     bench_02_first_bench(2000);
     bench_04_first_bench(1000);
@@ -146,4 +150,5 @@ fn main() {
     bench_20_last_bench(500);
     bench_40_last_bench(250);
 
+     */
 }

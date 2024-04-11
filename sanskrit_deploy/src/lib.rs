@@ -57,11 +57,14 @@ pub fn deploy_function<S:Store>(store:&S, data:Vec<u8>, auto_commit:bool) -> Res
     //calcs the FunctionHash
     let function_hash = store_hash(&[&data]);
     //if it is already deployed we can ignore it
-    //if !store.contains(StorageClass::Transaction, &function_hash) {
     //validates the input
     validate::validate_top_function(&data, store)?;
     //stores the input
-    store.set(StorageClass::Transaction, function_hash, data)?;
+    match store.set(StorageClass::Transaction, function_hash, data) {
+        Ok(_) => {}
+        //Todo: We ignore for now if it is already in the store
+        Err(_) => {}
+    }
     if auto_commit {
         store.commit(StorageClass::Transaction);
     }
