@@ -35,11 +35,14 @@ pub fn deploy_module<S:Store>(store:&S, data:Vec<u8>, system_mode_on:bool, auto_
     //calcs the ModuleHash
     let module_hash = store_hash(&[&data]);
     //if it is already deployed we can ignore it
-    //if !store.contains(StorageClass::Module, &module_hash) {
     //validates the input
     validate::validate(&data, store, module_hash, system_mode_on)?;
     //stores the input
-    store.set(StorageClass::Module, module_hash,data)?;
+    match store.set(StorageClass::Module, module_hash,data) {
+        Ok(_) => {}
+        //Todo: We ignore for now if it is already in the store
+        Err(_) => {}
+    }
     if auto_commit {
         store.commit(StorageClass::Module);
     }

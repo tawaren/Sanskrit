@@ -71,7 +71,7 @@ pub const ERROR_RETURN:u8 = 1;
 
 fn convert_error<T, E:Error>(err:core::result::Result<T,E>) -> Result<T> {
     match err {
-        Err(e) => error(||e.description()),
+        Err(e) => owned_error(||e.description().to_owned()),
         Ok(t) => Ok(t)
     }
 }
@@ -406,7 +406,8 @@ pub fn main() -> std::io::Result<()> {
     println!("Started Local VM in {} mode", MODE);
     #[cfg(feature = "dynamic_gas")]
     println!("Dynamic gas measurement enabled");
-
+    #[cfg(feature = "forward_type_ref")]
+    println!("Forward type ref enabled");
 
     thread::spawn(move || {
         CompilerInstance::with_compiler_result(|mut compiler |{

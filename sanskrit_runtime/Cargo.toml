@@ -4,7 +4,7 @@ version = "0.1.0"
 authors = ["tawaren <markus.knecht85@gmail.com>"]
 
 [features]
-default = ["std", "deployer", "sanskrit_deploy", "sanskrit_compile", "advanced"]
+default = ["std", "deployer", "sanskrit_deploy", "sanskrit_compile"]
 #provides advanced features that are not described in thesis
 advanced = ["dynamic_gas", "forward_type_ref", "sanskrit_deploy/advanced", "sanskrit_compile/advanced", "sanskrit_interpreter/advanced"]
 #not tested yet
