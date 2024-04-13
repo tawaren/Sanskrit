@@ -161,6 +161,20 @@ impl Store for SledStore {
         }
     }
 
+    /*fn contains(&self, class: StorageClass, key: &Hash) -> bool {
+        fn process(map:&Container, key:&Hash) -> bool {
+            map.contains_key(key)
+        }
+        //select the right map
+        match class {
+            StorageClass::Module => process(&self.0.borrow().modules,key),
+            StorageClass::Transaction => process(&self.0.borrow().funs, key),
+            StorageClass::Descriptor => process(&self.0.borrow().descs, key),
+            StorageClass::EntryValue => process(&self.0.borrow().elems, key),
+            StorageClass::EntryHash => process(&self.0.borrow().hashs, key),
+        }
+    }*/
+
     //Gets a value out and uses P as Parser
     fn get<P,F:FnOnce(&[u8])-> P>(&self, class:StorageClass, key: &Hash, f:F) -> Result<P> {
         fn process<P,F:FnOnce(&[u8])-> P>(map: &Container, key:&Hash, f:F) -> Result<P> {

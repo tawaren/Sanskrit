@@ -25,6 +25,7 @@ use sanskrit_compile::externals::{CompilationResult, CompilationExternals};
 #[cfg(feature = "embedded")]
 use std::collections::BTreeMap;
 
+
 pub mod crypto;
 #[cfg(feature = "embedded")]
 pub mod i8;
@@ -257,7 +258,9 @@ impl<'c> SystemDataManager<BundleWithHash<'c>> for ServerSystemDataManager {
 pub struct ServerSystem;
 impl<'c> SystemContext<'c> for ServerSystem {
     type RE = ServerExternals;
+
     type S = SledStore;
+
     type B = BundleWithHash<'c>;
     type VC = StatefulEntryStoreVerifier<Self::B,ServerSystemDataManager>;
     type EC = StatefulEntryStoreExecutor<Self::B,ServerSystemDataManager>;

@@ -1,9 +1,9 @@
 //extern crate blake2_rfc;
-
 use sanskrit_sled_store::SledStore;
+use sled::Db;
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
-use sanskrit_runtime::{execute, Tracker, CONFIG, read_transaction_desc, Context};
+use sanskrit_runtime::{execute, Tracker, CONFIG, read_transaction_desc, Context, verify, TransactionBundle};
 #[cfg(feature = "embedded")]
 use sanskrit_runtime::deploy;
 use sanskrit_common::store::*;
@@ -11,15 +11,13 @@ use sanskrit_common::encoding::*;
 use sanskrit_common::model::*;
 use sanskrit_common::errors::*;
 
-use sled::Db;
-use rand::rngs::OsRng;
-use ed25519_dalek::{SigningKey, Signature, Signer, PUBLIC_KEY_LENGTH, KEYPAIR_LENGTH};
+use ed25519_dalek::{SigningKey, Signature, Signer, SECRET_KEY_LENGTH};
 
 use hex::encode;
 use sanskrit_common::arena::{Heap, VirtualHeapArena};
 use sanskrit_common::hashing::HashingDomain;
 
-use sanskrit_runtime::model::{ParamRef, ParamMode, RetType, BundleSection, SectionType, Transaction, TransactionBundleCore, BaseTransactionBundle};
+use sanskrit_runtime::model::{ParamRef, ParamMode, RetType, BundleSection, SectionType, Transaction, TransactionBundleCore, BaseTransactionBundle, BundleWithHash};
 #[cfg(feature = "embedded")]
 use sanskrit_runtime::model::{DeployTransaction, DeployType};
 use sanskrit_interpreter::model::{Entry, TxTParam, TxTReturn, TransactionDescriptor, ValueSchema, Adt};
@@ -40,6 +38,8 @@ use compiler::CompilerInstance;
 #[cfg(feature = "embedded")]
 use sanskrit_deploy::deploy_module;
 use sanskrit_interpreter::interpreter::InterpreterResult;
+use rand::prelude::*;
+use rand_chacha::ChaCha8Rng;
 
 pub struct Tx {
     pub desc:Hash,
@@ -87,14 +87,16 @@ pub struct TrackingState {
 }
 
 pub struct State {
-    pub store:SledStore,
-    pub accounts:Db,
-    pub system_entries:Db,
-    pub module_name_mapping:Db,
-    pub transaction_name_mapping:Db,
-    pub tracking:TrackingState,
-    pub meta_data:Db,
+    pub csprng: ChaCha8Rng,
+    pub store: SledStore,
+    pub accounts: Db,
+    pub system_entries: Db,
+    pub module_name_mapping: Db,
+    pub transaction_name_mapping: Db,
+    pub tracking: TrackingState,
+    pub meta_data: Db,
 }
+
 
 #[derive(Debug, Parsable, Serializable)]
 pub struct CtrName(pub EncString, pub u8);
@@ -176,9 +178,10 @@ fn pretty_print_data(value:&Entry, desc:&ValueSchema) -> String {
 
 
 impl Tracker for TrackingState {
+    fn block_start(&mut self, _block_no: u64) {  }
+    fn bundle_start<T:TransactionBundle>(&mut self, _bundle: &T) { }
     fn section_start(&mut self, _section: &BundleSection) {  }
     fn transaction_start(&mut self, _transaction: &Transaction) { }
-
     fn parameter_load(&mut self, p_ref: &ParamRef, _p_desc: &TxTParam, _value: &Entry) {
         let name = self.exec_state.param_names.pop_front().unwrap();
         match p_ref {
@@ -220,11 +223,14 @@ impl Tracker for TrackingState {
                 }
                 self.element_data.insert(name.clone(), data).unwrap();
             }
-            self.active_elems.flush().unwrap();
-            self.element_data.flush().unwrap();
             self.exec_state.consumed_elems = BTreeSet::new();
             self.exec_state.produced_elems = BTreeMap::new();
         }
+    }
+    fn bundle_finish<T:TransactionBundle>(&mut self, _bundle: &T, _success: bool) { }
+    fn block_finish(&mut self, _block_no: u64, _success: bool) {
+        self.active_elems.flush().unwrap();
+        self.element_data.flush().unwrap();
     }
 }
 
@@ -232,17 +238,24 @@ const MAX_PARSE_DEPTH:usize = 1024;
 
 impl State {
 
-    //Todo: can we have a wasm version of this
-    //      Can we bundle runtime together with compile?
-    pub fn execute_bundle(&mut self, bundle:&[u8], block_no:u64, heap:&Heap) -> InterpreterResult {
+    pub fn verify_bundle(&mut self, txt_bundle:&BundleWithHash, block_no:u64, heap:&Heap) -> Result<()> {
         //Todo: a wasm version would probably have its own heap internally
-        let txt_bundle_alloc = heap.new_virtual_arena(CONFIG.max_bundle_size);
-        let txt_bundle= ServerSystem::parse_bundle(&bundle,&txt_bundle_alloc)?;
         let ctx = Context {
             store: &self.store,
-            txt_bundle: &txt_bundle
+            txt_bundle
         };
-        execute::<_, ServerSystem>(ctx,block_no, &heap, &mut self.tracking)
+        verify::<ServerSystem>(&ctx,block_no, &heap)
+    }
+
+    //Todo: can we have a wasm version of this
+    //      Can we bundle runtime together with compile?
+    pub fn execute_bundle(&mut self, txt_bundle:&BundleWithHash, block_no:u64, heap:&Heap, commit:bool) -> InterpreterResult {
+        //Todo: a wasm version would probably have its own heap internally
+        let ctx = Context {
+            store: &self.store,
+            txt_bundle
+        };
+        execute::<_, ServerSystem>(ctx,block_no, &heap, &mut self.tracking, commit)
     }
 
     #[cfg(feature = "wasm")]
@@ -291,7 +304,10 @@ impl State {
         txt.serialize(&mut s)?;
         self.execute_deploy(&s.extract(), system_mode_on)?;
         let end = now.elapsed().as_micros();
+        self.store.flush(StorageClass::Module);
+        let flush_end = now.elapsed().as_micros();
         println!("deployed Module with hash {:?} of size {:?} in {:?} us", encode(&hash1),module.len(),end);
+        //println!("module {:?} {:?} {:?} {:?}", encode(&hash1),module.len(),end, flush_end);
         //}
         Ok(hash1)
     }
@@ -308,10 +324,14 @@ impl State {
         txt.serialize(&mut s)?;
         let t_hash = self.execute_deploy(&s.extract(), false)?;
         let end = now.elapsed().as_micros();
-        println!("deployed transaction in {:?} us", end);
+        println!("deployed transaction with hash {:?} of size {:?} in {:?} us",  encode(&hash), transaction.len(), end);
+        self.store.flush(StorageClass::Transaction);
+        self.store.flush(StorageClass::Descriptor);
+        let flush_end = now.elapsed().as_micros();
+        //println!("transaction {:?} {:?} {:?} {:?}",  encode(&hash), transaction.len(), end, flush_end);
         let desc_size = self.store.get( StorageClass::Descriptor, &t_hash,|d|d.len())?;
-        println!("  - function with hash {:?} of size {:?}", encode(&hash), transaction.len());
-        println!("  - descriptor with hash {:?} of size {:?}", encode(&t_hash), desc_size);
+        println!("  - resulting descriptor has hash {:?} and size {:?}", encode(&t_hash), desc_size);
+
         Ok((hash,t_hash))
     }
 
@@ -385,25 +405,40 @@ impl State {
             Some(val) => Parser::parse_fully(&val, 1, &NoCustomAlloc())?
         };
         let mut heap = Heap::new(2*CONFIG.calc_heap_size(2),2.0);
+        let mut verify_elapsed = 0;
         let mut elapsed = 0;
+        let mut size = 0;
         let base_exec_state = self.tracking.exec_state.clone();
         for i in 0..n {
+            self.store.rollback(StorageClass::EntryValue);
+            self.store.rollback(StorageClass::EntryHash);
             self.tracking.exec_state = base_exec_state.clone();
             let full_heap = heap.new_virtual_arena(100000 as usize);
             let (_,bundle) = self.build_transactions(txts, &full_heap, block_no+i)?;
             let ser = Serializer::serialize_fully(&bundle,MAX_PARSE_DEPTH)?;
+            size = ser.len();
             heap = heap.reuse();
+            self.tracking.block_start(block_no+i);
             let now = Instant::now();
-            self.execute_bundle( &ser,block_no+i, &heap)?;
-            elapsed+=now.elapsed().as_millis();
+            let txt_bundle_alloc = heap.new_virtual_arena(CONFIG.max_bundle_size);
+            let bundle = ServerSystem::parse_bundle(&ser,&txt_bundle_alloc)?;
+            self.verify_bundle(&bundle, block_no+i, &heap)?;
+            verify_elapsed += now.elapsed().as_micros();
+            self.execute_bundle(&bundle,block_no+i, &heap, false)?;
+            elapsed += now.elapsed().as_micros();
+            self.tracking.block_finish(block_no+i, true);
             heap = heap.reuse();
         }
+        self.store.commit(StorageClass::EntryValue);
+        self.store.commit(StorageClass::EntryHash);
         //we flush manually as this would be done once per block and not per txt
-        println!("Bundle executed in: {}ms",(elapsed as f64)/(n as f64));
+        let parse = (verify_elapsed as f64)/(n as f64);
+        let exact = (elapsed as f64)/(n as f64);
         let now = Instant::now();
         self.store.flush(StorageClass::EntryValue);
         self.store.flush(StorageClass::EntryHash);
-        println!("Bundle executed and flushed in: {}ms", ((elapsed as f64)/(n as f64)) + now.elapsed().as_millis() as f64);
+        println!("Bundle executed in {}us and flushed in {}us", exact , now.elapsed().as_micros() as f64);
+        //println!("Bundle {} {} {} {}", size, parse, exact ,exact + now.elapsed().as_millis() as f64);
         let new_block_no = block_no+n;
         convert_error(self.meta_data.insert("block_no", Serializer::serialize_fully(&new_block_no, 1)?))?;
         convert_error(self.meta_data.flush())?;
@@ -426,18 +461,25 @@ impl State {
         Self::print_bundle_stats(&bundle);
         let ser = Serializer::serialize_fully(&bundle,MAX_PARSE_DEPTH)?;
         heap = heap.reuse();
+        self.tracking.block_start(block_no);
         println!("Starting bundle execution");
         let now = Instant::now();
-        let res = self.execute_bundle( &ser,block_no, &heap)?;
+        let txt_bundle_alloc = heap.new_virtual_arena(CONFIG.max_bundle_size);
+        let bundle = ServerSystem::parse_bundle(&ser,&txt_bundle_alloc)?;
+        self.verify_bundle(&bundle,block_no, &heap)?;
+        let t0 = now.elapsed().as_micros();
+        let res = self.execute_bundle( &bundle,block_no, &heap, true)?;
         #[cfg(feature = "dynamic_gas")]
         assert!(res <= total_gas);
         #[cfg(feature = "dynamic_gas")]
         println!("Interpreter execution used {} of the available {} gas", res, exec_gas);
         //we flush manually as this would be done once per block and not per txt
-        println!("Bundle executed in: {}ms", now.elapsed().as_millis());
+        let t1 = now.elapsed().as_micros();
         self.store.flush(StorageClass::EntryValue);
         self.store.flush(StorageClass::EntryHash);
-        println!("Bundle executed and flushed in: {}ms", now.elapsed().as_millis());
+        println!("Bundle executed in {}us and flushed in {}us", t1, now.elapsed().as_micros());
+        //println!("Bundle {} {} {} {}", ser.len(), t0, t1, now.elapsed().as_micros());
+        self.tracking.block_finish(block_no, true);
         let new_block_no = block_no+1;
         convert_error(self.meta_data.insert("block_no", Serializer::serialize_fully(&new_block_no, 1)?))?;
         convert_error(self.meta_data.flush())?;
@@ -486,10 +528,10 @@ impl State {
 
 
             if txt_desc.params.len() != params.len() {
-                panic!("Number of supplied parameter missmatches")
+                return owned_error(||format!("Expected {} params, provided {}",txt_desc.params.len(), params.len()));
             }
             if txt_desc.returns.len() != returns.len() {
-                panic!("Number of supplied returns missmatches")
+                return owned_error(||format!("Expected {} returns, received {}",txt_desc.returns.len(), returns.len()))
             }
 
             let mut txt_params:Vec<ParamRef> = Vec::with_capacity(params.len());
@@ -705,13 +747,12 @@ impl State {
         let key = ident.as_bytes();
         if convert_error(self.accounts.contains_key(&key))? {
             let sig_key:&[u8] = &convert_error(self.accounts.get(&key))?.unwrap();
-            if sig_key.len() != KEYPAIR_LENGTH {
-                return error(||"Wrong Key Size");
+            if sig_key.len() != SECRET_KEY_LENGTH {
+                return owned_error(||format!("Wrong Key Size: {} vs. {}",sig_key.len(), SECRET_KEY_LENGTH));
             }
             return Ok(SigningKey::from_bytes(sig_key.try_into().unwrap()))
         }
-        let mut csprng = OsRng{};
-        let kp = SigningKey::generate(&mut csprng);
+        let kp = SigningKey::generate(&mut self.csprng);
         convert_error(self.accounts.insert(key,kp.to_bytes().to_vec()))?;
         convert_error(self.accounts.flush())?;
         return Ok(kp);
@@ -723,11 +764,11 @@ impl State {
             let (name_bytes,key_bytes) = convert_error(account)?;
             let name = convert_error(from_utf8(&name_bytes))?;
             let sig_key:&[u8] = &key_bytes;
-            if sig_key.len() != KEYPAIR_LENGTH {
-                return error(||"Wrong Key Size");
+            if sig_key.len() != SECRET_KEY_LENGTH {
+                return owned_error(||format!("Wrong Key Size: {} vs. {}",sig_key.len(), SECRET_KEY_LENGTH));
             }
-            let keypair = SigningKey::from_bytes(sig_key.try_into().unwrap());
-            res.push((name.to_owned(), keypair))
+            let sig_key = SigningKey::from_bytes(sig_key.try_into().unwrap());
+            res.push((name.to_owned(), sig_key))
         }
         return Ok(res)
     }

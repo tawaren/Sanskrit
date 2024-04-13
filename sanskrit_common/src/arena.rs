@@ -14,8 +14,7 @@ use core::marker::PhantomData;
 use core::fmt::{Debug, Formatter};
 use core::cmp::Ordering;
 
-fn align_address(ptr: *const u8, align: usize) -> usize {
-    let addr = ptr as usize;
+const fn align_address(addr: usize, align: usize) -> usize {
     if addr % align != 0 {
         align - addr % align
     } else {
@@ -31,6 +30,7 @@ pub struct Heap {
 
 impl Heap {
     pub fn new(real: usize,  convert:f64) -> Self {
+        //We assume real accounts for alignement (max_elems_space can be used to compute sizes)
         Heap {
             buffer: RefCell::new(Vec::with_capacity(real)),
             pos: Cell::new(0),
@@ -38,15 +38,16 @@ impl Heap {
         }
     }
 
-    pub const fn elems<T:Sized>(num:usize) -> usize {
-        num*mem::size_of::<T>()
+    pub const fn max_elems_space<T:Sized>(num:usize) -> usize {
+        let base_size = num*mem::size_of::<T>();
+        //account for alignment offsets
+        base_size + mem::align_of::<T>() - 1
     }
 
     pub fn new_arena(&self, size: usize) -> HeapArena {
-        let ptr = unsafe { self.buffer.borrow().as_ptr().add(self.pos.get()) };
-        let align_offset = align_address(ptr, mem::align_of::<usize>());
+        //No alignment as we do not know the type size: However, this mean size must account for alignement offsets
         let start = self.pos.get();
-        let end = start + size + align_offset;
+        let end = self.pos.get() + size;
         if self.buffer.borrow().capacity() < end {
             panic!("Not enough space for allocating arena");
         }
@@ -85,9 +86,9 @@ impl Heap {
 
 pub struct HeapArena<'h> {
     buffer: &'h RefCell<Vec<u8>>,
-    start: usize,
-    pos: Cell<usize>,
-    end: usize,
+    pub start: usize,
+    pub pos: Cell<usize>,
+    pub end: usize,
     locked: Cell<bool>,
 }
 
@@ -133,7 +134,7 @@ impl<'h> HeapArena<'h> {
         let pos = self.pos.get();
         unsafe {
             let ptr = self.buffer.borrow_mut().as_mut_ptr().add(pos);
-            let align_offset = align_address(ptr, mem::align_of::<T>());
+            let align_offset = align_address(ptr as usize, mem::align_of::<T>());
             self.pos.set(pos + align_offset + size);
             if self.end >= self.pos.get() {
                 let ptr = ptr.add(align_offset) as *mut T;
@@ -151,7 +152,7 @@ impl<'h> HeapArena<'h> {
         let size = len * mem::size_of::<T>();
         let pos = self.pos.get();
         let ptr = self.buffer.borrow_mut().as_mut_ptr().add(pos);
-        let align_offset = align_address(ptr, mem::align_of::<T>());
+        let align_offset = align_address(ptr as usize, mem::align_of::<T>());
         self.pos.set(pos + align_offset + size);
         if self.end >= self.pos.get() {
             from_raw_parts_mut(ptr.add(align_offset) as *mut T, len)

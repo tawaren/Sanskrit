@@ -34,7 +34,6 @@ impl Store for ExternalStore {
         emit_error("Delete not supported");
         unreachable!("Delete not supported")
     }
-
     //Gets a value out and uses P as Parser
     fn get<P,F:FnOnce(&[u8])-> P>(&self, class:StorageClass, key: &Hash, f:F) -> Result<P> {
         //we need this scope to make sure lifetime of lock is not to long

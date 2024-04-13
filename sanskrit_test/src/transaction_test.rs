@@ -11,13 +11,13 @@ mod tests {
     use sanskrit_common::arena::Heap;
     use sanskrit_test_script_compiler::script::Compiler;
     use std::cell::Cell;
-    use sanskrit_runtime::{CONFIG, execute, Tracker, Context};
+    use sanskrit_runtime::{CONFIG, execute, Tracker, Context, verify, TransactionBundle};
     use sanskrit_common::store::StorageClass;
     use std::fs::File;
     use std::io::{BufReader, BufRead};
     use externals::{ScriptExternals, ScriptSystem};
     use sanskrit_interpreter::model::{TxTReturn, Entry, TxTParam};
-    use sanskrit_runtime::model::{Transaction, RetType, BundleSection, ParamRef};
+    use sanskrit_runtime::model::{Transaction, RetType, BundleSection, ParamRef, BundleWithHash};
     use sanskrit_common::encoding::Serializer;
     use sanskrit_runtime::system::SystemContext;
 
@@ -25,6 +25,8 @@ mod tests {
         expects:Vec<String>
     }
     impl Tracker for CheckedLogger {
+        fn block_start(&mut self, _block_no: u64) { }
+        fn bundle_start<T:TransactionBundle>(&mut self, _bundle: &T) { }
         fn section_start(&mut self, _section: &BundleSection) {}
         fn transaction_start(&mut self, _transaction: &Transaction) {}
         fn parameter_load(&mut self, _p_ref: &ParamRef, _p_desc: &TxTParam, _value: &Entry) {}
@@ -42,6 +44,8 @@ mod tests {
 
         fn transaction_finish(&mut self, _transaction: &Transaction, _success: bool) {}
         fn section_finish(&mut self, _section: &BundleSection, _success: bool) {}
+        fn bundle_finish<T:TransactionBundle>(&mut self, _bundle: &T, success: bool) { }
+        fn block_finish(&mut self, _block_no: u64, _success: bool) { }
     }
 
 
@@ -92,7 +96,8 @@ mod tests {
             store: &s,
             txt_bundle: &txt_bundle
         };
-        execute::<_,ScriptSystem>(ctx, 0, &heap, &mut checker).expect("Execute Failed");
+        verify::<ScriptSystem>(&ctx,0, &heap)?;
+        execute::<_,ScriptSystem>(ctx, 0, &heap, &mut checker, true).expect("Execute Failed");
         assert_eq!(checker.expects.len(), 0, "Expected more logs");
 
         Ok(())
@@ -100,12 +105,16 @@ mod tests {
 
     struct NoLogger{}
     impl Tracker for NoLogger {
+        fn block_start(&mut self, _block_no: u64) { }
+        fn bundle_start<T:TransactionBundle>(&mut self, _bundle: &T) { }
         fn section_start(&mut self, _section: &BundleSection) {}
         fn transaction_start(&mut self, _transaction: &Transaction) {}
         fn parameter_load(&mut self, _p_ref: &ParamRef, _p_desc: &TxTParam, _value: &Entry) {}
         fn return_value(&mut self, _r_typ: &RetType, _r_desc: &TxTReturn, _value: &Entry) {}
         fn transaction_finish(&mut self, _transaction: &Transaction, _success: bool) {}
-        fn section_finish(&mut self, _section: &BundleSection, _success: bool) {}
+        fn section_finish(&mut self, _section: &BundleSection, _success: bool) { }
+        fn bundle_finish<T:TransactionBundle>(&mut self, _bundle: &T, _success: bool) { }
+        fn block_finish(&mut self, _block_no: u64, _success: bool) { }
     }
 
     fn parse_and_compile_and_run_bench(id_name:&str,b: &mut Bencher) -> Result<()>{
@@ -139,7 +148,8 @@ mod tests {
                 store: &s,
                 txt_bundle: &txt_bundle
             };
-            execute::<_,ScriptSystem>(ctx, 0, &heap, &mut NoLogger{}).expect("Execute Failed");
+            verify::<ScriptSystem>(&ctx,0, &heap).expect("Verification Failed");
+            execute::<_,ScriptSystem>(ctx, 0, &heap, &mut NoLogger{}, true).expect("Execute Failed");
             s.clear_section(StorageClass::EntryHash);
             s.clear_section(StorageClass::EntryValue);
         });

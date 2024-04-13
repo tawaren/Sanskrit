@@ -5,9 +5,15 @@ extern crate sanskrit_core;
 extern crate sanskrit_interpreter;
 extern crate sanskrit_sled_store; //for now later use an ethereum or substrate based one
 extern crate sled;
+
+#[cfg(feature = "memory")]
+extern crate sanskrit_memory_store; //for now later use an ethereum or substrate based one
+
+
 extern crate ed25519_dalek;
 extern crate sha2;
 extern crate rand;
+extern crate rand_chacha;
 extern crate hex;
 extern crate arrayref;
 extern crate byteorder;
@@ -26,6 +32,7 @@ extern crate sanskrit_deploy;
 #[cfg(feature = "wasm")]
 extern crate wasmer;
 
+
 mod manager;
 mod parser_model;
 mod externals;
@@ -37,6 +44,8 @@ lalrpop_mod!(pub parser);
 
 use std::path::Path;
 use sanskrit_sled_store::SledStore;
+use sled::Db;
+
 use std::{env, thread};
 
 use sanskrit_common::errors::*;
@@ -58,6 +67,10 @@ use sanskrit_common::encoding::{VirtualSize, Parser, NoCustomAlloc};
 use std::collections::BTreeSet;
 use std::cell::RefCell;
 use std::rc::Rc;
+use rand::rngs::OsRng;
+use rand::prelude::*;
+use rand_chacha::ChaCha8Rng;
+
 use sanskrit_common::store::StorageClass;
 use compiler::CompilerInstance;
 
@@ -118,16 +131,17 @@ fn handle_data<R:Read>(state: &mut State, compiler:&mut CompilerInstance, reader
                 convert_error(state.system_entries.insert(&[sys_id], &hash))?;
                 convert_error(state.system_entries.flush())?;
                 let e_hash = encode(&hash);
-                println!("Registered System Module {} with Hash {:?} with System Number {:?}",name, e_hash,sys_id);
+                //println!("Registered System Module {} with Hash {:?} with System Number {:?}",name, e_hash,sys_id);
                 (hash, e_hash)
             } else {
                 let bytes = read_length_prefixed_array(reader)?;
                 let hash = state.deploy_module(compiler,bytes, true, None)?;
                 let e_hash = encode(&hash);
-                println!("Registered System Module {} with Hash {:?}",name, e_hash);
+                //println!("Registered System Module {} with Hash {:?}",name, e_hash);
                 (hash, e_hash)
             };
-            println!("Mapping Module with hash {:?} to name {}", e_hash,&name);
+            //println!("Mapping Module with hash {:?} to name {}", e_hash,&name);
+            println!("{}",&name);
             convert_error(state.tracking.data_names.insert(hash.clone(),meta_data_bytes))?;
             convert_error(state.module_name_mapping.insert(name,&hash.clone()))?;
             convert_error(state.tracking.data_names.flush())?;
@@ -139,7 +153,8 @@ fn handle_data<R:Read>(state: &mut State, compiler:&mut CompilerInstance, reader
             let name = convert_error(String::from_utf8(name_bytes))?;
             let bytes = read_length_prefixed_array(reader)?;
             let (f_hash,d_hash) = state.deploy_transaction(compiler, bytes)?;
-            println!("Mapping Transaction with descriptor hash {:?} to name {}", encode(&d_hash) ,&name);
+            //println!("Mapping Transaction with descriptor hash {:?} to name {}", encode(&d_hash) ,&name);
+            println!("{}",&name);
             convert_error(state.transaction_name_mapping.insert(name,&d_hash.clone()))?;
             convert_error(state.transaction_name_mapping.flush())?;
             Ok(vec![f_hash, d_hash])
@@ -381,11 +396,12 @@ pub fn main() -> std::io::Result<()> {
     let history = work_dir.join("history").with_extension("txt");
 
     let mut auto_flushes = BTreeSet::new();
-    auto_flushes.insert(StorageClass::Transaction);
-    auto_flushes.insert(StorageClass::Module);
-    auto_flushes.insert(StorageClass::Descriptor);
+    //auto_flushes.insert(StorageClass::Transaction);
+    //auto_flushes.insert(StorageClass::Module);
+    //auto_flushes.insert(StorageClass::Descriptor);
 
     let state = State {
+        csprng: ChaCha8Rng::seed_from_u64(10), //ChaCha8Rng::from_entropy(),
         store: SledStore::new(&db_folder, auto_flushes),
         accounts:sled::open(account_db)?,
         system_entries:sled::open(sys_entry_db)?,

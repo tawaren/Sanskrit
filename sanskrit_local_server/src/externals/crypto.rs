@@ -56,11 +56,11 @@ pub fn ecdsa_verify<'interpreter, 'transaction:'interpreter, 'heap:'transaction,
     let sig_data:&[u8] = &unsafe {inter.get(sig as usize)?.data};
 
     if pk_data.len() != PUBLIC_KEY_LENGTH {
-        return error(||"Wrong Public Key Size");
+        return owned_error(||format!("Wrong Key Size: {} vs. {}",pk_data.len(), PUBLIC_KEY_LENGTH));
     }
 
     if sig_data.len() != SIGNATURE_LENGTH {
-        return error(||"Wrong Signature Size");
+        return owned_error(||format!("Wrong Signature Size: {} vs. {}", sig_data.len(), SIGNATURE_LENGTH));
     }
 
     let res = match (VerifyingKey::from_bytes(pk_data.try_into().unwrap()), Signature::from_bytes(sig_data.try_into().unwrap())) {

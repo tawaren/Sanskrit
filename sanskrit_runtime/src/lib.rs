@@ -24,7 +24,7 @@ use sanskrit_common::errors::*;
 #[cfg(feature = "deployer")]
 use sanskrit_common::encoding::Parser;
 use sanskrit_common::encoding::ParserAllocator;
-use model::{Transaction, ParamRef, RetType, BundleSection};
+use model::{Transaction, ParamRef, RetType, BundleSection, BundleWithHash};
 #[cfg(feature = "deployer")]
 use model::{DeployTransaction, DeployType};
 use sanskrit_common::arena::*;
@@ -135,9 +135,9 @@ pub const CONFIG: Configuration = Configuration {
 
 impl Configuration {
     pub const fn calc_heap_size(&self, virt_factor:usize) -> usize {
-        Heap::elems::<Entry>(self.max_stack_depth)
-            + Heap::elems::<Frame>(self.max_stack_depth)
-            + Heap::elems::<Entry>(self.return_stack)
+        Heap::max_elems_space::<Entry>(self.max_stack_depth)
+            + Heap::max_elems_space::<Frame>(self.max_stack_depth)
+            + Heap::max_elems_space::<Entry>(self.return_stack)
             + (self.max_heap_size * virt_factor)
             + (self.max_bundle_size * virt_factor)
             + (self.max_txt_alloc * virt_factor)
@@ -169,26 +169,32 @@ pub struct Context<'a,'b, S:Store, T:TransactionBundle> {
 }
 
 pub trait Tracker {
+    fn block_start(&mut self, block_no:u64);
+    fn bundle_start<T:TransactionBundle>(&mut self, bundle:&T);
     fn section_start(&mut self, section:&BundleSection);
     fn transaction_start(&mut self, transaction:&Transaction);
     fn parameter_load(&mut self, p_ref:&ParamRef, p_desc:&TxTParam, value:&Entry);
     fn return_value(&mut self, r_typ:&RetType, r_desc:&TxTReturn, value:&Entry);
     fn transaction_finish(&mut self, transaction:&Transaction, success:bool);
     fn section_finish(&mut self, section:&BundleSection, success:bool);
+    fn bundle_finish<T:TransactionBundle>(&mut self, bundle:&T, success:bool);
+    fn block_finish(&mut self, block_no:u64, success:bool);
 }
 
 pub fn read_transaction_desc<'d, S:Store, A:ParserAllocator>(target:&Hash, store:&S, heap: &'d A) -> Result<TransactionDescriptor<'d>> {
     direct_stored::read_transaction_desc(target, store, heap)
 }
 
-
-//Executes a transaction
-pub fn execute<'c, 'd:'c, L: Tracker,SYS:SystemContext<'c>>(ctx:Context<SYS::S, SYS::B>, block_no:u64, heap:&'d Heap, tracker:&mut L) -> InterpreterResult {
+pub fn verify<'c, 'd:'c, SYS:SystemContext<'c>>(ctx:&Context<SYS::S, SYS::B>, block_no:u64, heap:&'d Heap) -> Result<()> {
     //Check that it is inside limit
     if ctx.txt_bundle.byte_size() > CONFIG.max_bundle_size { return error(||"Transaction Bundle to big")}
-    verify_repeated::<SYS>( &ctx, block_no)?;
-    verify_once::<SYS>(&SYS::VC::new(), &ctx, heap)?;
-    execute_once::<_,SYS>(&SYS::EC::new(), &ctx, block_no, heap, tracker)
+    verify_repeated::<SYS>(ctx, block_no)?;
+    verify_once::<SYS>(&SYS::VC::new(), ctx, heap)
+}
+
+//Executes a transaction
+pub fn execute<'c, 'd:'c, L: Tracker,SYS:SystemContext<'c>>(ctx:Context<SYS::S, SYS::B>, block_no:u64, heap:&'d Heap, tracker:&mut L, commit:bool) -> InterpreterResult {
+    execute_once::<_,SYS>(&SYS::EC::new(), &ctx, block_no, heap, tracker, commit)
 }
 
 #[cfg(feature = "deployer")]

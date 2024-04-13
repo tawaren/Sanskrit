@@ -31,6 +31,7 @@ byteorder = { version = "1.5.0", features = ["i128"], default-features = false }
 lazy_static = "1.4.0"
 wasmer = { version = "4.2.8", optional = true }
 fluid-let = "1.0.0"
+rand_chacha = "0.3.1"
 
 [dependencies.sanskrit_compile]
 path = "../sanskrit_compile"

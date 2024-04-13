@@ -11,6 +11,7 @@ use alloc::vec::Vec;
 
 use ::{Tracker, CONFIG};
 use core::cell::RefCell;
+use core::mem;
 use sanskrit_common::store::Store;
 use ::{Context, TransactionBundle};
 use system::SystemContext;
@@ -50,13 +51,13 @@ pub trait TransactionExecutionContext<S:Store,B:TransactionBundle> {
 }
 
 //Executes a transaction
-pub fn execute_once<'c, L: Tracker, SYS:SystemContext<'c>>(exec_store:&SYS::EC, ctx:&Context<SYS::S, SYS::B>, block_no:u64, heap:&Heap, tracker:&mut L) -> InterpreterResult {
+pub fn execute_once<'c, L: Tracker, SYS:SystemContext<'c>>(exec_store:&SYS::EC, ctx:&Context<SYS::S, SYS::B>, block_no:u64, heap:&Heap, tracker:&mut L, commit:bool) -> InterpreterResult {
     //Create Allocator
     //create heaps: based on bundle input
     let structural_arena = heap.new_arena(
-        Heap::elems::<Entry>(ctx.txt_bundle.stack_elem_limit() as usize)
-            + Heap::elems::<Frame>(ctx.txt_bundle.stack_frame_limit() as usize)
-            + Heap::elems::<Entry>(CONFIG.return_stack)
+        Heap::max_elems_space::<Entry>(ctx.txt_bundle.stack_elem_limit() as usize)
+            + Heap::max_elems_space::<Frame>(ctx.txt_bundle.stack_frame_limit() as usize)
+            + Heap::max_elems_space::<Entry>(CONFIG.return_stack)
     );
 
     let parameter_heap = heap.new_virtual_arena(ctx.txt_bundle.param_heap_limit() as usize);
@@ -87,7 +88,7 @@ pub fn execute_once<'c, L: Tracker, SYS:SystemContext<'c>>(exec_store:&SYS::EC, 
 
     #[cfg(feature = "dynamic_gas")]
     let mut used_gas:u64 = 0;
-
+    tracker.bundle_start(ctx.txt_bundle);
     let mut sec_no = 0;
     for txt_section in ctx.txt_bundle.sections().iter() {
         tracker.section_start(txt_section);
@@ -103,6 +104,7 @@ pub fn execute_once<'c, L: Tracker, SYS:SystemContext<'c>>(exec_store:&SYS::EC, 
                     exec_store.revert(ctx);
                     tracker.transaction_finish(txt, false);
                     tracker.section_finish(txt_section, false);
+                    tracker.bundle_finish(ctx.txt_bundle, false);
                     return Err(err);
                 }
             };
@@ -112,13 +114,13 @@ pub fn execute_once<'c, L: Tracker, SYS:SystemContext<'c>>(exec_store:&SYS::EC, 
             exec_env.runtime_heap = exec_env.runtime_heap.reuse();
             tracker.transaction_finish(txt, true);
         }
-
-        //commit
-        exec_store.commit(ctx);
+        //commit -- making this optional is needed for benchmarking
+        if commit { exec_store.commit(ctx); }
         tracker.section_finish(txt_section, true);
         sec_no+=1;
-
     }
+    tracker.bundle_finish(ctx.txt_bundle, true);
+
     #[cfg(feature = "dynamic_gas")]
     return Ok(used_gas);
     #[cfg(not(feature = "dynamic_gas"))]
@@ -129,7 +131,6 @@ fn execute_transaction<'c, L: Tracker, SYS:SystemContext<'c>>(env:&ExecutionEnvi
 
     //Prepare all the Memory
     let txt_desc:TransactionDescriptor = env.descs[txt.txt_desc as usize];
-
     let mut interpreter_stack = env.structural_arena.alloc_stack::<Entry>(txt_desc.max_stack as usize);
     let mut frame_stack = env.structural_arena.alloc_stack::<Frame>(txt_desc.max_frames as usize);
     let mut return_stack = env.structural_arena.alloc_stack::<Entry>(CONFIG.return_stack);
