@@ -27,8 +27,6 @@ extern crate lalrpop_util;
 extern crate fluid_let;
 #[cfg(feature = "embedded")]
 extern crate sanskrit_compile;
-#[cfg(feature = "embedded")]
-extern crate sanskrit_deploy;
 #[cfg(feature = "wasm")]
 extern crate wasmer;
 

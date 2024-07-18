@@ -35,8 +35,6 @@ use sanskrit_runtime::system::SystemContext;
 use sanskrit_runtime::direct_stored::SystemDataManager;
 use externals::crypto::{raw_plain_hash, raw_join_hash};
 use compiler::CompilerInstance;
-#[cfg(feature = "embedded")]
-use sanskrit_deploy::deploy_module;
 use sanskrit_interpreter::interpreter::InterpreterResult;
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
@@ -467,7 +465,7 @@ impl State {
         let txt_bundle_alloc = heap.new_virtual_arena(CONFIG.max_bundle_size);
         let bundle = ServerSystem::parse_bundle(&ser,&txt_bundle_alloc)?;
         self.verify_bundle(&bundle,block_no, &heap)?;
-        let t0 = now.elapsed().as_micros();
+        //let t0 = now.elapsed().as_micros();
         let res = self.execute_bundle( &bundle,block_no, &heap, true)?;
         #[cfg(feature = "dynamic_gas")]
         assert!(res <= total_gas);
