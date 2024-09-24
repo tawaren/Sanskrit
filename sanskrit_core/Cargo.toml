@@ -8,7 +8,7 @@ default = ["std"]
 std = []
 
 [dependencies]
-hashbrown = "0.14.3"
+hashbrown = "0.14.5"
 
 [dependencies.sanskrit_common]
 path = "../sanskrit_common"
