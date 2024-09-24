@@ -4,7 +4,6 @@ use sled::Db;
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use sanskrit_runtime::{execute, Tracker, CONFIG, read_transaction_desc, Context, verify, TransactionBundle};
-#[cfg(feature = "embedded")]
 use sanskrit_runtime::deploy;
 use sanskrit_common::store::*;
 use sanskrit_common::encoding::*;
@@ -18,11 +17,9 @@ use sanskrit_common::arena::{Heap, VirtualHeapArena};
 use sanskrit_common::hashing::HashingDomain;
 
 use sanskrit_runtime::model::{ParamRef, ParamMode, RetType, BundleSection, SectionType, Transaction, TransactionBundleCore, BaseTransactionBundle, BundleWithHash};
-#[cfg(feature = "embedded")]
 use sanskrit_runtime::model::{DeployTransaction, DeployType};
 use sanskrit_interpreter::model::{Entry, TxTParam, TxTReturn, TransactionDescriptor, ValueSchema, Adt};
 use externals::{ServerSystem, ServerSystemDataManager, get_ed_dsa_module};
-#[cfg(feature = "embedded")]
 use externals::ServerExternals;
 use std::time::Instant;
 use std::ops::{Deref, Add};
@@ -256,40 +253,11 @@ impl State {
         execute::<_, ServerSystem>(ctx,block_no, &heap, &mut self.tracking, commit)
     }
 
-    #[cfg(feature = "wasm")]
-    pub fn deploy_module(&mut self, compiler:&mut CompilerInstance, module:Vec<u8>, system_mode_on:bool, system_id:Option<u8>) -> Result<Hash> {
-        let now = Instant::now();
-        let (hash, gas) = if system_mode_on {
-            //Todo: Configure gas read from somewhere??
-            compiler.compile_system_module(&module, &self.store, system_id.map(|id|id as usize), 100000000,10000)?
-        } else {
-            compiler.compile_module(&module, &self.store, 100000000,10000)?
-        };
-        let end = now.elapsed().as_micros();
-        println!("deployed Module with hash {:?} of size {:?} in {:?} us using {:?} gas", encode(&hash),module.len(),end, gas);
-        Ok(hash)
-    }
-
-    #[cfg(feature = "wasm")]
-    pub fn deploy_transaction(&mut self, compiler:&mut CompilerInstance, transaction:Vec<u8>) -> Result<(Hash,Hash)> {
-        let now = Instant::now();
-        //Todo: Configure gas read from somewhere??
-        let (t_hash, hash, gas) = compiler.compile_transaction(&transaction,&self.store, 100000000,10000)?;
-        let end = now.elapsed().as_micros();
-        println!("deployed transaction in {:?} us using {:?} gas", end, gas);
-        let desc_size = self.store.get( StorageClass::Descriptor, &t_hash,|d|d.len())?;
-        println!("  - function with hash {:?} of size {:?}", encode(&hash), transaction.len());
-        println!("  - descriptor with hash {:?} of size {:?}", encode(&t_hash), desc_size);
-        Ok((hash,t_hash))
-    }
-
-    #[cfg(feature = "embedded")]
     pub fn execute_deploy(&mut self, bundle:&[u8], system_mode_on:bool) -> Result<Hash> {
         let heap = Heap::new(CONFIG.calc_heap_size(2),2.0);
         deploy::<_, ServerExternals>(&self.store, &bundle, &heap, system_mode_on)
     }
 
-    #[cfg(feature = "embedded")]
     pub fn deploy_module(&mut self, _compiler:&mut CompilerInstance, module:Vec<u8>, system_mode_on:bool, _system_id:Option<u8>) -> Result<Hash> {
         let now = Instant::now();
         let hash1 = store_hash(&[&module]);
@@ -310,7 +278,6 @@ impl State {
         Ok(hash1)
     }
 
-    #[cfg(feature = "embedded")]
     pub fn deploy_transaction(&mut self, _compiler:&mut CompilerInstance, transaction:Vec<u8>) -> Result<(Hash,Hash)> {
         let now = Instant::now();
         let hash = store_hash(&[&transaction]);

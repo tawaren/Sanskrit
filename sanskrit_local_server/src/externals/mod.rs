@@ -1,14 +1,11 @@
 use std::sync::Mutex;
 use sanskrit_common::errors::*;
 use sanskrit_common::model::{ValueRef, Hash, Ptr};
-#[cfg(feature = "embedded")]
 use sanskrit_common::model::{SlicePtr, ModuleLink};
 
 use sanskrit_common::arena::VirtualHeapArena;
-#[cfg(feature = "embedded")]
 use sanskrit_common::arena::HeapArena;
 use sanskrit_interpreter::model::{Kind, Entry, Adt, RuntimeType};
-#[cfg(feature = "embedded")]
 use sanskrit_interpreter::model::ValueSchema;
 use sanskrit_runtime::system::SystemContext;
 use std::cell::Cell;
@@ -20,50 +17,32 @@ use sanskrit_runtime::model::{BundleWithHash, BaseTransactionBundle};
 use sanskrit_runtime::CONFIG;
 use externals::crypto::{join_hash, plain_hash, ecdsa_verify};
 use sanskrit_interpreter::externals::{RuntimeExternals, ExecutionInterface};
-#[cfg(feature = "embedded")]
 use sanskrit_compile::externals::{CompilationResult, CompilationExternals};
-#[cfg(feature = "embedded")]
 use std::collections::BTreeMap;
 
 
 pub mod crypto;
-#[cfg(feature = "embedded")]
 pub mod i8;
-#[cfg(feature = "embedded")]
 pub mod i16;
-#[cfg(feature = "embedded")]
 pub mod i32;
-#[cfg(feature = "embedded")]
 pub mod i64;
-#[cfg(feature = "embedded")]
 pub mod i128;
-#[cfg(feature = "embedded")]
 pub mod u8;
-#[cfg(feature = "embedded")]
 pub mod u16;
-#[cfg(feature = "embedded")]
 pub mod u32;
-#[cfg(feature = "embedded")]
 pub mod u64;
-#[cfg(feature = "embedded")]
 pub mod u128;
-#[cfg(feature = "embedded")]
 pub mod data;
-#[cfg(feature = "embedded")]
 pub mod ids;
-#[cfg(feature = "embedded")]
 pub mod eddsa;
-#[cfg(feature = "embedded")]
 pub mod _unsafe;
 
-#[cfg(feature = "embedded")]
 pub trait External:Sync{
     fn compile_lit<'b,'h>(&self, data_idx: u8, data:SlicePtr<'b,u8>, caller: &Hash, alloc:&'b HeapArena<'h>) -> Result<CompilationResult<'b>>;
     fn get_literal_checker<'b,'h>(&self, data_idx: u8, len:u16, alloc:&'b HeapArena<'h>) -> Result<ValueSchema<'b>>;
     fn compile_call<'b,'h>(&self, fun_idx: u8, params:SlicePtr<'b,ValueRef>, caller:&Hash,  alloc:&'b HeapArena<'h>) -> Result<CompilationResult<'b>>;
 }
 
-#[cfg(feature = "embedded")]
 lazy_static! {
     pub static ref EXT_MAP: Mutex<BTreeMap<Hash, &'static dyn External>> = Mutex::new(BTreeMap::new());
 }
@@ -78,29 +57,6 @@ lazy_static! {
 
 pub fn get_ed_dsa_module() -> Hash {EDDSA_HASH.lock().unwrap().get()}
 
-#[cfg(feature = "wasm")]
-lazy_static! {
-    pub static ref SYS_MODS: [fn(Hash)->();16] = [
-            |_h|{},        //0
-            |_h|{},        //1
-            |_h|{},        //2
-            |_h|{},        //3
-            |_h|{},        //4
-            |_h|{},        //5
-            |_h|{},        //6
-            |_h|{},        //7
-            |_h|{},        //8
-            |_h|{},        //9
-            |_h|{},        //10
-            |_h|{},        //11
-            |h|{SYS_HASH.lock().unwrap().set(h);},                       //12
-            |_h|{},        //13
-            |_h|{},        //14
-            |h|{EDDSA_HASH.lock().unwrap().set(h);},                     //15
-    ];
-}
-
-#[cfg(feature = "embedded")]
 lazy_static! {
     pub static ref SYS_MODS: [fn(Hash)->();16] = [
             |h|{EXT_MAP.lock().unwrap().insert(h, i8::EXT_I8);},        //0
@@ -123,7 +79,6 @@ lazy_static! {
 }
 
 pub struct ServerExternals;
-#[cfg(feature = "embedded")]
 impl CompilationExternals for ServerExternals {
     fn compile_call<'b, 'h>(module: &ModuleLink, fun_idx: u8, params: SlicePtr<'b, ValueRef>, caller: &[u8; 20], alloc: &'b HeapArena<'h>) -> Result<CompilationResult<'b>> {
         match EXT_MAP.lock().unwrap().get(&module.to_hash()) {

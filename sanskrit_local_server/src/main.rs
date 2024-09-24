@@ -25,10 +25,7 @@ extern crate sanskrit_derive;
 #[macro_use]
 extern crate lalrpop_util;
 extern crate fluid_let;
-#[cfg(feature = "embedded")]
 extern crate sanskrit_compile;
-#[cfg(feature = "wasm")]
-extern crate wasmer;
 
 
 mod manager;
@@ -335,25 +332,7 @@ fn process_bundle_line(line:String, bundle_state:Rc<RefCell<(BTreeSet<String>,Ve
     Ok(ProcRes::Continue)
 }
 
-#[cfg(feature = "wasm")]
-fn register_system_modules(state:&State, compiler:&mut CompilerInstance) -> std::io::Result<()> {
-    for entry in state.system_entries.iter() {
-        let (k,e) = entry?;
-        let sys_id = k[0];
-        let hash = hash_from_slice(&e);
-        let sys_impl = externals::SYS_MODS[sys_id as usize];
-        sys_impl(hash.clone());
-        match compiler.register(hash.clone(), 100000, sys_id as isize) {
-            Ok(_) => {}
-            Err(_) => {}
-        };
-        let e_hash = encode(&hash);
-        println!("Re-Registered Module with Hash {:?} as System Module with Number {:?}",e_hash,sys_id);
-    }
-    Ok(())
-}
 
-#[cfg(feature = "embedded")]
 fn register_system_modules(state:&State, _compiler:&mut CompilerInstance) -> std::io::Result<()> {
     for entry in state.system_entries.iter() {
         let (k,e) = entry?;
@@ -367,11 +346,8 @@ fn register_system_modules(state:&State, _compiler:&mut CompilerInstance) -> std
     Ok(())
 }
 
-#[cfg(feature = "embedded")]
 static MODE:&str = "embedded";
 
-#[cfg(feature = "wasm")]
-static MODE:&str = "wasm";
 
 pub fn main() -> std::io::Result<()> {
     let args: Vec<String> = env::args().collect();
