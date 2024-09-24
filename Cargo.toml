@@ -9,13 +9,7 @@ members = [
         "sanskrit_compile",
         "sanskrit_memory_store",
         "sanskrit_sled_store",
-        "sanskrit_test_script_compiler",
-        "sanskrit_test",
         "sanskrit_local_server",
-        # "sanskrit_bench",
-        "sanskrit_wasm_deploy_compile",
-        # "sanskrit_wasm_runner",
-        # "sanskrit_pallet",
 ]
 
 [profile.release]

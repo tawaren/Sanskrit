@@ -1,3 +1,0 @@
-module TestFailPrimitive5 {
-    public(create,consume) type <Primitive, Drop, Copy, Value, Unbound, Persist> Prim;
-}

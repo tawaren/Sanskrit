@@ -1,4 +1,0 @@
-transaction{
-     a = lit 1:IntU8.U8;
-     return call SomeFunctions.Dual[IntU8.U8](a,a);
-};

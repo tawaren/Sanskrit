@@ -1,6 +1,0 @@
-module TestFailImageUnpack2 {
-    private fun Test[<Value, Unbound> A](consume a:TestSucAdt.Wrapper[A]):(b:%A){
-       b = unpack a:TestSucAdt.Wrapper[A];
-       return b;
-    };
-}

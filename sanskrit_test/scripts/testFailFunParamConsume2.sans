@@ -1,6 +1,0 @@
-module TestFailFunParamConsume2 {
-   public fun TestFun[<Value, Unbound> A](a:A):(a:A) {
-       b = a;
-       return b;
-   };
-}

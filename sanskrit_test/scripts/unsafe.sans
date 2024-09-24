@@ -1,8 +1,0 @@
-system module Unsafe {
-    private extType(0) <Copy,Drop,Value,Unbound> Unsafe[phantom T];
-    private extFun _unproject[<Value, Unbound> T](t:%T):(res:T);
-    private extFun _packUnsafe[<Unbound> T](t:T):(res:.Unsafe[T]);
-    private extFun _unpackUnsafe[<Unbound> T](t:.Unsafe[T]):(res:T);
-    private extFun _copy[<Unbound> T](t:T):(res:T);
-    private extFun _consume[T](consume t:T):();
-}

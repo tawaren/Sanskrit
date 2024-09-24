@@ -1,4 +1,0 @@
-transaction{
-     c = pack SomeTypes.NoArg[]#Ctr();
-     return;
-};

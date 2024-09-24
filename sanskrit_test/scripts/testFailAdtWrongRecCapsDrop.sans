@@ -1,9 +1,0 @@
-module TestFailAdtWrongRecCapsDrop {
-    type Inner {
-        Inner;
-    };
-
-    type <Drop> Wrapper {
-        Ctr(.Inner);
-    };
-}

@@ -1,3 +1,0 @@
-module TestFailPrimitive7 {
-    public(consume,inspect) type <Primitive, Drop, Copy, Value, Unbound, Persist> Prim;
-}

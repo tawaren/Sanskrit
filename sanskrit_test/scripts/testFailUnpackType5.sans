@@ -1,9 +1,0 @@
-module TestFailUnpackType5 {
-
-    type X[A];
-
-    private fun Test[A](a:.X[A]):(){
-       () = unpack a:.X[A];
-       return;
-    };
-}

@@ -1,9 +1,0 @@
-module TestFailAdtWrongRecCapsPersist {
-    type Inner {
-        Inner;
-    };
-
-    type <Persist> Wrapper {
-        Ctr(.Inner);
-    };
-}

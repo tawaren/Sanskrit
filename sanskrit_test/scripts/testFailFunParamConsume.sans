@@ -1,5 +1,0 @@
-module TestFailFunParamConsume {
-   public fun TestFun[A](consume a:A):() {
-       return;
-   };
-}

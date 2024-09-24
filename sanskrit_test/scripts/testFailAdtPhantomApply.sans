@@ -1,9 +1,0 @@
-module TestFailAdtPhantomApply {
-    type Inner[A] {
-        Inner;
-    };
-
-    type Wrapper[phantom A] {
-        Ctr(.Inner[A]);
-    };
-}

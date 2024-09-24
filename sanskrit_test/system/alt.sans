@@ -1,6 +1,0 @@
-module Alt {
-    public type <Copy,Drop,Persist,Primitive,Value,Unbound> Alt2[T,Y]{
-             First(T);
-             Second(Y);
-    };
-}

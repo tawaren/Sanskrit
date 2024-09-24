@@ -1,6 +1,0 @@
-module TestFailFreeUnconsumed {
-    private fun Test[A](consume a:A):(){
-       b = a;
-       return;
-    };
-}

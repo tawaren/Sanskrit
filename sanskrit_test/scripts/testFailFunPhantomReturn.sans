@@ -1,7 +1,0 @@
-module TestFailFunPhantomReturn {
-
-   fun TestFunApply[phantom <Value, Unbound> A]():(a:A) {
-      a = abort : (A);
-      return a;
-   };
-}

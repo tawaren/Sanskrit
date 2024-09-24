@@ -1,3 +1,0 @@
-transaction{
-     return call SomeFunctions.EmptyProt[IntU8.U8]();
-};

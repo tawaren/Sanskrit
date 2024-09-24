@@ -1,8 +1,0 @@
-module TestFailCreate4 {
-    type <Value, Unbound> X;
-
-    private fun Test():(b:.X){
-       b = pack .X#Val();
-       return b;
-    };
-}

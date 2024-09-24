@@ -1,7 +1,0 @@
-module TestFailImage {
-
-    private fun Test[<Value, Unbound> A](consume a:A):(b:A){
-       b = project a:%A;
-       return b;
-    };
-}

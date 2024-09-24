@@ -1,6 +1,0 @@
-module TestFailCreate3 {
-    private fun Test():(b:IntU8.U8){
-       b = pack IntU8.U8#Val();
-       return b;
-    };
-}

@@ -1,7 +1,0 @@
-transaction:(store e:System.Entry[SomeTypes.NoPersist[IntU8.U8]]){
-   a = lit 1:IntU8.U8;
-   b = pack SomeTypes.NoPersist[IntU8.U8]#Ctr(a);
-   key = lit 0x00:Data.Data1;
-   id = call IndexOps.GenIndex1(key);
-   return pack System.Entry[SomeTypes.NoPersist[IntU8.U8]]#Ctr(id,b);
-};

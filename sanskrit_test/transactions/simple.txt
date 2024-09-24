@@ -1,3 +1,0 @@
-transaction:(log a:IntU8.U8){
-    return lit 1:IntU8.U8;
-};

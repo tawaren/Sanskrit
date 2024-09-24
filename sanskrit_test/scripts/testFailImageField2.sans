@@ -1,6 +1,0 @@
-module TestFailImageField2 {
-    private fun Test[A](consume a:TestSucAdt.Wrapper[A]):(b:%A){
-       b = field[0] a:TestSucAdt.Wrapper[A];
-       return b;
-    };
-}

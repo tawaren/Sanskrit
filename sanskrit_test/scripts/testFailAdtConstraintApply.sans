@@ -1,9 +1,0 @@
-module TestFailAdtConstraintApply {
-    type Inner[<Drop> A] {
-        Inner;
-    };
-
-    type Wrapper[A] {
-        Ctr(.Inner[A]);
-    };
-}

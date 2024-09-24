@@ -1,9 +1,0 @@
-module TestFailAdtApply {
-    type Inner[A,B] {
-        Inner;
-    };
-
-    type Wrapper[A] {
-        Ctr(.Inner[A]);
-    };
-}

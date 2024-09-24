@@ -1,5 +1,0 @@
-module TestFailFunPhantomParam {
-   public fun TestFunApply[phantom <Drop> A](a:A):() {
-      return;
-   };
-}

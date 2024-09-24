@@ -1,6 +1,0 @@
-transactional transaction{
-   a = lit 1:IntU8.U8;
-   b = lit 2:IntU8.U8;
-   c = call IntU8.eq(a,b);
-   return call Helpers.AssertTrue(c);
-};

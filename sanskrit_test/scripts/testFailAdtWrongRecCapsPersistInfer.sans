@@ -1,8 +1,0 @@
-module TestFailAdtWrongRecCapsPersistInfer {
-
-    public(create, consume) type <Copy, Drop, Value, Unbound> AllRecExceptPersist{ Ctr(); };
-
-    type Test{
-           CheckPersist(TestSucCaps.HasPersist[TestSucCaps.MayPersist[.AllRecExceptPersist]]);
-    };
-}

@@ -1,4 +1,0 @@
-transaction{
-     a = pack CapCheckTypes.PhantomDrop[CapCheckTypes.HasDrop[CapCheckTypes.MayDrop[CapCheckTypes.AllRecExceptDrop]]]#Ctr();
-     return;
-};

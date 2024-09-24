@@ -1,5 +1,0 @@
-transaction{
-     a = lit 1:IntU8.U8;
-     b = pack SomeTypes.X[IntU16.U16]#Ctr(a);
-     return;
-};

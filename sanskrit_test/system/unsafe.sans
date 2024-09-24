@@ -1,8 +1,0 @@
-system module Ids {
-    local extType(0) <Copy,Drop,Value,Unbound> Unsafe[phantom T];
-    local extFun unproject[T](t:%T):(res:T);
-    local extFun packUnsafe[T](t:T):(res:Unsafe[T]);
-    local extFun unpackUnsafe[T](t:Unsafe[T]):(res:T);
-    local extFun copy[T](t:T):(res:T);
-    local extFun consume[T](consume t:T):();
-}

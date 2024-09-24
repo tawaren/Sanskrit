@@ -1,4 +1,0 @@
-transaction{
-   a = pack SomeTypes.NoArg[Tuple.Tuple2[IntU8.U8]]#Ctr();
-   return;
-};

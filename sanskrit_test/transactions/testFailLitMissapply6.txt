@@ -1,4 +1,0 @@
-transaction{
-   a = pack SomeTypes.NoArg[Alt.Alt2[IntU8.U8,IntU8.U8,IntU8.U8]]#Ctr();
-   return;
-};

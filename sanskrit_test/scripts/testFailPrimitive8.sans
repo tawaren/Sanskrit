@@ -1,3 +1,0 @@
-module TestFailPrimitive8 {
-    private(consume,create,inspect) type <Primitive, Drop, Copy, Value, Unbound, Persist> Prim;
-}
