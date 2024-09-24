@@ -45,6 +45,10 @@ path = "../sanskrit_interpreter"
 version = "0.1.0"
 default-features = false
 
+[dependencies.sanskrit_default_externals]
+path = "../sanskrit_default_externals"
+version = "0.1.0"
+
 [profile.release]
 panic = "abort"
 lto = true

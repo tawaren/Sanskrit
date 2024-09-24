@@ -4,11 +4,11 @@ extern crate sanskrit_common;
 extern crate sanskrit_core;
 extern crate sanskrit_interpreter;
 extern crate sanskrit_sled_store; //for now later use an ethereum or substrate based one
+extern crate sanskrit_default_externals;
 extern crate sled;
 
 #[cfg(feature = "memory")]
 extern crate sanskrit_memory_store; //for now later use an ethereum or substrate based one
-
 
 extern crate ed25519_dalek;
 extern crate sha2;
@@ -17,8 +17,6 @@ extern crate rand_chacha;
 extern crate hex;
 extern crate arrayref;
 extern crate byteorder;
-#[macro_use]
-extern crate lazy_static;
 #[macro_use]
 extern crate sanskrit_derive;
 
@@ -30,8 +28,8 @@ extern crate sanskrit_compile;
 
 mod manager;
 mod parser_model;
-mod externals;
 mod compiler;
+mod externals;
 
 lalrpop_mod!(pub parser);
 
@@ -53,7 +51,6 @@ use std::error::Error;
 use sanskrit_common::model::{Hash, hash_from_slice};
 use hex::encode;
 use std::sync::{Mutex, Arc};
-use rustyline::Editor;
 use rustyline::error::ReadlineError;
 use parser_model::Execute;
 use sanskrit_common::arena::{Heap, VirtualHeapArena};
@@ -62,11 +59,10 @@ use sanskrit_common::encoding::{VirtualSize, Parser, NoCustomAlloc};
 use std::collections::BTreeSet;
 use std::cell::RefCell;
 use std::rc::Rc;
-use rand::rngs::OsRng;
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
+use sanskrit_default_externals::{SYS_MODS, External};
 
-use sanskrit_common::store::StorageClass;
 use compiler::CompilerInstance;
 
 pub const MODULE_COMMAND:u8 = 0;
@@ -116,12 +112,12 @@ fn handle_data<R:Read>(state: &mut State, compiler:&mut CompilerInstance, reader
             let name = (data.0).0;
             let (hash, e_hash) = if convert_error(reader.read_u8())? != 0 {
                 let sys_id = convert_error(reader.read_u8())?;
-                if sys_id as usize >= externals::SYS_MODS.len() {
+                if sys_id as usize >= SYS_MODS.len() {
                     return error(||"unknown system module identifier")
                 }
                 let bytes = read_length_prefixed_array(reader)?;
                 let hash = state.deploy_module(compiler,bytes, true, Some(sys_id))?;
-                let sys_impl = externals::SYS_MODS[sys_id as usize];
+                let sys_impl = SYS_MODS[sys_id as usize];
                 sys_impl(hash.clone());
                 convert_error(state.system_entries.insert(&[sys_id], &hash))?;
                 convert_error(state.system_entries.flush())?;
@@ -338,7 +334,7 @@ fn register_system_modules(state:&State, _compiler:&mut CompilerInstance) -> std
         let (k,e) = entry?;
         let sys_id = k[0];
         let hash = hash_from_slice(&e);
-        let sys_impl = externals::SYS_MODS[sys_id as usize];
+        let sys_impl = SYS_MODS[sys_id as usize];
         sys_impl(hash.clone());
         let e_hash = encode(&hash);
         println!("Re-Registered Module with Hash {:?} as System Module with Number {:?}",e_hash,sys_id);

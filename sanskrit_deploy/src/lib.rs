@@ -23,8 +23,8 @@ use alloc::vec::Vec;
 use sanskrit_common::model::*;
 
 //Todo: Make Configurable
-//const INPUT_SIZE_LIMIT:usize = 256000;
-const INPUT_SIZE_LIMIT:usize = 2048000; //for test
+const INPUT_SIZE_LIMIT:usize = 256000;
+//const INPUT_SIZE_LIMIT:usize = 2048000; //for test
 
 pub fn deploy_module<S:Store>(store:&S, data:Vec<u8>, system_mode_on:bool, auto_commit:bool) -> Result<Hash>{
     //thread::spawn(move || {

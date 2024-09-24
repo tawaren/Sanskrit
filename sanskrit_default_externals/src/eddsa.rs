@@ -2,9 +2,9 @@ use sanskrit_common::model::{Hash, SlicePtr, ValueRef};
 use sanskrit_common::arena::HeapArena;
 use sanskrit_common::errors::*;
 use sanskrit_common::encoding::*;
-use externals::External;
 use sanskrit_compile::externals::{just_local_gas_and_mem, CompilationResult};
 use sanskrit_interpreter::model::{ValueSchema, OpCode, Kind};
+use External;
 
 pub const EXT_ECDSA:&'static dyn External = &Ecdsa;
 

@@ -20,7 +20,7 @@ use sanskrit_runtime::model::{ParamRef, ParamMode, RetType, BundleSection, Secti
 use sanskrit_runtime::model::{DeployTransaction, DeployType};
 use sanskrit_interpreter::model::{Entry, TxTParam, TxTReturn, TransactionDescriptor, ValueSchema, Adt};
 use externals::{ServerSystem, ServerSystemDataManager, get_ed_dsa_module};
-use externals::ServerExternals;
+use sanskrit_default_externals::ServerExternals;
 use std::time::Instant;
 use std::ops::{Deref, Add};
 use std::convert::TryInto;
@@ -30,7 +30,7 @@ use convert_error;
 use ed25519_dalek::SIGNATURE_LENGTH;
 use sanskrit_runtime::system::SystemContext;
 use sanskrit_runtime::direct_stored::SystemDataManager;
-use externals::crypto::{raw_plain_hash, raw_join_hash};
+use sanskrit_default_externals::crypto::{raw_plain_hash, raw_join_hash};
 use compiler::CompilerInstance;
 use sanskrit_interpreter::interpreter::InterpreterResult;
 use rand::prelude::*;

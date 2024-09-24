@@ -1,11 +1,10 @@
-//extern crate pwasm_std;
-
 extern crate sanskrit_deploy;
 extern crate sanskrit_compile;
 extern crate sanskrit_common;
 extern crate sanskrit_core;
 extern crate sanskrit_memory_store;
 extern crate sanskrit_interpreter;
+extern crate sanskrit_default_externals;
 extern crate core;
 #[macro_use]
 extern crate lazy_static;
@@ -15,11 +14,11 @@ use sanskrit_common::errors::*;
 
 use sanskrit_common::store::{StorageClass, Store};
 use sanskrit_compile::compile_function;
-use externals::ServerExternals;
 use store::ExternalStore;
 use sanskrit_common::model::HASH_SIZE;
+use sanskrit_default_externals::{SYS_MODS, External, ServerExternals};
 
-mod externals;
+
 mod store;
 
 extern  {
@@ -45,11 +44,11 @@ pub fn emit_error(str:&str){
 pub extern fn register(sys_id:isize) -> bool {
     let mut hash = [0;HASH_SIZE];
     unsafe{load_input(hash.as_mut_ptr())}
-    if sys_id as usize >= externals::SYS_MODS.len() {
+    if sys_id as usize >= SYS_MODS.len() {
         emit_error("System module index out of range");
         return false;
     }
-    let sys_impl = externals::SYS_MODS[sys_id as usize];
+    let sys_impl = SYS_MODS[sys_id as usize];
     sys_impl(hash);
     return true;
 }
@@ -84,10 +83,10 @@ fn process_module_deploy(module:Vec<u8>, pre_alloc:usize, system_mode_on:bool, s
     //      This is ok as in this case storing is the last thing that would happen and we store only the module
     let hash = deploy_module(&store,module,system_mode_on,false)?;
     if system_mode_on && sys_id >= 0 {
-        if sys_id as usize >= externals::SYS_MODS.len() {
+        if sys_id as usize >= SYS_MODS.len() {
             return sanskrit_common::errors::error(||"System module index out of range");
         }
-        let sys_impl = externals::SYS_MODS[sys_id as usize];
+        let sys_impl = SYS_MODS[sys_id as usize];
         sys_impl(hash);
     }
     Ok(())

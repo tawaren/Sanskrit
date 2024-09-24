@@ -10,7 +10,8 @@ members = [
         "sanskrit_memory_store",
         "sanskrit_sled_store",
         "sanskrit_local_server",
-        # "sanskrit_wasm_deploy_compile", #Should be compiled seperately with the wasm target
+        "sanskrit_default_externals",
+        # "sanskrit_wasm_deploy_compile", #Must be compiled to the wasm target - fails otherwise
 ]
 
 [profile.release]
