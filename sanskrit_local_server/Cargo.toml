@@ -3,6 +3,7 @@ name = "sanskrit_local_server"
 version = "0.1.0"
 authors = ["tawaren <markus.knecht85@gmail.com>"]
 build = "build.rs"
+edition = "2021"
 
 [build-dependencies]
 lalrpop = { version = "0.21.0", features = ["lexer"] }
@@ -61,6 +62,10 @@ version = "0.1.0"
 
 [dependencies.sanskrit_sled_store]
 path = "../sanskrit_sled_store"
+version = "0.1.0"
+
+[dependencies.sanskrit_memory_store]
+path = "../sanskrit_memory_store"
 version = "0.1.0"
 
 [dependencies.sanskrit_derive]

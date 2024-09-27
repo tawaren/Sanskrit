@@ -1,10 +1,10 @@
-use model::*;
-use model::resolved::*;
+use crate::model::*;
+use crate::model::resolved::*;
 use sanskrit_common::store::Store;
 use sanskrit_common::errors::*;
-use loader::{FetchCache, Loader};
-use utils::Crc;
-use resolver::Context;
+use crate::loader::{FetchCache, Loader};
+use crate::utils::Crc;
+use crate::resolver::Context;
 use sanskrit_common::model::ModuleLink;
 use core::slice::from_ref;
 

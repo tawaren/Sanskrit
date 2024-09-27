@@ -4,11 +4,9 @@ extern crate sanskrit_common;
 extern crate sanskrit_core;
 extern crate sanskrit_interpreter;
 extern crate sanskrit_sled_store; //for now later use an ethereum or substrate based one
+
 extern crate sanskrit_default_externals;
 extern crate sled;
-
-#[cfg(feature = "memory")]
-extern crate sanskrit_memory_store; //for now later use an ethereum or substrate based one
 
 extern crate ed25519_dalek;
 extern crate sha2;
@@ -36,7 +34,9 @@ lalrpop_mod!(pub parser);
 //extern crate blake2_rfc;
 
 use std::path::Path;
+
 use sanskrit_sled_store::SledStore;
+
 use sled::Db;
 
 use std::{env, thread};
@@ -348,6 +348,7 @@ static MODE:&str = "embedded";
 pub fn main() -> std::io::Result<()> {
     let args: Vec<String> = env::args().collect();
     let work_dir =  env::current_dir()?;
+
     let db_folder = if args.len() >= 2 {
         Path::new(&args[1]).to_owned()
     } else {

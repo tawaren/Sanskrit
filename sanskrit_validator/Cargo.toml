@@ -1,23 +1,20 @@
 [package]
-name = "sanskrit_deploy"
+name = "sanskrit_validator"
 version = "0.1.0"
 authors = ["tawaren <markus.knecht85@gmail.com>"]
 edition = "2021"
 
 [features]
-default = ["std"]
+default = ["std", "string_errors"]
 std = []
-#provides advanced features that are not described in thesis
-advanced = ["forward_type_ref"]
-forward_type_ref = []
-test = []
+string_errors = ["sanskrit_common/string_errors"]
 
 [dependencies.sanskrit_common]
 path = "../sanskrit_common"
 version = "0.1.0"
 default-features = false
 
-[dependencies.sanskrit_core]
-path = "../sanskrit_core"
+[dependencies.sanskrit_preloaded_validation]
+path = "../sanskrit_preloaded_validation"
 version = "0.1.0"
 default-features = false

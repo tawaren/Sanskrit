@@ -24,12 +24,12 @@ use sanskrit_common::store::*;
 use core::mem;
 //use std::mem;
 use sanskrit_common::arena::*;
-use gas_table::gas;
+use crate::gas_table::gas;
 use sanskrit_core::utils::Crc;
 use sanskrit_common::encoding::VirtualSize;
-use collector::{Collector, CollectResult};
+use crate::collector::{Collector, CollectResult};
 use sanskrit_core::loader::Loader;
-use externals::{CompilationResult, ExpResources, CompilationExternals};
+use crate::externals::{CompilationResult, ExpResources, CompilationExternals};
 
 struct State {
     //the gas used in this trace
@@ -812,11 +812,11 @@ impl<'b,'h> Compactor<'b,'h> {
     }
 
     //Todo: where is gas cost?
-    fn try<S:Store,CE:CompilationExternals>(&mut self, code:ROpCode<'b>, rets:u8, vals:&[(bool,ValueRef)], succ:&Exp, fail:&Exp, context:&Context<S>, tail_info:Option<u32>) -> Result<(bool,u8)> {
+    fn r#try<S:Store,CE:CompilationExternals>(&mut self, code:ROpCode<'b>, rets:u8, vals:&[(bool,ValueRef)], succ:&Exp, fail:&Exp, context:&Context<S>, tail_info:Option<u32>) -> Result<(bool,u8)> {
         //if the inner is a continuation we need to push a try frame
         if is_continuation(&code) {self.state.add_frame()}
         //account for the gas of the try
-        self.state.use_gas(gas::try());
+        self.state.use_gas(gas::r#try());
         //capture the stack
         let ret_point = self.state.return_point();
         //process the branches
@@ -852,7 +852,7 @@ impl<'b,'h> Compactor<'b,'h> {
     fn try_invoke_fun<S:Store,CE:CompilationExternals>(&mut self, module:&Crc<ModuleLink>, offset:u8, vals:&[(bool,ValueRef)], succ:&Exp, fail:&Exp, context:&Context<S>, tail_info:Option<u32>) -> Result<(bool,u8)> {
         let plain_vals:Vec<_> = vals.iter().map(|(_,v)|*v).collect();
         match self.invoke_core::<_,CE>(module,offset,&plain_vals, context, None)? {
-            (Some(code), rets) => self.try::<_,CE>(code,rets,vals,succ,fail, context, tail_info),
+            (Some(code), rets) => self.r#try::<_,CE>(code,rets,vals,succ,fail, context, tail_info),
             //call was eliminated so we can just continue with the success
             (None, _) => self.let_::<_,CE>(succ, context, tail_info)
         }
@@ -861,7 +861,7 @@ impl<'b,'h> Compactor<'b,'h> {
     fn try_invoke_repeated_fun<S:Store,CE:CompilationExternals>(&mut self, module:&Crc<ModuleLink>, offset:u8, vals:&[(bool,ValueRef)], cond:u8, abort_tag:u8, reps:u8, succ:&Exp, fail:&Exp, context:&Context<S>, tail_info:Option<u32>) -> Result<(bool,u8)> {
         let plain_vals:Vec<_> = vals.iter().map(|(_,v)|*v).collect();
         match self.invoke_repeated_core(module,offset,&plain_vals,cond, abort_tag, reps, context, None)? {
-            (Some(code), rets) => self.try::<_,CE>(code,rets,vals,succ,fail,context, tail_info),
+            (Some(code), rets) => self.r#try::<_,CE>(code,rets,vals,succ,fail,context, tail_info),
             //call was eliminated so we can just continue with the success
             (None, _) => self.let_::<_,CE>(succ, context, tail_info)
         }
@@ -1031,7 +1031,7 @@ impl<'b,'h> Compactor<'b,'h> {
     fn try_invoke_sig<S:Store, CE:CompilationExternals>(&mut self, target:ValueRef, perm:PermRef, vals:&[(bool,ValueRef)], succ:&Exp, fail:&Exp, context:&Context<S>, tail_info:Option<u32>) -> Result<(bool,u8)> {
         let plain_vals:Vec<_> = vals.iter().map(|(_,v)|*v).collect();
         match self.invoke_sig_core(target,perm,&plain_vals,context)?{
-            Some((code, rets)) => self.try::<_,CE>(code,rets, vals, succ,fail, context, tail_info),
+            Some((code, rets)) => self.r#try::<_,CE>(code,rets, vals, succ,fail, context, tail_info),
             None => self.let_::<_,CE>(succ, context, tail_info)
         }
     }

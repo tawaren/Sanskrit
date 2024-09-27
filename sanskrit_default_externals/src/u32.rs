@@ -3,7 +3,7 @@ use sanskrit_common::arena::HeapArena;
 use sanskrit_common::errors::*;
 use sanskrit_compile::externals::{just_local_gas_and_mem, CompilationResult};
 use sanskrit_interpreter::model::{ValueSchema, OpCode, Kind, LitDesc};
-use External;
+use crate::External;
 
 pub const EXT_U32:&'static dyn External = &U32;
 

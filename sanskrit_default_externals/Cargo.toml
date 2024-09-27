@@ -2,31 +2,26 @@
 name = "sanskrit_default_externals"
 version = "0.1.0"
 authors = ["tawaren <markus.knecht85@gmail.com>"]
+edition = "2021"
 
 [features]
 default = ["std"]
 std = []
 
-
 [dependencies]
 lazy_static = "1.5.0"
-ed25519-dalek = { version = "2.1.1" , features = ["rand_core"]}
+ed25519-consensus = "2.1.0"
+spin = { version = "0.9.8", default-features = false, features = ["spin_mutex"]}
 
 [dependencies.sanskrit_compile]
 path = "../sanskrit_compile"
 version = "0.1.0"
-default-features=false
-
-[dependencies.sanskrit_runtime]
-path = "../sanskrit_runtime"
-version = "0.1.0"
-default-features=false
-features = ["deployer"]
+default-features = false
 
 [dependencies.sanskrit_interpreter]
 path = "../sanskrit_interpreter"
 version = "0.1.0"
-default-features=false
+default-features = false
 
 [dependencies.sanskrit_common]
 path = "../sanskrit_common"

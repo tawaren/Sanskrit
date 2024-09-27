@@ -1,6 +1,6 @@
 use sanskrit_common::errors::*;
 use sanskrit_common::encoding::{Parser, ParserAllocator};
-use model::{Transaction, ParamRef, RetType, ParamMode};
+use crate::model::{Transaction, ParamRef, RetType, ParamMode};
 use sanskrit_common::model::{Hash, Ptr, SlicePtr};
 //use ed25519_dalek::*;
 //use sha2::{Sha512};
@@ -9,12 +9,11 @@ use sanskrit_interpreter::interpreter::{Frame, ExecutionContext, InterpreterResu
 use sanskrit_interpreter::model::{Entry, TransactionDescriptor, TxTParam, TxTReturn, RuntimeType};
 use alloc::vec::Vec;
 
-use ::{Tracker, CONFIG};
+use crate::{Tracker, CONFIG};
 use core::cell::RefCell;
-use core::mem;
 use sanskrit_common::store::Store;
-use ::{Context, TransactionBundle};
-use system::SystemContext;
+use crate::{Context, TransactionBundle};
+use crate::system::SystemContext;
 
 //A struct holding context information of the current transaction
 pub struct ExecutionEnvironment<'a, 'b, 'c> {

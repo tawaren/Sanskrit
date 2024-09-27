@@ -1,11 +1,11 @@
 use sanskrit_common::model::*;
 use sanskrit_common::errors::*;
-use model::*;
+use crate::model::*;
 
 use sanskrit_common::arena::*;
 use byteorder::{ByteOrder};
 use sanskrit_common::encoding::EncodingByteOrder;
-use externals::{ExecutionInterface, RuntimeExternals};
+use crate::externals::{ExecutionInterface, RuntimeExternals};
 
 //enum to indicate if a block had a result or an error as return
 #[derive(Copy, Clone, Debug)]
@@ -455,7 +455,7 @@ impl<'transaction,'code,'interpreter,'execution,'heap> ExecutionContext<'transac
             OpCode::InvokeSig(func_val, values)  => self.invoke_sig(func_val, &values, tail),
             OpCode::Invoke(func, values) => self.invoke(func, &values, tail),
             OpCode::RepeatedInvoke(func, values, cond_value, abort_tag, max_reps) => self.repeat(func, &values, cond_value, abort_tag, max_reps, tail),
-            OpCode::Try(ref code,ref succ, ref fail) => self.try::<Ext>(code, succ, fail, tail),
+            OpCode::Try(ref code,ref succ, ref fail) => self.r#try::<Ext>(code, succ, fail, tail),
             OpCode::Rollback => Ok(Continuation::Rollback),
             OpCode::Return(ref vals) => self._return(vals, tail),
             OpCode::And(kind, op1,op2) => self.and(kind,op1,op2, tail),
@@ -698,11 +698,11 @@ impl<'transaction,'code,'interpreter,'execution,'heap> ExecutionContext<'transac
         Ok(Continuation::RepCall(fun_code, #[cfg(feature = "dynamic_gas")] fun.gas, stack_height, cond_value, abort_tag, max_reps))
     }
 
-    fn try<Ext:RuntimeExternals>(&mut self,  try:&'code OpCode, succ: &'code Exp, fail: &'code Exp, _tail:bool) -> Result<Continuation<'code>> {
+    fn r#try<Ext:RuntimeExternals>(&mut self,  r#try:&'code OpCode, succ: &'code Exp, fail: &'code Exp, _tail:bool) -> Result<Continuation<'code>> {
         //fetch the height
         let stack_height = self.stack.len();
         //Execute the try code
-        match self.execute_op_code::<Ext>(try, false)? {
+        match self.execute_op_code::<Ext>(r#try, false)? {
             //it succeeded so continue with the success case
             Continuation::Next => Ok(Continuation::Cont(succ, stack_height, false)), //This is nice as it allows to make adds & muls & ... more efficently even with try
             //it failed so continue with the failure case

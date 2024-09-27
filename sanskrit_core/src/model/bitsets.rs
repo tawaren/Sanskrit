@@ -1,6 +1,6 @@
 use sanskrit_common::errors::*;
 use sanskrit_common::encoding::*;
-use model::{Capability, Permission};
+use crate::model::{Capability, Permission};
 
 pub trait BitEntry {
     fn to_mask(&self) -> u8;

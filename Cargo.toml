@@ -11,13 +11,14 @@ members = [
         "sanskrit_sled_store",
         "sanskrit_local_server",
         "sanskrit_default_externals",
-        # "sanskrit_wasm_deploy_compile", #Must be compiled to the wasm target - fails otherwise
+        "sanskrit_preloaded_validation",
+        "sanskrit_validator",
+        #"sanskrit_wasm_deploy_compile", #Must be compiled to the wasm target - fails otherwise
 ]
 
 [profile.release]
 panic = "abort"
-#lto = "fat" crashes at runtime
-#lto = "thin" crashes at runtime as well now
-lto = false
+#lto = "fat"
+lto = "thin"
 debug = false
 opt-level = 3

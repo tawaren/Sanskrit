@@ -1,14 +1,14 @@
 
 use core::cell::RefCell;
 use core::{mem, ptr};
-use errors::*;
+use crate::errors::*;
 use alloc::vec::Vec;
 use core::slice::{from_raw_parts_mut, from_raw_parts};
-use encoding::ParserAllocator;
-use model::*;
+use crate::encoding::ParserAllocator;
+use crate::model::*;
 use core::ops::Deref;
 use core::ops::DerefMut;
-use encoding::VirtualSize;
+use crate::encoding::VirtualSize;
 use core::cell::Cell;
 use core::marker::PhantomData;
 use core::fmt::{Debug, Formatter};

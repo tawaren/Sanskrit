@@ -1,7 +1,7 @@
 use sanskrit_common::model::*;
 use sanskrit_common::encoding::*;
 use sanskrit_common::errors::*;
-use TransactionBundle;
+use crate::TransactionBundle;
 
 #[cfg(feature = "deployer")]
 #[derive(Clone, Debug, AllocParsable, Serializable, VirtualSize)]

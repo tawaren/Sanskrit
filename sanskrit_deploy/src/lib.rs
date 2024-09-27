@@ -26,17 +26,16 @@ use sanskrit_common::model::*;
 const INPUT_SIZE_LIMIT:usize = 256000;
 //const INPUT_SIZE_LIMIT:usize = 2048000; //for test
 
+pub fn deploy_stored_module<S:Store>(store:&S, module_hash:Hash, system_mode_on:bool) -> Result<()>{
+    store.get(StorageClass::Module, &module_hash, |data|{
+        inner_deploy_module(store,module_hash,data,system_mode_on)
+    })?
+}
+
 pub fn deploy_module<S:Store>(store:&S, data:Vec<u8>, system_mode_on:bool, auto_commit:bool) -> Result<Hash>{
-    //thread::spawn(move || {
-    //Check input limitation constraint
-    if data.len() > INPUT_SIZE_LIMIT {
-        return error(||"Input is to big")
-    }
     //calcs the ModuleHash
     let module_hash = store_hash(&[&data]);
-    //if it is already deployed we can ignore it
-    //validates the input
-    validate::validate(&data, store, module_hash, system_mode_on)?;
+    inner_deploy_module(store,module_hash,&data,system_mode_on)?;
     //stores the input
     match store.set(StorageClass::Module, module_hash,data) {
         Ok(_) => {}
@@ -46,9 +45,18 @@ pub fn deploy_module<S:Store>(store:&S, data:Vec<u8>, system_mode_on:bool, auto_
     if auto_commit {
         store.commit(StorageClass::Module);
     }
-    //}
     Ok(module_hash)
-    //}).join().unwrap();
+}
+
+fn inner_deploy_module<S:Store>(store:&S, module_hash:Hash, data:&[u8], system_mode_on:bool) -> Result<()>{
+    //Check input limitation constraint
+    if data.len() > INPUT_SIZE_LIMIT {
+        return error(||"Input is to big")
+    }
+    //if it is already deployed we can ignore it
+    //validates the input
+    validate::validate(&data, store, module_hash, system_mode_on)?;
+    Ok(())
 }
 
 //Processes a function used by compiler to check top level transactions

@@ -1,21 +1,26 @@
+#![no_std]
+
 extern crate sanskrit_compile;
 extern crate sanskrit_common;
 extern crate sanskrit_interpreter;
-extern crate ed25519_dalek;
+extern crate ed25519_consensus;
 
 #[macro_use]
 extern crate lazy_static;
+extern crate alloc;
+
+use alloc::collections::BTreeMap;
+use core::cell::Cell;
+use spin::Mutex;
+
+//use std::sync::Mutex;
 
 use sanskrit_common::errors::*;
 use sanskrit_common::model::{ValueRef, Hash, ModuleLink};
 use sanskrit_common::model::{SlicePtr};
-use std::sync::Mutex;
-use std::collections::BTreeMap;
-use std::cell::Cell;
 use crypto::{ecdsa_verify, join_hash, plain_hash};
 use sanskrit_common::arena::HeapArena;
 use sanskrit_interpreter::model::{Kind, ValueSchema};
-use sanskrit_common::encoding::{VirtualSize, ParserAllocator};
 use sanskrit_common::hashing::HashingDomain;
 use sanskrit_interpreter::externals::{RuntimeExternals, ExecutionInterface};
 use sanskrit_compile::externals::{CompilationResult, CompilationExternals};
@@ -57,43 +62,43 @@ lazy_static! {
 
 lazy_static! {
     pub static ref SYS_MODS: [fn(Hash)->();16] = [
-            |h|{EXT_MAP.lock().unwrap().insert(h, i8::EXT_I8);},        //0
-            |h|{EXT_MAP.lock().unwrap().insert(h, i16::EXT_I16);},      //1
-            |h|{EXT_MAP.lock().unwrap().insert(h, i32::EXT_I32);},      //2
-            |h|{EXT_MAP.lock().unwrap().insert(h, i64::EXT_I64);},      //3
-            |h|{EXT_MAP.lock().unwrap().insert(h, i128::EXT_I128);},    //4
-            |h|{EXT_MAP.lock().unwrap().insert(h, u8::EXT_U8);},        //5
-            |h|{EXT_MAP.lock().unwrap().insert(h, u16::EXT_U16);},      //6
-            |h|{EXT_MAP.lock().unwrap().insert(h, u32::EXT_U32);},      //7
-            |h|{EXT_MAP.lock().unwrap().insert(h, u64::EXT_U64);},      //8
-            |h|{EXT_MAP.lock().unwrap().insert(h, u128::EXT_U128);},    //9
-            |h|{EXT_MAP.lock().unwrap().insert(h, data::EXT_DATA);},    //10
-            |h|{EXT_MAP.lock().unwrap().insert(h, ids::EXT_IDS);},      //11
-            |h|{SYS_HASH.lock().unwrap().set(h);},                      //12
-            |h|{EXT_MAP.lock().unwrap().insert(h, eddsa::EXT_ECDSA);},  //13
-            |h|{EXT_MAP.lock().unwrap().insert(h,_unsafe::EXT_UNSAFE);},//14
-            |h|{EDDSA_HASH.lock().unwrap().set(h);},                    //15
+            |h|{EXT_MAP.lock().insert(h, i8::EXT_I8);},        //0
+            |h|{EXT_MAP.lock().insert(h, i16::EXT_I16);},      //1
+            |h|{EXT_MAP.lock().insert(h, i32::EXT_I32);},      //2
+            |h|{EXT_MAP.lock().insert(h, i64::EXT_I64);},      //3
+            |h|{EXT_MAP.lock().insert(h, i128::EXT_I128);},    //4
+            |h|{EXT_MAP.lock().insert(h, u8::EXT_U8);},        //5
+            |h|{EXT_MAP.lock().insert(h, u16::EXT_U16);},      //6
+            |h|{EXT_MAP.lock().insert(h, u32::EXT_U32);},      //7
+            |h|{EXT_MAP.lock().insert(h, u64::EXT_U64);},      //8
+            |h|{EXT_MAP.lock().insert(h, u128::EXT_U128);},    //9
+            |h|{EXT_MAP.lock().insert(h, data::EXT_DATA);},    //10
+            |h|{EXT_MAP.lock().insert(h, ids::EXT_IDS);},      //11
+            |h|{SYS_HASH.lock().set(h);},                      //12
+            |h|{EXT_MAP.lock().insert(h, eddsa::EXT_ECDSA);},  //13
+            |h|{EXT_MAP.lock().insert(h,_unsafe::EXT_UNSAFE);},//14
+            |h|{EDDSA_HASH.lock().set(h);},                    //15
     ];
 }
 
 pub struct ServerExternals;
 impl CompilationExternals for ServerExternals {
     fn compile_call<'b, 'h>(module: &ModuleLink, fun_idx: u8, params: SlicePtr<'b, ValueRef>, caller: &[u8; 20], alloc: &'b HeapArena<'h>) -> Result<CompilationResult<'b>> {
-        match EXT_MAP.lock().unwrap().get(&module.to_hash()) {
+        match EXT_MAP.lock().get(&module.to_hash()) {
             None => error(||"Implementation for external module is missing"),
             Some(ref imp) => imp.compile_call(fun_idx, params, caller, alloc)
         }
     }
 
     fn compile_lit<'b, 'h>(module: &ModuleLink, data_idx: u8, data: SlicePtr<'b, u8>, caller: &[u8; 20], alloc: &'b HeapArena<'h>) -> Result<CompilationResult<'b>> {
-        match EXT_MAP.lock().unwrap().get(&module.to_hash()) {
+        match EXT_MAP.lock().get(&module.to_hash()) {
             None => error(||"Implementation for external module is missing"),
             Some(ref imp) => imp.compile_lit(data_idx, data, caller, alloc)
         }
     }
 
     fn get_literal_checker<'b, 'h>(module: &ModuleLink, data_idx: u8, len: u16, alloc: &'b HeapArena<'h>) -> Result<ValueSchema<'b>> {
-        match EXT_MAP.lock().unwrap().get(&module.to_hash()) {
+        match EXT_MAP.lock().get(&module.to_hash()) {
             None => error(||"Implementation for external module is missing"),
             Some(ref imp) => imp.get_literal_checker(data_idx, len, alloc)
         }

@@ -1,8 +1,8 @@
-use model::resolved::{ResolvedType, ResolvedPermission};
+use crate::model::resolved::{ResolvedType, ResolvedPermission};
 use core::cmp::Ordering;
 use sanskrit_common::errors::*;
 use sanskrit_common::encoding::{Serializable, Serializer, Parsable, Parser, ParserAllocator};
-use model::BitSerializedVec;
+use crate::model::BitSerializedVec;
 use alloc::vec::Vec;
 use core::hash::{Hash, Hasher};
 

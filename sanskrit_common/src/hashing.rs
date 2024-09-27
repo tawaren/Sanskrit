@@ -1,6 +1,6 @@
-use model::{Hash, SlicePtr, hash_from_slice};
-use errors::*;
-use arena::VirtualHeapArena;
+use crate::model::{Hash, SlicePtr, hash_from_slice};
+use crate::errors::*;
+use crate::arena::VirtualHeapArena;
 
 //Hashing Domains to ensure there are no collisions
 pub enum HashingDomain {

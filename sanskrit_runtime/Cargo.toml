@@ -2,6 +2,7 @@
 name = "sanskrit_runtime"
 version = "0.1.0"
 authors = ["tawaren <markus.knecht85@gmail.com>"]
+edition = "2021"
 
 [features]
 default = ["std", "deployer", "sanskrit_deploy", "sanskrit_compile"]

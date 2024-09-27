@@ -1,10 +1,10 @@
-use utils::Crc;
+use crate::utils::Crc;
 use alloc::vec::Vec;
 use sanskrit_common::model::*;
 use sanskrit_common::errors::*;
-use model::linking::Link;
-use model::bitsets::{CapSet, BitSet, PermSet};
-use model::Permission;
+use crate::model::linking::Link;
+use crate::model::bitsets::{CapSet, BitSet, PermSet};
+use crate::model::Permission;
 
 //Global structs and enum to represent language elements
 //  they are global as they do no longer depend on a context and can be used cross module

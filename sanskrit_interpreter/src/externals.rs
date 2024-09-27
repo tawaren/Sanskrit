@@ -1,5 +1,5 @@
 use sanskrit_common::errors::*;
-use model::{Entry, Kind};
+use crate::model::{Entry, Kind};
 use sanskrit_common::model::ValueRef;
 use sanskrit_common::arena::{HeapStack, VirtualHeapArena};
 

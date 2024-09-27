@@ -1,14 +1,14 @@
 use sanskrit_common::errors::*;
-use loader::Loader;
+use crate::loader::Loader;
 use sanskrit_common::store::Store;
-use utils::Crc;
-use model::resolved::*;
-use model::*;
+use crate::utils::Crc;
+use crate::model::resolved::*;
+use crate::model::*;
 use alloc::vec::Vec;
 use sanskrit_common::model::*;
-use model::linking::{Component, CallableComponent};
+use crate::model::linking::{Component, CallableComponent};
 use alloc::rc::Rc;
-use model::bitsets::{CapSet, BitSet};
+use crate::model::bitsets::{CapSet, BitSet};
 
 //All things that can be cached in an import
 pub struct CachedImports {

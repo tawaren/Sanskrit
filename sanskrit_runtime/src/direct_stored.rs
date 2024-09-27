@@ -1,18 +1,18 @@
-use ::CONFIG;
+use crate::CONFIG;
 use sanskrit_common::store::{Store, StorageClass};
 use core::cell::{Cell, RefCell};
 use sanskrit_common::encoding::{ParserAllocator, Serializer, Parser};
 use sanskrit_interpreter::model::{TransactionDescriptor, TxTParam, TxTReturn, Entry, RuntimeType};
-use verify::TransactionVerificationContext;
+use crate::verify::TransactionVerificationContext;
 use sanskrit_common::errors::*;
-use compute::TransactionExecutionContext;
+use crate::compute::TransactionExecutionContext;
 use sanskrit_common::hashing::{Hasher, HashingDomain};
 use core::ops::Deref;
 use core::convert::TryInto;
 use sanskrit_common::model::{Hash, hash_from_slice, Ptr};
 use sanskrit_common::arena::VirtualHeapArena;
 use core::marker::PhantomData;
-use ::{Context, TransactionBundle};
+use crate::{Context, TransactionBundle};
 use alloc::vec::Vec;
 use alloc::collections::BTreeSet;
 

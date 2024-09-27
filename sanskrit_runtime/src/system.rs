@@ -1,8 +1,8 @@
 use sanskrit_interpreter::externals::RuntimeExternals;
 use sanskrit_common::store::Store;
-use verify::TransactionVerificationContext;
-use compute::TransactionExecutionContext;
-use TransactionBundle;
+use crate::verify::TransactionVerificationContext;
+use crate::compute::TransactionExecutionContext;
+use crate::TransactionBundle;
 use sanskrit_common::encoding::ParserAllocator;
 use sanskrit_common::errors::*;
 

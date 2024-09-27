@@ -1,9 +1,9 @@
-use manager::{State, Param, Ret};
+use crate::manager::{State, Param, Ret};
 use sanskrit_common::errors::*;
 use sanskrit_common::model::{Hash, hash_from_slice};
 use sanskrit_common::encoding::{Serializable, Serializer};
 use hex::decode;
-use convert_error;
+use crate::convert_error;
 use sanskrit_common::hashing::HashingDomain;
 use std::collections::BTreeSet;
 

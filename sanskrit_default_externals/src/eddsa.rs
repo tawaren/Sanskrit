@@ -4,7 +4,7 @@ use sanskrit_common::errors::*;
 use sanskrit_common::encoding::*;
 use sanskrit_compile::externals::{just_local_gas_and_mem, CompilationResult};
 use sanskrit_interpreter::model::{ValueSchema, OpCode, Kind};
-use External;
+use crate::External;
 
 pub const EXT_ECDSA:&'static dyn External = &Ecdsa;
 
@@ -45,7 +45,7 @@ impl External for Ecdsa{
             global external function verify32(msg:Data32, pk:Pk, sig:Sig):(res:Bool)
             */
             //Todo: measure this it is guessed based on ethereum gas costs for similar operations
-            _ => Ok(just_local_gas_and_mem(4500, 0, OpCode::SysInvoke(1, params))),
+            _ => Ok(just_local_gas_and_mem(2250, 0, OpCode::SysInvoke(1, params))),
 
         }
     }

@@ -54,5 +54,5 @@ pub mod gas {
         5
     }
 
-    pub fn try() -> u64 { 20 }
+    pub fn r#try() -> u64 { 20 }
 }

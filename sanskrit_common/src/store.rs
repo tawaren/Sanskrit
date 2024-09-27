@@ -1,9 +1,9 @@
-use errors::*;
-use encoding::*;
+use crate::errors::*;
+use crate::encoding::*;
 use alloc::vec::Vec;
 
-use model::Hash;
-use hashing::*;
+use crate::model::Hash;
+use crate::hashing::*;
 
 //Trait representing a store
 //Allows it to be flexible from Temporary in Memory, over stateless in Memory to persistent

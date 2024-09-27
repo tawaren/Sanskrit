@@ -14,13 +14,13 @@ use sanskrit_core::loader::Loader;
 use sanskrit_core::resolver::Context;
 use sanskrit_core::model::linking::Ref;
 use sanskrit_core::model::bitsets::*;
-use compacting::Compactor;
+use crate::compacting::Compactor;
 use sanskrit_common::errors::*;
 use sanskrit_core::model::resolved::ResolvedType;
 use sanskrit_common::encoding::NoCustomAlloc;
 use sanskrit_core::utils::Crc;
 use sanskrit_common::arena::HeapArena;
-use externals::CompilationExternals;
+use crate::externals::CompilationExternals;
 
 //Entry point that compiles all types and public functions of a module
 pub fn compile_transaction<'b, 'h, S:Store, CE:CompilationExternals>(transaction_hash:&Hash, store:&S, alloc:&'b HeapArena<'h>) -> Result<TransactionDescriptor<'b>>{

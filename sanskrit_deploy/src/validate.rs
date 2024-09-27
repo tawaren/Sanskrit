@@ -10,7 +10,7 @@ use sanskrit_common::encoding::*;
 use sanskrit_common::store::Store;
 use sanskrit_core::utils::Crc;
 use sanskrit_core::loader::Loader;
-use code_type_checker::TypeCheckerContext;
+use crate::code_type_checker::TypeCheckerContext;
 use sanskrit_common::model::ModuleLink;
 use sanskrit_common::model::Hash;
 use sanskrit_core::model::bitsets::{CapSet, BitSet, PermSet};

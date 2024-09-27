@@ -4,7 +4,7 @@ use sanskrit_common::errors::*;
 use sanskrit_common::encoding::*;
 use sanskrit_compile::externals::{just_local_gas_and_mem, CompilationResult};
 use sanskrit_interpreter::model::{ValueSchema, OpCode, Kind};
-use External;
+use crate::External;
 
 pub const EXT_DATA:&'static dyn External = &Data;
 

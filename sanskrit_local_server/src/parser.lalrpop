@@ -1,4 +1,4 @@
-use parser_model::*;
+use crate::parser_model::*;
 use std::str::FromStr;
 
 grammar;

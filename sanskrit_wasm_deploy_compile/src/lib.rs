@@ -1,3 +1,5 @@
+#![no_std]
+
 extern crate sanskrit_deploy;
 extern crate sanskrit_compile;
 extern crate sanskrit_common;
@@ -5,18 +7,17 @@ extern crate sanskrit_core;
 extern crate sanskrit_memory_store;
 extern crate sanskrit_interpreter;
 extern crate sanskrit_default_externals;
+extern crate alloc;
 extern crate core;
-#[macro_use]
-extern crate lazy_static;
 
 use sanskrit_deploy::{deploy_module, deploy_function};
 use sanskrit_common::errors::*;
-
+use alloc::vec::Vec;
 use sanskrit_common::store::{StorageClass, Store};
 use sanskrit_compile::compile_function;
 use store::ExternalStore;
 use sanskrit_common::model::HASH_SIZE;
-use sanskrit_default_externals::{SYS_MODS, External, ServerExternals};
+use sanskrit_default_externals::{SYS_MODS, ServerExternals};
 
 
 mod store;

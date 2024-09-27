@@ -9,7 +9,7 @@
 //! Where later phases need some type information like the amount of constructor parameters of a type it is already present in the input code and its consistency is checked by the type checker
 //!  This approach ensures that later phases to not have to load and parse types later on but only code for functions.
 
-use linear_stack::*;
+use crate::linear_stack::*;
 use sanskrit_core::model::*;
 use sanskrit_core::model::linking::*;
 use sanskrit_core::model::resolved::*;

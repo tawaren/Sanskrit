@@ -1,7 +1,7 @@
 
 use sanskrit_common::errors::*;
 use sanskrit_common::encoding::ParserAllocator;
-use model::{Transaction, ParamRef, RetType, ParamMode, SectionType};
+use crate::model::{Transaction, ParamRef, RetType, ParamMode, SectionType};
 use sanskrit_common::model::{Hash, Ptr, SlicePtr};
 use sanskrit_common::arena::*;
 use sanskrit_interpreter::model::{TransactionDescriptor, TxTReturn, RuntimeType, TxTParam};
@@ -9,10 +9,10 @@ use sanskrit_interpreter::model::{TransactionDescriptor, TxTReturn, RuntimeType,
 use alloc::collections::BTreeSet;
 use core::cell::{RefCell, Cell};
 use alloc::vec::Vec;
-use ::CONFIG;
+use crate::CONFIG;
 use sanskrit_common::store::Store;
-use system::SystemContext;
-use ::{Context, TransactionBundle};
+use crate::system::SystemContext;
+use crate::{Context, TransactionBundle};
 
 
 //A struct holding context information of the current transaction

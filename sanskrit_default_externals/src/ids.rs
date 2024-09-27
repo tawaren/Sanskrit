@@ -1,10 +1,10 @@
-use sanskrit_common::model::{Hash, SlicePtr, ValueRef, Tag};
+use sanskrit_common::model::{Hash, SlicePtr, ValueRef};
 use sanskrit_common::arena::HeapArena;
 use sanskrit_common::errors::*;
 use sanskrit_common::encoding::*;
 use sanskrit_compile::externals::{just_local_gas_and_mem, CompilationResult};
-use sanskrit_interpreter::model::{Entry, ValueSchema, OpCode, Kind, Exp};
-use External;
+use sanskrit_interpreter::model::{ValueSchema, OpCode, Kind};
+use crate::External;
 
 pub const EXT_IDS:&'static dyn External = &Ids;
 

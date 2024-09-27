@@ -7,9 +7,9 @@ use alloc::vec::Vec;
 use sanskrit_common::model::*;
 use sanskrit_common::encoding::*;
 use sanskrit_common::errors::*;
-use model::resolved::ResolvedType;
-use utils::Crc;
-use model::bitsets::{CapSet, PermSet};
+use crate::model::resolved::ResolvedType;
+use crate::utils::Crc;
+use crate::model::bitsets::{CapSet, PermSet};
 
 //Represents a Module
 #[derive(Debug, Parsable, Serializable)]

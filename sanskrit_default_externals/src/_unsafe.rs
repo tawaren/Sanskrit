@@ -3,7 +3,7 @@ use sanskrit_common::arena::HeapArena;
 use sanskrit_common::errors::*;
 use sanskrit_compile::externals::CompilationResult;
 use sanskrit_interpreter::model::ValueSchema;
-use External;
+use crate::External;
 
 pub const EXT_UNSAFE:&'static dyn External = &Unsafe;
 

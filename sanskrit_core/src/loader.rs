@@ -1,16 +1,16 @@
 use sanskrit_common::errors::*;
-use model::resolved::*;
+use crate::model::resolved::*;
 use core::cell::RefCell;
 use alloc::rc::Rc;
 use core::cell::Cell;
-use utils::{Crc, CrcDeDup};
+use crate::utils::{Crc, CrcDeDup};
 use alloc::vec::Vec;
 use sanskrit_common::store::*;
-use resolver::Context;
+use crate::resolver::Context;
 use sanskrit_common::model::*;
 use sanskrit_common::encoding::NoCustomAlloc;
-use model::*;
-use model::linking::{Link, Component};
+use crate::model::*;
+use crate::model::linking::{Link, Component};
 use core::marker::PhantomData;
 use hashbrown::HashMap;
 
@@ -86,9 +86,9 @@ impl<'a, S:Store + 'a> Loader<'a,S> {
             dedup_hash: RefCell::new(CrcDeDup::new()),
             dedup_ctr: RefCell::new(CrcDeDup::new()),
             this_deployed_data: Cell::new(<usize>::MAX),          //as modules have max 255 adts this is ok
-            this_deployed_sigs:Cell::new(<usize>::MAX),           //as modules have max 255 sigs this is ok
-            this_deployed_functions:  Cell::new(<usize>::MAX),    //as modules have max 255 funs this is ok
-            this_deployed_implements:  Cell::new(<usize>::MAX),   //as modules have max 255 impls this is ok
+            this_deployed_sigs: Cell::new(<usize>::MAX),           //as modules have max 255 sigs this is ok
+            this_deployed_functions: Cell::new(<usize>::MAX),    //as modules have max 255 funs this is ok
+            this_deployed_implements: Cell::new(<usize>::MAX),   //as modules have max 255 impls this is ok
         }
     }
 

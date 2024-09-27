@@ -89,8 +89,8 @@ impl<E:Hash+Eq> CrcDeDup<E> {
 
     pub fn dedup(&mut self, elem:E) -> Crc<E> {
         match self.elems.get(&elem) {
-            Option::Some( crc) => return crc.clone(),
-            Option::None =>  {}
+            Some( crc) => return crc.clone(),
+            None =>  {}
         }
         let rc = Rc::new(elem);
         let new_crc = Crc{ elem: rc.clone() };

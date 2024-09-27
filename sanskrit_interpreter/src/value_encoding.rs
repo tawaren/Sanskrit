@@ -1,4 +1,4 @@
-use model::{ValueSchema, Entry, Adt};
+use crate::model::{ValueSchema, Entry, Adt};
 use sanskrit_common::encoding::{Serializer, Serializable, ParserAllocator, Parser, Parsable, VirtualSize};
 use sanskrit_common::errors::*;
 use sanskrit_common::model::SlicePtr;

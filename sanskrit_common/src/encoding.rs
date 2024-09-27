@@ -6,10 +6,10 @@ use alloc::collections::BTreeMap;
 use alloc::format;
 use alloc::rc::Rc;
 use byteorder::{BigEndian, ByteOrder};
-use errors::*;
+use crate::errors::*;
 use core::ops::Deref;
-use model::*;
-use arena::*;
+use crate::model::*;
+use crate::arena::*;
 
 pub type EncodingByteOrder = BigEndian;
 
