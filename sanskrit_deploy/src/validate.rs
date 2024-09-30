@@ -37,6 +37,14 @@ pub fn validate_top_function<S:Store>(data:&[u8], store:&S) -> Result<()>{
 pub fn validate<S:Store>(data:&[u8], store:&S, link:Hash, system_mode_on:bool) -> Result<()> {
     //Parse the module
     let parsed: Module = Parser::parse_fully::<Module, NoCustomAlloc>(data, usize::MAX, &NoCustomAlloc())?;
+    //Check if it is a system Module
+    if parsed.system_module != system_mode_on {
+        return if system_mode_on {
+            error(||"Only a system module can be deployed in system mode")
+        } else {
+            error(||"System modules can only be deployed in system mode")
+        }
+    }
     //Prepare the cache for this iteration
     let resolver = Loader::new_incremental(store, link, parsed);
     //Get a reference to the cached Module

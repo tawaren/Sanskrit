@@ -16,6 +16,8 @@ use crate::model::bitsets::{CapSet, PermSet};
 pub struct Module {
     #[ByteSize]
     pub byte_size:Option<usize>,
+    //Is this a system module
+    pub system_module:bool,
     //A Module has compiler specific meta information (Not of concern to Sanskrit)
     pub meta: LargeVec<u8>,
     //A Module has Adts
