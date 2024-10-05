@@ -18,7 +18,7 @@ use quote::ToTokens;
 
 #[proc_macro_derive(Serializable, attributes(ByteSize, Transient, VirtualSize, StartIndex))]
 pub fn serialize_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    // Construct a representation of Rust code as a syntax tree
+    // Construct a representation of Rust sys as a syntax tree
     // that we can manipulate
     let ast:DeriveInput  = syn::parse(input).unwrap();
 
@@ -38,7 +38,7 @@ pub fn parse_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 }
 
 fn parse_derive_core(input: proc_macro::TokenStream, auto_alloc:bool) -> proc_macro::TokenStream {
-    // Construct a representation of Rust code as a syntax tree
+    // Construct a representation of Rust sys as a syntax tree
     // that we can manipulate
     let ast:DeriveInput  = syn::parse(input).unwrap();
     // Build the trait implementation
@@ -49,7 +49,7 @@ fn parse_derive_core(input: proc_macro::TokenStream, auto_alloc:bool) -> proc_ma
 
 #[proc_macro_derive(VirtualSize)]
 pub fn virtual_size_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    // Construct a representation of Rust code as a syntax tree
+    // Construct a representation of Rust sys as a syntax tree
     // that we can manipulate
     let ast:DeriveInput  = syn::parse(input).unwrap();
 

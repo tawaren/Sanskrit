@@ -1,6 +1,6 @@
 //! The compiler does two things:
 //!     1: it generates transaction descriptors which then can be called at runtime
-//!     2: it does some optimisations to function code, mainly removing unnecessary information and opcodes
+//!     2: it does some optimisations to function sys, mainly removing unnecessary information and opcodes
 //!
 //! The results are stored and then can be invoked from runtime.
 //!

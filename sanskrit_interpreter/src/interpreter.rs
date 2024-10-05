@@ -44,14 +44,14 @@ pub enum Frame<'code> {
     }
 }
 
-//the context in which the code is interpreted / executed
+//the context in which the sys is interpreted / executed
 pub struct ExecutionContext<'transaction, 'code, 'interpreter, 'execution, 'heap> {
     #[cfg(feature = "dynamic_gas")]
     used_gas:u64,
     #[cfg(feature = "dynamic_gas")]
-    functions: &'code [TxTFunction<'code>],                                                     // all the code
+    functions: &'code [TxTFunction<'code>],                                                     // all the sys
     #[cfg(not(feature = "dynamic_gas"))]
-    functions: &'code [Ptr<'code,Exp<'code>>],                                                  // all the code
+    functions: &'code [Ptr<'code,Exp<'code>>],                                                  // all the sys
     frames: &'execution mut HeapStack<'interpreter,Frame<'code>>,
     stack: &'execution mut HeapStack<'interpreter, Entry<'transaction> >,                       //The current stack
     alloc: &'transaction VirtualHeapArena<'heap>,
@@ -439,7 +439,7 @@ impl<'transaction,'code,'interpreter,'execution,'heap> ExecutionContext<'transac
         }
     }
 
-    //The heavy lifter that type checks op code
+    //The heavy lifter that type checks op sys
     fn execute_op_code<Ext:RuntimeExternals>(&mut self, code: &'code OpCode, tail:bool) -> Result<Continuation<'code>> {
         //Branch on the opcode type and check it
         match *code {
@@ -609,7 +609,7 @@ impl<'transaction,'code,'interpreter,'execution,'heap> ExecutionContext<'transac
         let Func(index, captures) = unsafe {self.get(fun_val as usize)?.func};
         //must be a function pointer (static guarantee)
         //Cost: relative to: values.len()
-        //get the code
+        //get the sys
         #[cfg(not(feature = "dynamic_gas"))]
         let fun_code: &Exp = &self.functions[index as usize];
         #[cfg(feature = "dynamic_gas")]
@@ -646,7 +646,7 @@ impl<'transaction,'code,'interpreter,'execution,'heap> ExecutionContext<'transac
     fn invoke(&mut self, fun_idx: u16, values: &[ValueRef], tail:bool) -> Result<Continuation<'code>> {
         //Cost: relative to: values.len()
         //Non-Native
-        //get the code
+        //get the sys
         #[cfg(not(feature = "dynamic_gas"))]
         let fun_code: &Exp = &self.functions[fun_idx as usize];
         #[cfg(feature = "dynamic_gas")]
@@ -675,7 +675,7 @@ impl<'transaction,'code,'interpreter,'execution,'heap> ExecutionContext<'transac
     fn repeat(&mut self, fun_idx: u16, values: &[ValueRef], cond_value:ValueRef, abort_tag:Tag, max_reps:u8, tail:bool) -> Result<Continuation<'code>> {
         //Cost: relative to: values.len()
         //Non-Native
-        //get the code
+        //get the sys
         #[cfg(not(feature = "dynamic_gas"))]
         let fun_code: &Exp = &self.functions[fun_idx as usize];
         #[cfg(feature = "dynamic_gas")]
@@ -701,7 +701,7 @@ impl<'transaction,'code,'interpreter,'execution,'heap> ExecutionContext<'transac
     fn r#try<Ext:RuntimeExternals>(&mut self,  r#try:&'code OpCode, succ: &'code Exp, fail: &'code Exp, _tail:bool) -> Result<Continuation<'code>> {
         //fetch the height
         let stack_height = self.stack.len();
-        //Execute the try code
+        //Execute the try sys
         match self.execute_op_code::<Ext>(r#try, false)? {
             //it succeeded so continue with the success case
             Continuation::Next => Ok(Continuation::Cont(succ, stack_height, false)), //This is nice as it allows to make adds & muls & ... more efficently even with try

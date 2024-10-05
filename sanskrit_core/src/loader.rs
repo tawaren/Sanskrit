@@ -1,3 +1,4 @@
+use alloc::collections::BTreeMap;
 use sanskrit_common::errors::*;
 use crate::model::resolved::*;
 use core::cell::RefCell;
@@ -12,15 +13,14 @@ use sanskrit_common::encoding::NoCustomAlloc;
 use crate::model::*;
 use crate::model::linking::{Link, Component};
 use core::marker::PhantomData;
-use hashbrown::HashMap;
 
 pub struct Loader<'a, S:Store + 'a> {
     //Caches the modules
     // we treat the module link in this rust implementation as an object but it is not in the specification
     //  the specification specifies the loaded modules instead. We split them in two
     dedup_hash:RefCell<CrcDeDup<ModuleLink>>,
-    modules:RefCell<HashMap<Hash,Crc<Module>>>,
-    store:&'a S, // a reference to the store in case a module is not cached
+    modules:RefCell<BTreeMap<Hash,Crc<Module>>>,
+    store:&'a CachedStore<Module, S>, // a reference to the store in case a module is not cached
     // Object loaders
     // deduplication
     dedup_type:RefCell<CrcDeDup<ResolvedType>>,
@@ -42,18 +42,16 @@ pub struct FetchCache<T:Component> {
     link:Crc<ModuleLink>,       //The Module in link form
     offset:u8,                  //The offset of the Component
     phantom: PhantomData<*const T>,
-
 }
 
 impl<'a, S:Store + 'a> Loader<'a,S> {
-
     //A new partially loaded Storage Cache
     //it starts out with the module currently processed
-    pub fn new_incremental(store:&'a S,  link:Hash, module:Module) -> Self{
+    pub fn new_incremental(store:&'a CachedStore<Module, S>,  link:Hash, module:Rc<Module>) -> Self{
         //A new empty cache
-        let mut modules = HashMap::new();
+        let mut modules = BTreeMap::new();
         //Insert the Module
-        modules.insert(link,Crc{elem:Rc::new(module)});
+        modules.insert(link,Crc{elem:module});
 
         //Create the Storage Cache with 0 avaiable components
         Loader {
@@ -74,10 +72,10 @@ impl<'a, S:Store + 'a> Loader<'a,S> {
     }
 
     //A new fully loaded storage cache
-    pub fn new_complete(store:&'a S) -> Self{
+    pub fn new_complete(store:&'a CachedStore<Module, S>) -> Self{
         //Works As: current need to use this and all other that can be used from this can not use this
         Loader {
-            modules:RefCell::new(HashMap::new()),
+            modules:RefCell::new(BTreeMap::new()),
             store,
             dedup_type: RefCell::new(CrcDeDup::new()),
             dedup_call: RefCell::new(CrcDeDup::new()),
@@ -93,15 +91,15 @@ impl<'a, S:Store + 'a> Loader<'a,S> {
     }
 
     //Get the cache of a Module
-    fn get_chached_module(&self,hash:Hash) -> Result<Crc<Module>>{
+    fn get_cached_module(&self, hash:Hash) -> Result<Crc<Module>>{
         //Borrow the cache
         let mut modules = self.modules.borrow_mut();
         //if already their ignore it else create it
         if !modules.contains_key(&hash) {
             //get the module from the store by its hash
-            let module = self.store.parsed_get::<Module,NoCustomAlloc>(StorageClass::Module,&hash, usize::max_value(), &NoCustomAlloc())?;
+            let module = self.store.get_cached::<NoCustomAlloc>(&hash, usize::max_value(), &NoCustomAlloc())?;
             //Ref count it and insert it
-            let res = Crc{elem:Rc::new(module)};
+            let res = Crc{elem:module};
             modules.insert(hash,res.clone());
             Ok(res)
         } else {
@@ -113,13 +111,13 @@ impl<'a, S:Store + 'a> Loader<'a,S> {
     //Get the module
     pub fn get_module(&self, link:Hash) -> Result<Crc<Module>>{
         //Get the Module and extract the module from it
-        Ok(self.get_chached_module(link)?.clone())
+        Ok(self.get_cached_module(link)?.clone())
     }
 
     //Gets a component
     pub fn get_component<C:Component>(&self, link:&Crc<ModuleLink>, offset:u8) -> Result<FetchCache<C>> {
         //Get the Module
-        let module = self.get_chached_module(link.to_hash())?;
+        let module = self.get_cached_module(link.to_hash())?;
         //Check if really their
 
         if offset as usize >= C::num_elems(&module) {

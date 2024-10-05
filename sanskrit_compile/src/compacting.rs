@@ -68,7 +68,7 @@ pub struct Compactor<'b,'h> {
     //all the embedded functions and where to find them at runtime
     // boolean marks implements
     fun_mapping:BTreeMap<(Crc<ModuleLink>,u8,bool),(u16,u8,ExpResources)>,
-    //the code of all the embedded functions
+    //the sys of all the embedded functions
     #[cfg(not(feature = "dynamic_gas"))]
     functions:SliceBuilder<'b,Ptr<'b,RExp<'b>>>,
     #[cfg(feature = "dynamic_gas")]
@@ -646,7 +646,7 @@ impl<'b,'h> Compactor<'b,'h> {
                 for _ in 0..r_ctr[tag as usize].len(){
                     self.state.push_real()?
                 }
-                //generate the runtime code
+                //generate the runtime sys
                 self.block.push(ROpCode::Unpack(new_ref));
                 assert!(r_ctr[tag as usize].len() <= u8::max_value() as usize);
                 Ok((true,r_ctr[tag as usize].len() as u8))
@@ -659,7 +659,7 @@ impl<'b,'h> Compactor<'b,'h> {
         for _ in 0..produces.len(){
             self.state.push_real()?
         }
-        //generate the runtime code
+        //generate the runtime sys
         self.block.push(ROpCode::Rollback);
         self.state.use_gas(gas::rollback());
 
@@ -686,7 +686,7 @@ impl<'b,'h> Compactor<'b,'h> {
             let new_ref = self.translate_ref(val);
             //push the field onto the stack
             self.state.push_real()?;
-            //generate the runtime code
+            //generate the runtime sys
             self.block.push(ROpCode::Get(new_ref, field));
             Ok((true,1))
         }
@@ -714,7 +714,7 @@ impl<'b,'h> Compactor<'b,'h> {
             let adapted = self.alloc.iter_alloc_slice(vals.iter().map(|val|self.translate_ref(*val)))?;
             //push the packed element ot both stacks
             self.state.push_real()?;
-            //generate the runtime code
+            //generate the runtime sys
             self.block.push(ROpCode::Pack(tag,adapted));
             Ok((true,1))
         }
@@ -773,7 +773,7 @@ impl<'b,'h> Compactor<'b,'h> {
 
             //check if it is an enum (we optimize these, mainly for efficient booleans)
             //We inline them on stack instead of allocating them on heap
-            //generate the runtime code
+            //generate the runtime sys
             self.block.push(ROpCode::Switch(new_ref,new_exps.finish()));
             Ok((true,rets))
         }
@@ -803,7 +803,7 @@ impl<'b,'h> Compactor<'b,'h> {
                     //its result of a primitive allocs a Object (some do also alloc Data, this is in the corresponding ones)
                     self.state.push_real()?;
                 }
-                //generate the runtime code
+                //generate the runtime sys
                 self.block.push(code);
                 Ok((true,rets))
             },
@@ -844,7 +844,7 @@ impl<'b,'h> Compactor<'b,'h> {
         self.state.end_branching(branch_point);
         //if the inner is a continuation we need to drop a try frame
         if is_continuation(&code) {self.state.drop_frame()}
-        //generate the runtime code
+        //generate the runtime sys
         self.block.push(ROpCode::Try(self.alloc.alloc(code),new_succ,new_fail));
         Ok((true,s_rets))
     }
@@ -989,7 +989,7 @@ impl<'b,'h> Compactor<'b,'h> {
         self.state.use_gas(cost);
         //push the result to both stacks
         self.state.push_real()?;
-        //generate the runtime code
+        //generate the runtime sys
         self.block.push(code);
         Ok((true,1))
     }
@@ -1009,7 +1009,7 @@ impl<'b,'h> Compactor<'b,'h> {
         let adapted = self.alloc.iter_alloc_slice(vals.iter().map(|val|self.translate_ref(*val)))?;
         //use gas
         self.state.use_gas(gas::call(sig.params.len()));
-        //generate the runtime code
+        //generate the runtime sys
         Ok(Some((ROpCode::InvokeSig(*target_adapted, adapted),sig.returns.len() as u8)))
     }
 
@@ -1020,7 +1020,7 @@ impl<'b,'h> Compactor<'b,'h> {
                 //its result of a primitive allocs a Object (some do also alloc Data, this is in the corresponding ones)
                 self.state.push_real()?;
             }
-            //generate the runtime code
+            //generate the runtime sys
             self.block.push(code);
             Ok((true,rets))
         } else {

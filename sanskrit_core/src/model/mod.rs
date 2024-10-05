@@ -83,7 +83,7 @@ pub enum CallableImpl {
     Internal{
         #[ByteSize]
         byte_size:Option<usize>,
-        imports:BodyImport,       //Imports for use in code
+        imports:BodyImport,       //Imports for use in sys
         code: Exp                  //A Function has a body Expression
     }
 }
@@ -125,7 +125,7 @@ pub struct PublicImport {
 #[derive(Debug, Parsable, Serializable)]
 pub struct BodyImport {
     pub public: PublicImport,
-    pub callables:Vec<CallableImport>,       //Imports for use in code
+    pub callables:Vec<CallableImport>,       //Imports for use in sys
     pub permissions:Vec<PermissionImport>,   //Permisions
 }
 

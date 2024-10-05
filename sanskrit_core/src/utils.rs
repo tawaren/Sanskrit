@@ -1,9 +1,9 @@
+use alloc::collections::BTreeMap;
 use alloc::rc::Rc;
 use core::ops::Deref;
 use core::borrow::Borrow;
 use core::clone::Clone;
 use core::cmp::Ordering;
-use hashbrown::HashMap;
 use core::hash::{Hash, Hasher};
 
 //A complexity counting Rc to prevent complexity based attacks
@@ -77,13 +77,13 @@ impl<T> Hash for Crc<T> {
 }
 
 pub struct CrcDeDup<E>  {
-    elems:HashMap<Rc<E>,Crc<E>>
+    elems:BTreeMap<Rc<E>,Crc<E>>
 }
 
-impl<E:Hash+Eq> CrcDeDup<E> {
+impl<E:Ord+Eq> CrcDeDup<E> {
     pub fn new() -> Self {
         Self {
-            elems: HashMap::new()
+            elems: BTreeMap::new()
         }
     }
 

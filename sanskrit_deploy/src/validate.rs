@@ -1,13 +1,14 @@
 //! A Validator that checks certain condition on the input and the linked Components
 //!
 
+use alloc::rc::Rc;
 use sanskrit_core::model::*;
 use sanskrit_core::model::linking::*;
 use sanskrit_core::model::resolved::*;
 use sanskrit_core::resolver::*;
 use sanskrit_common::errors::*;
 use sanskrit_common::encoding::*;
-use sanskrit_common::store::Store;
+use sanskrit_common::store::{CachedStore, Store};
 use sanskrit_core::utils::Crc;
 use sanskrit_core::loader::Loader;
 use crate::code_type_checker::TypeCheckerContext;
@@ -15,7 +16,7 @@ use sanskrit_common::model::ModuleLink;
 use sanskrit_common::model::Hash;
 use sanskrit_core::model::bitsets::{CapSet, BitSet, PermSet};
 
-pub fn validate_top_function<S:Store>(data:&[u8], store:&S) -> Result<()>{
+pub fn validate_top_function<S:Store>(data:&[u8], store:&CachedStore<Module,S>) -> Result<()>{
     //Parse the function
     let fun:FunctionComponent = Parser::parse_fully::<FunctionComponent,NoCustomAlloc>(data, usize::max_value(),&NoCustomAlloc())?;
     //Prepare the cache for this iteration
@@ -26,7 +27,7 @@ pub fn validate_top_function<S:Store>(data:&[u8], store:&S) -> Result<()>{
     //let context = match Context::from_top_component(&fun, &resolver)
     //Ensure Transaction specific parts are correct
     validate_transaction(&fun, &context)?;
-    //Do the type checking of the code in the function body
+    //Do the type checking of the sys in the function body
     if let CallableImpl::Internal {ref code, ..} = fun.body {
         let mut checker = TypeCheckerContext::<S>::new(context);
         checker.type_check_function(&fun, code)?;
@@ -34,9 +35,9 @@ pub fn validate_top_function<S:Store>(data:&[u8], store:&S) -> Result<()>{
     Ok(())
 }
 
-pub fn validate<S:Store>(data:&[u8], store:&S, link:Hash, system_mode_on:bool) -> Result<()> {
+pub fn validate<S:Store>(data:&[u8], store:&CachedStore<Module,S>, link:Hash, system_mode_on:bool) -> Result<()> {
     //Parse the module
-    let parsed: Module = Parser::parse_fully::<Module, NoCustomAlloc>(data, usize::MAX, &NoCustomAlloc())?;
+    let parsed: Rc<Module> = store.get_direct::<NoCustomAlloc>(data, &link, usize::MAX, &NoCustomAlloc())?;
     //Check if it is a system Module
     if parsed.system_module != system_mode_on {
         return if system_mode_on {
@@ -106,7 +107,7 @@ pub fn validate<S:Store>(data:&[u8], store:&S, link:Hash, system_mode_on:bool) -
             let context = Context::from_module_component(f, &module_link, true, &resolver)?;
             //Ensure the input is formally correct and has the expected properties
             validate_function(f, &context, system_mode_on)?;
-            //Do the type checking of the code in the function body
+            //Do the type checking of the sys in the function body
             if let CallableImpl::Internal {ref code, ..} = f.body {
                 let mut checker = TypeCheckerContext::<S>::new(context);
                 checker.type_check_function(f, code)?;
@@ -125,7 +126,7 @@ pub fn validate<S:Store>(data:&[u8], store:&S, link:Hash, system_mode_on:bool) -
             let context = Context::from_module_component(i, &module_link, true,&resolver)?;
             //Ensure the input is formally correct and has the expected properties
             validate_implement(i, &context, system_mode_on)?;
-            //Do the type checking of the code in the function body
+            //Do the type checking of the sys in the function body
             if let CallableImpl::Internal {ref code, ..} = i.body {
                 let mut checker = TypeCheckerContext::<S>::new(context);
                 checker.type_check_implement(i, code)?;
@@ -235,16 +236,12 @@ fn validate_transaction<S:Store>(fun:&FunctionComponent, ctx:&Context<S>) -> Res
 fn validate_function<S:Store>(fun:&FunctionComponent, ctx:&Context<S>, system_mode_on:bool) -> Result<()> {
     //Check the import section
     check_type_import_integrity(ctx)?;
-
     //Check capability constraints
     check_generic_capability_constraints(&fun.shared.generics)?;
-
     //check the body
     check_body(&fun.body , ctx, system_mode_on)?;
-
     //check param and return for phantoms
     check_params_and_returns(&fun.shared.params, &fun.shared.returns, ctx)?;
-
     //check visibility
     check_accessibility_integrity(&fun.scope, fun.shared.generics.len())
 }

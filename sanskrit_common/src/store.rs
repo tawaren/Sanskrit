@@ -1,6 +1,10 @@
+use alloc::collections::BTreeMap;
+use alloc::rc::Rc;
 use crate::errors::*;
 use crate::encoding::*;
 use alloc::vec::Vec;
+use core::cell::RefCell;
+use core::ops::{Deref, DerefMut};
 
 use crate::model::Hash;
 use crate::hashing::*;
@@ -53,4 +57,64 @@ pub fn store_hash(data:&[&[u8]]) -> Hash {
     }
     //calc the Hash
     context.finalize()
+}
+
+pub struct CachedStore<P, S:Store> {
+    cache:RefCell<BTreeMap<Hash, Rc<P>>>,
+    class:StorageClass,
+    store:S,
+
+}
+
+impl<P, S:Store> Deref for CachedStore<P,S> {
+    type Target = S;
+    fn deref(&self) -> &Self::Target {
+        &self.store
+    }
+}
+
+impl<P, S:Store> DerefMut for CachedStore<P,S> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.store
+    }
+}
+
+
+impl<P, S:Store> CachedStore<P,S> {
+    pub fn new(store:S, class:StorageClass) -> Self{
+        CachedStore {
+            cache: RefCell::new(BTreeMap::new()),
+            class,
+            store
+        }
+    }
+}
+
+impl<'a, P:Parsable<'a>, S:Store> CachedStore<P,S>  {
+
+    pub fn get_cached<A: ParserAllocator>(&self, key: &Hash, max_dept:usize, alloc:&'a A) -> Result<Rc<P>>{
+        let mut cache = self.cache.borrow_mut();
+
+        if !cache.contains_key(key) {
+            let val:Rc<P> = Rc::new(self.store.parsed_get(self.class,key,max_dept,alloc)?);
+            cache.insert(key.clone(), val.clone());
+            Ok(val)
+        } else {
+            //just use the existing
+            Ok(cache[key].clone())
+        }
+    }
+
+    pub fn get_direct<A: ParserAllocator>(&self, data:&[u8], key: &Hash, max_dept:usize, alloc:&'a A) -> Result<Rc<P>>{
+        let mut cache = self.cache.borrow_mut();
+        if !cache.contains_key(key) {
+            let parsed: P = Parser::parse_fully(data, max_dept, alloc)?;
+            let val:Rc<P>  = Rc::new(parsed);
+            cache.insert(key.clone(), val.clone());
+            Ok(val)
+        } else {
+            //just use the existing
+            Ok(cache[key].clone())
+        }
+    }
 }

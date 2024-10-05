@@ -19,7 +19,7 @@ extern crate alloc;
 
 #[cfg(feature = "deployer")]
 use sanskrit_common::store::StorageClass;
-use sanskrit_common::store::Store;
+use sanskrit_common::store::{CachedStore, Store};
 use sanskrit_common::errors::*;
 #[cfg(feature = "deployer")]
 use sanskrit_common::encoding::Parser;
@@ -41,6 +41,7 @@ use sanskrit_deploy::{deploy_module, deploy_function};
 use sanskrit_compile::compile_function;
 #[cfg(feature = "deployer")]
 use sanskrit_compile::externals::CompilationExternals;
+use sanskrit_core::model::Module;
 
 pub mod model;
 pub mod system;
@@ -198,7 +199,7 @@ pub fn execute<'c, 'd:'c, L: Tracker,SYS:SystemContext<'c>>(ctx:Context<SYS::S, 
 }
 
 #[cfg(feature = "deployer")]
-pub fn deploy<'c, S:Store, CE:CompilationExternals>(store:&S, deploy_data:&[u8], heap:&Heap, system_mode_on:bool) -> Result<Hash> {
+pub fn deploy<'c, S:Store, CE:CompilationExternals>(store:&CachedStore<Module,S>, deploy_data:&[u8], heap:&Heap, system_mode_on:bool) -> Result<Hash> {
     //Check that it is inside limit
     if deploy_data.len() > CONFIG.max_bundle_size { return error(||"Transaction Bundle to big")}
     //Static allocations (could be done once)
@@ -213,7 +214,7 @@ pub fn deploy<'c, S:Store, CE:CompilationExternals>(store:&S, deploy_data:&[u8],
             //but without having seperate Transaction type it is hard not to do this
             //todo: we may consider passing &[u8] into store and copy there if necessary (but this gives lifetime hell)
             let res = deploy_module(store, deploy_txt.data.to_vec(), system_mode_on, true)?;
-            store.commit(StorageClass::Module);
+            store.get_store().commit(StorageClass::Module);
             res
         },
         DeployType::Transaction => {
@@ -221,9 +222,9 @@ pub fn deploy<'c, S:Store, CE:CompilationExternals>(store:&S, deploy_data:&[u8],
             //but without having seperate Transaction type it is hard not to do this
             //todo: we may consider passing &[u8] into store and copy there if necessary (but this gives lifetime hell)
             let target = deploy_function(store, deploy_txt.data.to_vec(), true)?;
-            let (res,_) = compile_function::<_,CE>(store, target, true)?;
-            store.commit(StorageClass::Transaction);
-            store.commit(StorageClass::Descriptor);
+            let (res,_) = compile_function::<_,CE>(store.get_store(), target, true)?;
+            store.get_store().commit(StorageClass::Transaction);
+            store.get_store().commit(StorageClass::Descriptor);
             res
         }
     })

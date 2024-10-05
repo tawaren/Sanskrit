@@ -10,19 +10,14 @@ pub struct PreStore(BTreeMap<Hash,Vec<u8>>);
 
 impl PreStore {
     //creates a single thread enabled store with inner mutability
-    pub fn new(mods:Vec<Vec<u8>>, pre:Vec<Vec<u8>>)-> (Self, Vec<Hash>){
-        let mut map = BTreeMap::new();
-        let mut compiles = Vec::with_capacity(mods.len());
-        for m in mods {
-            let module_hash = store_hash(&[&m]);
-            compiles.push(module_hash);
-            map.insert(module_hash, m);
-        }
-        for dep in pre {
-            let module_hash = store_hash(&[&dep]);
-            map.insert(module_hash, dep);
-        }
-        (PreStore(map),compiles)
+    pub fn new()-> Self{
+        PreStore(BTreeMap::new())
+    }
+
+    pub fn add_module(self:&mut Self, module:Vec<u8>) -> Hash {
+        let module_hash = store_hash(&[&module]);
+        self.0.insert(module_hash, module);
+        module_hash
     }
 }
 

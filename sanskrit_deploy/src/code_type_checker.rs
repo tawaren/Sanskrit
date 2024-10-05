@@ -1,13 +1,13 @@
-//! A type checker that walks along the ast and checks if the code is sound
+//! A type checker that walks along the ast and checks if the sys is sound
 //!
 //! The type checker is responsible to check that the inputs to the different Opcodes, as well as the parameters to function calls have the right types.
 //!  It further enforces that the needed capabilities are present for restricted opcodes like `Copy`, `Drop`, `Unpack`, ...
 //!  Beside checking types it needs to ensure that borrowed values are only used in positions where they are allowed
 //!
 //! For tracking the types of the values the `linear_type_stack` is heavily used as well as the `native` module to check that the corresponding types are used correctly.
-//! After this module checked an Ast without generating an error the types are sound and further step can ignore them, but the information can not be discarded as it is needed by future type checking runs of other code linking to the current code
-//! Where later phases need some type information like the amount of constructor parameters of a type it is already present in the input code and its consistency is checked by the type checker
-//!  This approach ensures that later phases to not have to load and parse types later on but only code for functions.
+//! After this module checked an Ast without generating an error the types are sound and further step can ignore them, but the information can not be discarded as it is needed by future type checking runs of other sys linking to the current sys
+//! Where later phases need some type information like the amount of constructor parameters of a type it is already present in the input sys and its consistency is checked by the type checker
+//!  This approach ensures that later phases to not have to load and parse types later on but only sys for functions.
 
 use crate::linear_stack::*;
 use sanskrit_core::model::*;
@@ -253,7 +253,7 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
         Ok(rets)
     }
 
-    //The heavy lifter that type checks op code
+    //The heavy lifter that type checks op sys
     fn type_check_op_code(&mut self, code: &OpCode, lock_holder:&mut Vec<LockInfo>) -> Result<u8> {
         //Branch on the opcode type and check it
         match *code {
@@ -558,7 +558,7 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
                 None => self.stack.inspect(value, &r_ctr[i])?,
             };
 
-            //remaining operations are specified by branch code and now type checked
+            //remaining operations are specified by branch sys and now type checked
             let res = self.type_check_exp(case)?;
             //pass intermediary result to next iter
             loop_res = Some(res);
@@ -828,7 +828,7 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
             for ret in &signature.returns {
                 self.stack.provide(ret.clone())?;
             }
-            //on success operations are specified by branch code and now type checked
+            //on success operations are specified by branch sys and now type checked
             let suc_res = self.type_check_exp(succ)?;
             //discard unneeded items
             self.clean_frame( suc_res,start_height)?;
@@ -838,7 +838,7 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
             for (_, param) in vals.iter().zip(signature.params.iter()).filter(|((e,_),_)|*e) {
                 self.stack.provide(param.typ.clone())?;
             }
-            //on failure operations are specified by branch code and now type checked
+            //on failure operations are specified by branch sys and now type checked
             let fail_res = self.type_check_exp(fail)?;
             //discard unneeded items
             self.clean_frame( fail_res,start_height)?;

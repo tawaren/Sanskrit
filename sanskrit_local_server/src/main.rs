@@ -64,6 +64,8 @@ use rand_chacha::ChaCha8Rng;
 use sanskrit_default_externals::{SYS_MODS, External};
 
 use compiler::CompilerInstance;
+use sanskrit_common::store::{CachedStore, StorageClass};
+use sanskrit_core::model::Module;
 
 pub const MODULE_COMMAND:u8 = 0;
 pub const TRANSACTION_COMMAND:u8 = 1;
@@ -373,7 +375,7 @@ pub fn main() -> std::io::Result<()> {
 
     let state = State {
         csprng: ChaCha8Rng::seed_from_u64(10), //ChaCha8Rng::from_entropy(),
-        store: SledStore::new(&db_folder, auto_flushes),
+        store: CachedStore::<Module,SledStore>::new(SledStore::new(&db_folder, auto_flushes), StorageClass::Module),
         accounts:sled::open(account_db)?,
         system_entries:sled::open(sys_entry_db)?,
         module_name_mapping:sled::open(module_name_db)?,

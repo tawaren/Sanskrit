@@ -83,7 +83,7 @@ pub struct TrackingState {
 
 pub struct State {
     pub csprng: ChaCha8Rng,
-    pub store: SledStore,
+    pub store: CachedStore<Module,SledStore>,
     pub accounts: Db,
     pub system_entries: Db,
     pub module_name_mapping: Db,

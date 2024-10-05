@@ -21,18 +21,19 @@ use sanskrit_common::store::*;
 use sanskrit_common::errors::*;
 use alloc::vec::Vec;
 use sanskrit_common::model::*;
+use sanskrit_core::model::Module;
 
 //Todo: Make Configurable
 const INPUT_SIZE_LIMIT:usize = 256000;
 //const INPUT_SIZE_LIMIT:usize = 2048000; //for test
 
-pub fn deploy_stored_module<S:Store>(store:&S, module_hash:Hash, system_mode_on:bool) -> Result<()>{
+pub fn deploy_stored_module<S:Store>(store:&CachedStore<Module,S>, module_hash:Hash, system_mode_on:bool) -> Result<()>{
     store.get(StorageClass::Module, &module_hash, |data|{
         inner_deploy_module(store,module_hash,data,system_mode_on)
     })?
 }
 
-pub fn deploy_module<S:Store>(store:&S, data:Vec<u8>, system_mode_on:bool, auto_commit:bool) -> Result<Hash>{
+pub fn deploy_module<S:Store>(store:&CachedStore<Module,S>, data:Vec<u8>, system_mode_on:bool, auto_commit:bool) -> Result<Hash>{
     //calcs the ModuleHash
     let module_hash = store_hash(&[&data]);
     inner_deploy_module(store,module_hash,&data,system_mode_on)?;
@@ -48,28 +49,26 @@ pub fn deploy_module<S:Store>(store:&S, data:Vec<u8>, system_mode_on:bool, auto_
     Ok(module_hash)
 }
 
-fn inner_deploy_module<S:Store>(store:&S, module_hash:Hash, data:&[u8], system_mode_on:bool) -> Result<()>{
+fn inner_deploy_module<S:Store>(store:&CachedStore<Module,S>, module_hash:Hash, data:&[u8], system_mode_on:bool) -> Result<()>{
     //Check input limitation constraint
     if data.len() > INPUT_SIZE_LIMIT {
         return error(||"Input is to big")
     }
+    //Read the system module flag and disable system mode if not set
+    let system_module:bool = data[0] != 0;
     //if it is already deployed we can ignore it
     //validates the input
-    validate::validate(&data, store, module_hash, system_mode_on)?;
+    validate::validate(&data, store, module_hash, system_mode_on & system_module)?;
     Ok(())
 }
 
 //Processes a function used by compiler to check top level transactions
-pub fn deploy_function<S:Store>(store:&S, data:Vec<u8>, auto_commit:bool) -> Result<Hash>{
-    //Check input limitation constraint
-    if data.len() > INPUT_SIZE_LIMIT {
-        return error(||"Input is to big")
-    }
+pub fn deploy_function<S:Store>(store:&CachedStore<Module,S>, data:Vec<u8>, auto_commit:bool) -> Result<Hash>{
     //calcs the FunctionHash
     let function_hash = store_hash(&[&data]);
     //if it is already deployed we can ignore it
     //validates the input
-    validate::validate_top_function(&data, store)?;
+    validate_function(store, &data)?;
     //stores the input
     match store.set(StorageClass::Transaction, function_hash, data) {
         Ok(_) => {}
@@ -81,4 +80,14 @@ pub fn deploy_function<S:Store>(store:&S, data:Vec<u8>, auto_commit:bool) -> Res
     }
     //}
     Ok(function_hash)
+}
+
+pub fn validate_function<S:Store>(store:&CachedStore<Module,S>, data:&Vec<u8>) -> Result<()>{
+    //Check input limitation constraint
+    if data.len() > INPUT_SIZE_LIMIT {
+        return error(||"Input is to big")
+    }
+    //if it is already deployed we can ignore it
+    //validates the input
+    validate::validate_top_function(data, store)
 }
