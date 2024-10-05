@@ -57,9 +57,9 @@ pub fn validate<S:Store>(data:&[u8], store:&CachedStore<Module,S>, link:Hash, sy
     let mut cur_adt_offset = 0;
     let mut cur_sig_offset = 0;
     #[cfg(feature = "forward_type_ref")]
-    resolver.this_deployed_data.set( module.data.len());
+    resolver.this_deployed_data.set(module.data.len());
     #[cfg(feature = "forward_type_ref")]
-    resolver.this_deployed_sigs.set( module.sigs.len());
+    resolver.this_deployed_sigs.set(module.sigs.len());
 
     for sel in &module.data_sig_order.0 {
         if *sel {

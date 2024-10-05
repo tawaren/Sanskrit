@@ -2,8 +2,6 @@ use sanskrit_common::errors::*;
 use sanskrit_common::encoding::{Parser, ParserAllocator};
 use crate::model::{Transaction, ParamRef, RetType, ParamMode};
 use sanskrit_common::model::{Hash, Ptr, SlicePtr};
-//use ed25519_dalek::*;
-//use sha2::{Sha512};
 use sanskrit_common::arena::*;
 use sanskrit_interpreter::interpreter::{Frame, ExecutionContext, InterpreterResult};
 use sanskrit_interpreter::model::{Entry, TransactionDescriptor, TxTParam, TxTReturn, RuntimeType};
@@ -85,8 +83,6 @@ pub fn execute_once<'c, L: Tracker, SYS:SystemContext<'c>>(exec_store:&SYS::EC, 
         scratch_pad
     };
 
-    #[cfg(feature = "dynamic_gas")]
-    let mut used_gas:u64 = 0;
     tracker.bundle_start(ctx.txt_bundle);
     let mut sec_no = 0;
     for txt_section in ctx.txt_bundle.sections().iter() {
@@ -95,9 +91,6 @@ pub fn execute_once<'c, L: Tracker, SYS:SystemContext<'c>>(exec_store:&SYS::EC, 
         for txt in txt_section.txts.iter() {
             tracker.transaction_start(txt);
             match execute_transaction::<_, SYS>(&exec_env, exec_store, ctx, txt, block_no, sec_no, txt_no, tracker) {
-                #[cfg(feature = "dynamic_gas")]
-                Ok(gas) => used_gas = u64::saturating_add(used_gas, gas),
-                #[cfg(not(feature = "dynamic_gas"))]
                 Ok(_) => {},
                 Err(err) => {
                     exec_store.revert(ctx);
@@ -119,10 +112,6 @@ pub fn execute_once<'c, L: Tracker, SYS:SystemContext<'c>>(exec_store:&SYS::EC, 
         sec_no+=1;
     }
     tracker.bundle_finish(ctx.txt_bundle, true);
-
-    #[cfg(feature = "dynamic_gas")]
-    return Ok(used_gas);
-    #[cfg(not(feature = "dynamic_gas"))]
     return Ok(());
 }
 
@@ -179,13 +168,6 @@ fn execute_transaction<'c, L: Tracker, SYS:SystemContext<'c>>(env:&ExecutionEnvi
     }
 
     let res = ExecutionContext::interpret::<SYS::RE>(&txt_desc.functions, &mut interpreter_stack, &mut frame_stack, &mut return_stack, &env.runtime_heap)?;
-    #[cfg(feature = "dynamic_gas")]
-    if res > txt_desc.gas_cost as u64 {
-        panic!("used gas:{} - max gas:{} - txt:{:?}",res,txt_desc.gas_cost,&txt_desc.functions);
-    }
-    #[cfg(feature = "dynamic_gas")]
-    assert!(res <= txt_desc.gas_cost as u64);
-
     //Now that we know it succeeds we can modify the store
     for index in deletes {
         exec_store.chain_value_delete(ctx, *index)?;

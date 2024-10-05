@@ -11,9 +11,8 @@ lalrpop = { version = "0.21.0", features = ["lexer"] }
 [features]
 default = ["std"]
 std = []
-advanced = ["dynamic_gas", "forward_type_ref", "sanskrit_compile/advanced", "sanskrit_deploy/advanced", "sanskrit_runtime/advanced", "sanskrit_interpreter/advanced"]
+advanced = ["forward_type_ref", "sanskrit_deploy/advanced", "sanskrit_runtime/advanced"]
 #needs to change how switches and tries work
-dynamic_gas = ["sanskrit_compile/dynamic_gas","sanskrit_runtime/dynamic_gas", "sanskrit_interpreter/dynamic_gas"]
 forward_type_ref = ["sanskrit_deploy/forward_type_ref","sanskrit_runtime/forward_type_ref"]
 
 [dependencies]

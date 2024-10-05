@@ -6,10 +6,6 @@ edition = "2021"
 
 [features]
 default = ["std"]
-#provides advanced features that are not described in thesis
-advanced = ["dynamic_gas", "sanskrit_interpreter/advanced"]
-#not tested yet
-dynamic_gas = ["sanskrit_interpreter/dynamic_gas"]
 std = []
 
 [dependencies.sanskrit_interpreter]

@@ -421,8 +421,6 @@ impl State {
             Some(val) => Parser::parse_fully(&val, 1, &NoCustomAlloc())?
         };
         let (exec_gas,bundle) = self.build_transactions(txts, &full_heap, block_no)?;
-        #[cfg(feature = "dynamic_gas")]
-        let total_gas = bundle.core.total_gas_cost;
         Self::print_bundle_stats(&bundle);
         let ser = Serializer::serialize_fully(&bundle,MAX_PARSE_DEPTH)?;
         heap = heap.reuse();
@@ -434,10 +432,6 @@ impl State {
         self.verify_bundle(&bundle,block_no, &heap)?;
         //let t0 = now.elapsed().as_micros();
         let res = self.execute_bundle( &bundle,block_no, &heap, true)?;
-        #[cfg(feature = "dynamic_gas")]
-        assert!(res <= total_gas);
-        #[cfg(feature = "dynamic_gas")]
-        println!("Interpreter execution used {} of the available {} gas", res, exec_gas);
         //we flush manually as this would be done once per block and not per txt
         let t1 = now.elapsed().as_micros();
         self.store.flush(StorageClass::EntryValue);

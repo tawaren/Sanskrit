@@ -393,8 +393,6 @@ pub fn main() -> std::io::Result<()> {
     let listener_state = Arc::clone(&shared_state);
     // accept connections and process them serially
     println!("Started Local VM in {} mode", MODE);
-    #[cfg(feature = "dynamic_gas")]
-    println!("Dynamic gas measurement enabled");
     #[cfg(feature = "forward_type_ref")]
     println!("Forward type ref enabled");
 

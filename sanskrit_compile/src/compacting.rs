@@ -14,9 +14,6 @@ use sanskrit_core::model::*;
 use sanskrit_core::model::linking::Ref;
 use sanskrit_interpreter::model::{OpCode as ROpCode, Entry};
 use sanskrit_interpreter::model::Exp as RExp;
-#[cfg(feature = "dynamic_gas")]
-use sanskrit_interpreter::model::TxTFunction;
-
 use sanskrit_core::model::resolved::*;
 use sanskrit_common::errors::*;
 use sanskrit_common::model::*;
@@ -36,14 +33,6 @@ struct State {
     gas:u64,
     //the maximal number of gas used
     max_gas:u64,
-
-    //the gas used in this trace without calls
-    #[cfg(feature = "dynamic_gas")]
-    local_gas:u64,
-    //the maximal number of gas used without calls
-    #[cfg(feature = "dynamic_gas")]
-    max_local_gas:u64,
-
     //the mem used in this trace
     mem:u64,
     //the maximal number of mem used
@@ -69,20 +58,14 @@ pub struct Compactor<'b,'h> {
     // boolean marks implements
     fun_mapping:BTreeMap<(Crc<ModuleLink>,u8,bool),(u16,u8,ExpResources)>,
     //the sys of all the embedded functions
-    #[cfg(not(feature = "dynamic_gas"))]
     functions:SliceBuilder<'b,Ptr<'b,RExp<'b>>>,
-    #[cfg(feature = "dynamic_gas")]
-    functions:SliceBuilder<'b,TxTFunction<'b>>,
     //allocator
     alloc:&'b HeapArena<'h>,
     // block
     block: Vec<ROpCode<'b>>
 }
 
-#[cfg(not(feature = "dynamic_gas"))]
 type BranchPoint = (u64,u64,u64,u64);
-#[cfg(feature = "dynamic_gas")]
-type BranchPoint = (u64,u64,u64,u64,u64,u64);
 
 type ReturnPoint = (u32,usize);
 
@@ -92,10 +75,6 @@ impl State {
         State {
             gas: 0,
             max_gas: 0,
-            #[cfg(feature = "dynamic_gas")]
-            local_gas: 0,
-            #[cfg(feature = "dynamic_gas")]
-            max_local_gas: 0,
             mem: 0,
             max_mem: 0,
             frames: 0,
@@ -135,33 +114,11 @@ impl State {
         self.frames -= 1;
     }
 
-    #[cfg(feature = "dynamic_gas")]
-    #[inline(always)]
-    fn use_local_gas(&mut self, local_gas:u64){
-        self.local_gas = self.local_gas.saturating_add(local_gas);
-        if self.local_gas > self.max_local_gas {
-            self.max_local_gas = self.local_gas
-        }
-    }
 
     fn use_gas(&mut self, gas:u64) {
         self.gas = self.gas.saturating_add(gas);
         if self.gas > self.max_gas {
             self.max_gas = self.gas
-        }
-        #[cfg(feature = "dynamic_gas")]
-        self.use_local_gas(gas);
-    }
-
-    #[cfg(feature = "dynamic_gas")]
-    fn use_dynamic_gas(&mut self, gas:u64, local_gas:u64) {
-        self.gas = self.gas.saturating_add(gas as u64);
-        if self.gas > self.max_gas {
-            self.max_gas = self.gas
-        }
-        self.local_gas = self.local_gas.saturating_add(local_gas as u64);
-        if self.local_gas > self.max_local_gas {
-            self.max_local_gas = self.local_gas
         }
     }
 
@@ -175,8 +132,6 @@ impl State {
     fn extract_call_resources(self) -> ExpResources {
         ExpResources {
             gas: self.max_gas,
-            #[cfg(feature = "dynamic_gas")]
-            local_gas: self.max_local_gas,
             mem: self.max_mem,
             manifest_stack: self.max_manifest_stack,
             frames: self.max_frames,
@@ -184,9 +139,7 @@ impl State {
     }
 
     fn include_resources(&mut self, res:ExpResources, mult:u64) {
-        #[cfg(feature = "dynamic_gas")]
-        self.use_dynamic_gas(mult*res.gas, mult*res.local_gas);
-        #[cfg(not(feature = "dynamic_gas"))]
+
         self.use_gas(mult*res.gas);
         self.use_mem(mult*res.mem);
         self.max_frames = self.max_frames.max(self.frames + res.frames);
@@ -196,9 +149,6 @@ impl State {
 
     fn include_call_resources(&mut self, res:ExpResources, mult:u64) {
         //The whole point of local_gas is to exclude nested calls
-        #[cfg(feature = "dynamic_gas")]
-        self.use_dynamic_gas(mult*res.gas, 0);
-        #[cfg(not(feature = "dynamic_gas"))]
         self.use_gas(mult*res.gas);
         self.use_mem(mult*res.mem);
         self.max_frames = self.max_frames.max(self.frames + res.frames);
@@ -208,9 +158,6 @@ impl State {
 
     fn include_tail_call_resources(&mut self, frame_start:u32, res:ExpResources, mult:u64) {
         //The whole point of local_gas is to exclude nested calls
-        #[cfg(feature = "dynamic_gas")]
-        self.use_dynamic_gas(mult*res.gas, 0);
-        #[cfg(not(feature = "dynamic_gas"))]
         self.use_gas(mult*res.gas);
         self.use_mem(mult*res.mem);
         //-1 as we can reuse the current frame
@@ -220,19 +167,6 @@ impl State {
 
     }
 
-    #[cfg(feature = "dynamic_gas")]
-    fn start_branching(&mut self) -> BranchPoint {
-        let res = (self.gas, self.max_gas, self.local_gas, self.max_local_gas, self.mem, self.max_mem);
-        self.gas = 0;
-        self.max_gas = 0;
-        self.local_gas = 0;
-        self.max_local_gas = 0;
-        self.mem = 0;
-        self.max_mem = 0;
-        res
-    }
-
-    #[cfg(not(feature = "dynamic_gas"))]
     fn start_branching(&mut self) -> BranchPoint {
         let res = (self.gas, self.max_gas, self.mem, self.max_mem);
         self.gas = 0;
@@ -242,37 +176,17 @@ impl State {
         res
     }
 
-    #[cfg(feature = "dynamic_gas")]
-    fn next_branch(&mut self) {
-        self.gas = 0;
-        self.local_gas = 0;
-        self.mem = 0;
-    }
-
-    #[cfg(not(feature = "dynamic_gas"))]
     fn next_branch(&mut self) {
         self.gas = 0;
         self.mem = 0;
     }
 
-    #[cfg(not(feature = "dynamic_gas"))]
     fn end_branching(&mut self, (gas, max_gas, mem, max_mem):BranchPoint) {
         self.gas = gas + self.max_gas;
         self.max_gas = self.gas.max(max_gas);
         self.mem = mem + self.max_mem;
         self.max_mem = self.mem.max(max_mem);
     }
-
-    #[cfg(feature = "dynamic_gas")]
-    fn end_branching(&mut self, (gas, max_gas, local_gas, max_local_gas, mem, max_mem):BranchPoint) {
-        self.gas = gas + self.max_gas;
-        self.max_gas = self.gas.max(max_gas);
-        self.local_gas = local_gas + self.max_local_gas;
-        self.max_local_gas = self.local_gas.max(max_local_gas);
-        self.mem = mem + self.max_mem;
-        self.max_mem = self.mem.max(max_mem);
-    }
-
     fn return_point(&self) -> ReturnPoint{
         (self.manifested_stack, self.stack.len())
     }
@@ -283,11 +197,7 @@ impl State {
     }
 }
 
-#[cfg(not(feature = "dynamic_gas"))]
 type CollectRes<'b> = (SlicePtr<'b,Ptr<'b,RExp<'b>>>, ExpResources);
-
-#[cfg(feature = "dynamic_gas")]
-type CollectRes<'b> = (SlicePtr<'b,TxTFunction<'b>>, ExpResources);
 
 impl<'b,'h> Compactor<'b,'h> {
 
@@ -349,17 +259,7 @@ impl<'b,'h> Compactor<'b,'h> {
             //ensure we do not go over the limit
             if next_idx > u16::MAX as usize {return error(||"Number of functions out of range")}
             //fill the slot with the compacted function
-            #[cfg(not(feature = "dynamic_gas"))]
             compactor.functions.push(processed);
-
-            #[cfg(feature = "dynamic_gas")]
-            if resources.local_gas > u32::MAX as u64 {return error(||"Consumed Gas out of range")}
-            #[cfg(feature = "dynamic_gas")]
-            compactor.functions.push(TxTFunction{
-                gas: resources.local_gas as u32,
-                body: processed
-            });
-
 
             let old = compactor.fun_mapping.insert(key, (
                 next_idx as u16,
@@ -374,15 +274,7 @@ impl<'b,'h> Compactor<'b,'h> {
         //compact the top function
         let (processed, resources) = compactor.process_func::<_,CE>(fun.shared.params.len(), body, &top_context)?;
         //fill the slot with the compacted function
-        #[cfg(not(feature = "dynamic_gas"))]
         compactor.functions.push(processed);
-        #[cfg(feature = "dynamic_gas")]
-        if resources.local_gas > u32::MAX as u64 {return error(||"Consumed Gas out of range")}
-        #[cfg(feature = "dynamic_gas")]
-        compactor.functions.push(TxTFunction{
-            gas: resources.local_gas as u32,
-            body: processed
-        });
         //get all functions
         let res = compactor.functions.finish();
         //return the result

@@ -1,4 +1,5 @@
 [workspace]
+resolver = "2"
 members = [
         "sanskrit_common",
         "sanskrit_derive",
@@ -13,12 +14,20 @@ members = [
         "sanskrit_default_externals",
         "sanskrit_preloaded_validation",
         "sanskrit_validator",
+        "sanskrit_zero_validator",
+        "sanskrit_zero_validator_guest"
         #"sanskrit_wasm_deploy_compile", #Must be compiled to the wasm target - fails otherwise
 ]
 
+[patch.crates-io]
+blake3_zkvm = { git = "https://github.com/sp1-patches/BLAKE3", package = "blake3", branch="patch-blake3_zkvm/v.1.0.0" }
+
+[workspace.dependencies]
+alloy-sol-types = "0.7.7"
+
 [profile.release]
 panic = "abort"
-#lto = "fat"
-lto = "thin"
+lto = "fat"
+#lto = "thin"
 debug = false
 opt-level = 3

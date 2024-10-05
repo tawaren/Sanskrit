@@ -14,7 +14,6 @@ use std::env;
 use std::time::Instant;
 use sanskrit_validator::execute_with_args;
 use sp1_sdk::{ProverClient, SP1Stdin};
-use sp1_sdk::action::Prove;
 
 /// The ELF (executable and linkable format) file for the Succinct RISC-V zkVM.
 pub const SANSKRIT_ZERO_VALIDATOR_ELF: &[u8] = include_bytes!("../elf/validator-sp1-elf");

@@ -16,6 +16,3 @@ default-features = false
 path = "../sanskrit_common"
 version = "0.1.0"
 default-features = false
-
-[patch.crates-io]
-blake3 = { git = "https://github.com/sp1-patches/BLAKE3/zkvm", package = "blake3_zkvm", branch="patch-blake3_zkvm/v.1.0.0" }

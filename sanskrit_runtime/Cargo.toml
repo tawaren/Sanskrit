@@ -7,9 +7,8 @@ edition = "2021"
 [features]
 default = ["std", "deployer", "sanskrit_deploy", "sanskrit_compile"]
 #provides advanced features that are not described in thesis
-advanced = ["dynamic_gas", "forward_type_ref", "sanskrit_deploy/advanced", "sanskrit_compile/advanced", "sanskrit_interpreter/advanced"]
+advanced = ["forward_type_ref", "sanskrit_deploy/advanced"]
 #not tested yet
-dynamic_gas = ["sanskrit_compile/dynamic_gas", "sanskrit_interpreter/dynamic_gas"]
 forward_type_ref = ["sanskrit_deploy/forward_type_ref"]
 std = []
 deployer = ["sanskrit_deploy", "sanskrit_compile"]

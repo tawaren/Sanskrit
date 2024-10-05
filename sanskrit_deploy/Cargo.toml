@@ -8,6 +8,7 @@ edition = "2021"
 default = ["std"]
 std = []
 #provides advanced features that are not described in thesis
+#Todo: make forward_type_ref & forward_fun_ref default
 advanced = ["forward_type_ref"]
 forward_type_ref = []
 test = []

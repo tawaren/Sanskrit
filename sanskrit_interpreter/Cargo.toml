@@ -4,18 +4,8 @@ version = "0.1.0"
 authors = ["tawaren <markus.knecht85@gmail.com>"]
 edition = "2021"
 
-[profile.release]
-opt-level = 'z'  # Optimize for size.
-lto = true
-codegen-units = 1
-panic = 'abort'
-
 [features]
 default = ["std"]
-#provides advanced features that are not described in thesis
-advanced = ["dynamic_gas"]
-#not tested yet
-dynamic_gas = []
 std = []
 
 [dependencies]

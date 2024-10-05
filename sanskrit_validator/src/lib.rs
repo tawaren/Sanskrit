@@ -5,7 +5,6 @@ use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 use sanskrit_common::errors::*;
-use sanskrit_preloaded_validation::{Validation, process_preloaded_deploy};
 
 pub trait PathExtensions {
     fn extensions(&self, count: usize) -> Option<String>;
