@@ -1,0 +1,21 @@
+[package]
+version = "0.1.0"
+name = "sanskrit_zero_validator_guest"
+edition = "2021"
+
+[dependencies]
+alloy-sol-types = { workspace = true }
+sp1-zkvm = { version = "2.0.0", features = ["verify"]  }
+
+[dependencies.sanskrit_preloaded_validation]
+path = "../sanskrit_preloaded_validation"
+version = "0.1.0"
+default-features = false
+
+[dependencies.sanskrit_common]
+path = "../sanskrit_common"
+version = "0.1.0"
+default-features = false
+
+[patch.crates-io]
+blake3 = { git = "https://github.com/sp1-patches/BLAKE3/zkvm", package = "blake3_zkvm", branch="patch-blake3_zkvm/v.1.0.0" }

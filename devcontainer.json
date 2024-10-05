@@ -1,0 +1,17 @@
+{
+  "name": "Rust Development Environment",
+
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+
+  "forwardPorts": [6000],
+
+  "mounts": [
+    {
+      "source": "devcontainer-cargo-cache-${devcontainerId}",
+      "target": "/usr/local/cargo",
+      "type": "volume"
+    }
+  ],
+}

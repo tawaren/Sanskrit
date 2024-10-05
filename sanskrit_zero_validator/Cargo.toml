@@ -1,0 +1,29 @@
+[package]
+version = "0.1.0"
+name = "sanskrit_zero_validator"
+edition = "2021"
+default-run = "sanskrit_zero_validator"
+
+[[bin]]
+name = "sanskrit_zero_validator"
+path = "src/main.rs"
+
+[dependencies]
+sp1-sdk = "2.0.0"
+clap = { version = "4.0", features = ["derive", "env"] }
+tracing = "0.1.40"
+hex = "0.4.3"
+alloy-sol-types = { workspace = true }
+
+[dependencies.sanskrit_validator]
+path = "../sanskrit_validator"
+version = "0.1.0"
+
+[dependencies.sanskrit_common]
+path = "../sanskrit_common"
+version = "0.1.0"
+default-features = false
+
+[build-dependencies]
+sp1-build = "2.0.0"
+
