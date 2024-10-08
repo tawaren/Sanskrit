@@ -236,25 +236,4 @@ impl Store for SledStore {
             StorageClass::EntryHash => process(&mut self.0.borrow_mut().hashs),
         }
     }
-
-
-    /*
-    fn list(&self, class: StorageClass) -> Vec<(Hash, Vec<u8>)> {
-        fn process(map:&Tree) -> Vec<(Hash, Vec<u8>)> {
-            map.iter().map(|r|{
-                let (hash, val) = r.unwrap();
-                let hash_data_ref = array_ref!(hash,0,20);
-                (hash_data_ref.to_owned(), val.to_owned())
-            }).collect()
-        }
-
-        match class {
-            StorageClass::AdtDesc => process(&self.adt_descs),
-            StorageClass::FunDesc => process(&self.fun_descs),
-            StorageClass::Module => process(&self.0.borrow().modules),
-            StorageClass::Function => process(&self.0.borrow().funs),
-            StorageClass::Elem => process(&self.0.borrow().elems),
-        }
-    }
-    */
 }

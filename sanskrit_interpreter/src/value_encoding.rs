@@ -1,5 +1,5 @@
 use crate::model::{ValueSchema, Entry, Adt};
-use sanskrit_common::encoding::{Serializer, Serializable, ParserAllocator, Parser, Parsable, VirtualSize};
+use sanskrit_common::encoding::{Serializer, Serializable, Parser, Parsable};
 use sanskrit_common::errors::*;
 use sanskrit_common::model::SlicePtr;
 use sanskrit_common::arena::VirtualHeapArena;
@@ -23,11 +23,9 @@ impl<'a> ValueSchema<'a> {
                 //if their are zero fields we omit the fields
                 let ctr =  ctrs[tag as usize];
                 assert_eq!(fields.len(), ctr.len());
-                s.increment_depth()?;
                 for (f_value, (_,f_schema)) in fields.iter().zip(ctr.iter()) {
                     f_schema.serialize_value(*f_value, s)?;
                 }
-                s.decrement_depth();
                 Ok(())
             },
             ValueSchema::Data(size) => {
@@ -67,11 +65,9 @@ impl<'a> ValueSchema<'a> {
                 let ctr =  ctrs[tag as usize];
                 let fields = if !ctr.is_empty() {
                     let mut builder = alloc.poly_slice_builder(ctr.len())?;
-                    p.increment_depth()?;
                     for  (_,f_schema) in ctr.iter(){
                         builder.push(f_schema.parse_value(p, alloc)?);
                     }
-                    p.decrement_depth();
                     builder.finish()
                 } else {
                     SlicePtr::empty()

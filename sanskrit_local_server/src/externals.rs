@@ -8,7 +8,7 @@ use sanskrit_runtime::system::SystemContext;
 use sanskrit_common::hashing::HashingDomain;
 use sanskrit_sled_store::SledStore;
 use sanskrit_runtime::direct_stored::{StatefulEntryStoreVerifier, SystemDataManager, StatefulEntryStoreExecutor};
-use sanskrit_common::encoding::{VirtualSize, ParserAllocator, Parser};
+use sanskrit_common::encoding::{ParserAllocator, Parser};
 use sanskrit_runtime::model::{BundleWithHash, BaseTransactionBundle};
 use sanskrit_runtime::CONFIG;
 use sanskrit_interpreter::externals::{ExecutionInterface};

@@ -1,5 +1,5 @@
 [package]
-name = "sanskrit_compile"
+name = "sanskrit_chain_code"
 version = "0.1.0"
 authors = ["tawaren <markus.knecht85@gmail.com>"]
 edition = "2021"
@@ -8,17 +8,11 @@ edition = "2021"
 default = ["std"]
 std = []
 
-[dependencies.sanskrit_chain_code]
-path = "../sanskrit_chain_code"
-version = "0.1.0"
-default-features=false
-
 [dependencies.sanskrit_common]
 path = "../sanskrit_common"
 version = "0.1.0"
 default-features = false
 
-[dependencies.sanskrit_core]
-path = "../sanskrit_core"
+[dependencies.sanskrit_derive]
+path = "../sanskrit_derive"
 version = "0.1.0"
-

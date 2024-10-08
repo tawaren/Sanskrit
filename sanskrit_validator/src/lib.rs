@@ -1,7 +1,5 @@
 
 use std::{env, fs};
-use std::borrow::Cow;
-use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 use sanskrit_common::errors::*;

@@ -9,7 +9,6 @@ use alloc::vec::Vec;
 use sanskrit_common::store::*;
 use crate::resolver::Context;
 use sanskrit_common::model::*;
-use sanskrit_common::encoding::NoCustomAlloc;
 use crate::model::*;
 use crate::model::linking::{Link, Component};
 use core::marker::PhantomData;
@@ -97,7 +96,7 @@ impl<'a, S:Store + 'a> Loader<'a,S> {
         //if already their ignore it else create it
         if !modules.contains_key(&hash) {
             //get the module from the store by its hash
-            let module = self.store.get_cached::<NoCustomAlloc>(&hash, usize::max_value(), &NoCustomAlloc())?;
+            let module = self.store.get_cached(&hash)?;
             //Ref count it and insert it
             let res = Crc{elem:module};
             modules.insert(hash,res.clone());

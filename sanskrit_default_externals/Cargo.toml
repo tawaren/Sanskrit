@@ -18,8 +18,8 @@ path = "../sanskrit_compile"
 version = "0.1.0"
 default-features = false
 
-[dependencies.sanskrit_interpreter]
-path = "../sanskrit_interpreter"
+[dependencies.sanskrit_chain_code]
+path = "../sanskrit_chain_code"
 version = "0.1.0"
 default-features = false
 

@@ -18,7 +18,7 @@ use sanskrit_core::model::bitsets::{CapSet, BitSet, PermSet};
 
 pub fn validate_top_function<S:Store>(data:&[u8], store:&CachedStore<Module,S>) -> Result<()>{
     //Parse the function
-    let fun:FunctionComponent = Parser::parse_fully::<FunctionComponent,NoCustomAlloc>(data, usize::max_value(),&NoCustomAlloc())?;
+    let fun:FunctionComponent = Parser::parse_fully::<FunctionComponent>(data)?;
     //Prepare the cache for this iteration
     let resolver = Loader::new_complete(store);
     //Prepare the context
@@ -37,7 +37,7 @@ pub fn validate_top_function<S:Store>(data:&[u8], store:&CachedStore<Module,S>) 
 
 pub fn validate<S:Store>(data:&[u8], store:&CachedStore<Module,S>, link:Hash, system_mode_on:bool) -> Result<()> {
     //Parse the module
-    let parsed: Rc<Module> = store.get_direct::<NoCustomAlloc>(data, &link, usize::MAX, &NoCustomAlloc())?;
+    let parsed: Rc<Module> = store.get_direct(data, &link)?;
     //Check if it is a system Module
     if parsed.system_module != system_mode_on {
         return if system_mode_on {

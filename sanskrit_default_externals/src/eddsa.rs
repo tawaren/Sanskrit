@@ -1,9 +1,8 @@
-use sanskrit_common::model::{Hash, SlicePtr, ValueRef};
-use sanskrit_common::arena::HeapArena;
+use alloc::vec::Vec;
+use sanskrit_common::model::{Hash, LargeVec, ValueRef};
 use sanskrit_common::errors::*;
-use sanskrit_common::encoding::*;
-use sanskrit_compile::externals::{just_local_gas_and_mem, CompilationResult};
-use sanskrit_interpreter::model::{ValueSchema, OpCode, Kind};
+use sanskrit_compile::externals::CompilationResult;
+use sanskrit_chain_code::model::{ValueSchema, OpCode, Kind};
 use crate::External;
 
 pub const EXT_ECDSA:&'static dyn External = &Ecdsa;
@@ -14,24 +13,21 @@ impl External for Ecdsa{
     global external(32) primitive data Pk
     global external(64) primitive data Sig
     */
-    fn compile_lit<'b, 'h>(&self, data_idx: u8, data: SlicePtr<'b, u8>, _caller: &[u8; 20], _alloc: &'b HeapArena<'h>) -> Result<CompilationResult<'b>> {
-        match data_idx {
-            0 => Ok(just_local_gas_and_mem(14, 32, OpCode::Data(data))),
-            _ => Ok(just_local_gas_and_mem(15, 64, OpCode::Data(data))),
-        }
+    fn compile_lit(&self, _data_idx: u8, data: &[u8], _caller: &Hash) -> Result<CompilationResult> {
+            Ok(CompilationResult::OpCodeResult(OpCode::Data(LargeVec(data.to_vec()))))
     }
 
-    fn get_literal_checker<'b, 'h>(&self, data_idx: u8, _len: u16, _alloc: &'b HeapArena<'h>) -> Result<ValueSchema<'b>> {
+    fn get_literal_checker(&self, data_idx: u8, _len: u16) -> Result<ValueSchema> {
         match data_idx {
             0 => Ok(ValueSchema::Data(32)),
             _ => Ok(ValueSchema::Data(64)),
         }
     }
 
-    fn compile_call<'b, 'h>(&self, fun_idx: u8, params: SlicePtr<'b, ValueRef>, _caller: &[u8; 20], _alloc: &'b HeapArena<'h>) -> Result<CompilationResult<'b>> {
+    fn compile_call(&self, fun_idx: u8, params: Vec<ValueRef>, _caller: &Hash) -> Result<CompilationResult> {
         match fun_idx {
             //global external function derivePublicId(pk:Pk):Id
-            0 => Ok(just_local_gas_and_mem(65, Hash::SIZE as u64, OpCode::TypedSysInvoke(0, Kind::Data, params))),
+            0 => Ok(CompilationResult::OpCodeResult(OpCode::TypedSysInvoke(0, Kind::Data, params))),
             /*
             global external function verify1(msg:Data1, pk:Pk, sig:Sig):(res:Bool)
             global external function verify2(msg:Data2, pk:Pk, sig:Sig):(res:Bool)
@@ -44,9 +40,7 @@ impl External for Ecdsa{
             global external function verify28(msg:Data28, pk:Pk, sig:Sig):(res:Bool)
             global external function verify32(msg:Data32, pk:Pk, sig:Sig):(res:Bool)
             */
-            //Todo: measure this it is guessed based on ethereum gas costs for similar operations
-            _ => Ok(just_local_gas_and_mem(2250, 0, OpCode::SysInvoke(1, params))),
-
+            _ => Ok(CompilationResult::OpCodeResult(OpCode::SysInvoke(1, params))),
         }
     }
 }

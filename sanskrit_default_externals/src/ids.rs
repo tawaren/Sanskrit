@@ -1,9 +1,8 @@
-use sanskrit_common::model::{Hash, SlicePtr, ValueRef};
-use sanskrit_common::arena::HeapArena;
+use alloc::vec::Vec;
+use sanskrit_common::model::{Hash, LargeVec, ValueRef};
 use sanskrit_common::errors::*;
-use sanskrit_common::encoding::*;
-use sanskrit_compile::externals::{just_local_gas_and_mem, CompilationResult};
-use sanskrit_interpreter::model::{ValueSchema, OpCode, Kind};
+use sanskrit_compile::externals::CompilationResult;
+use sanskrit_chain_code::model::{ValueSchema, OpCode, Kind};
 use crate::External;
 
 pub const EXT_IDS:&'static dyn External = &Ids;
@@ -13,30 +12,30 @@ impl External for Ids{
     /*
     local external(20) standard data PrivateId
     */
-    fn compile_lit<'b, 'h>(&self, _data_idx: u8, data: SlicePtr<'b, u8>, _caller: &[u8; 20], _alloc: &'b HeapArena<'h>) -> Result<CompilationResult<'b>> {
-        Ok(just_local_gas_and_mem(14, 20, OpCode::Data(data)))
+    fn compile_lit(&self, _data_idx: u8, data: &[u8], _caller: &Hash) -> Result<CompilationResult> {
+        Ok(CompilationResult::OpCodeResult(OpCode::Data(LargeVec(data.to_vec()))))
     }
 
-    fn get_literal_checker<'b, 'h>(&self, _data_idx: u8, _len: u16, _alloc: &'b HeapArena<'h>) -> Result<ValueSchema<'b>> {
+    fn get_literal_checker(&self, _data_idx: u8, _len: u16) -> Result<ValueSchema> {
         Ok(ValueSchema::Data(20))
     }
 
-    fn compile_call<'b, 'h>(&self, fun_idx: u8, params: SlicePtr<'b, ValueRef>, caller: &[u8; 20], alloc: &'b HeapArena<'h>) -> Result<CompilationResult<'b>> {
+    fn compile_call(&self, fun_idx: u8, params: Vec<ValueRef>, caller: &Hash) -> Result<CompilationResult> {
         match fun_idx {
             //global external function moduleId():(priv:PrivateModuleId)
-            0 =>  Ok(just_local_gas_and_mem(15, Hash::SIZE as u64, OpCode::Data(alloc.copy_alloc_slice(caller)?))),
+            0 =>  Ok(CompilationResult::OpCodeResult(OpCode::Data(LargeVec(caller.to_vec())))),
             /*
             global external function idFromData(dat:Data20):Id
             global external function idToData(id:Id):Data20
             global external function moduleIdFromData(dat:Data20):ModuleId
             global external function moduleIdToData(id:ModuleId):Data20
             */
-            x if x >= 1 && x < 5 => Ok(CompilationResult::ReorderResult(alloc.copy_alloc_slice(&[0])?)),
+            x if x >= 1 && x < 5 => Ok(CompilationResult::ReorderResult((&[0]).to_vec())),
             /*
             global external function eqId(id1:Id, id2:Id):Bool
             global external function eqModuleId(id1:ModuleId, id2:ModuleId):Bool
             */
-            x if x >= 5 && x < 7 => Ok(just_local_gas_and_mem(15, 0, OpCode::Eq(Kind::Data, params[0], params[1]))),
+            x if x >= 5 && x < 7 => Ok(CompilationResult::OpCodeResult(OpCode::Eq(Kind::Data, params[0], params[1]))),
 
             /*
             global external function privateIdderive(priv:PrivateId, hash:Hash):PrivateId
@@ -44,7 +43,7 @@ impl External for Ids{
             global external function privateModuleIdDerive(priv:PrivateModuleId, hash:Hash):PrivateId
             global external function moduleIdDerive(id:ModuleId, hash:Hash):Id
             */
-            _ =>  Ok(just_local_gas_and_mem(120, Hash::SIZE as u64, OpCode::SysInvoke(0, params))),
+            _ =>  Ok(CompilationResult::OpCodeResult(OpCode::SysInvoke(0, params))),
 
         }
     }

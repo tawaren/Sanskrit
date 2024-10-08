@@ -1,7 +1,7 @@
 use crate::model::resolved::{ResolvedType, ResolvedPermission};
 use core::cmp::Ordering;
 use sanskrit_common::errors::*;
-use sanskrit_common::encoding::{Serializable, Serializer, Parsable, Parser, ParserAllocator};
+use sanskrit_common::encoding::{Serializable, Serializer, Parsable, Parser};
 use crate::model::BitSerializedVec;
 use alloc::vec::Vec;
 use core::hash::{Hash, Hasher};
@@ -25,9 +25,9 @@ impl Serializable for BitSerializedVec {
     }
 }
 
-impl<'a> Parsable<'a> for BitSerializedVec {
-    fn parse<A: ParserAllocator>(p: &mut Parser, alloc: &'a A) -> Result<BitSerializedVec> {
-        let len = u16::parse(p,alloc)?;
+impl Parsable for BitSerializedVec {
+    fn parse(p: &mut Parser) -> Result<BitSerializedVec> {
+        let len = u16::parse(p)?;
         let mut vec = Vec::with_capacity(len as usize);
         let mut cur = 0;
         for i in 0..len {

@@ -51,7 +51,7 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
         let frame_size = self.stack.stack_depth() - start;
 
         //is the stack to big?
-        if frame_size > u16::max_value() as usize {
+        if frame_size > u16::MAX as usize {
             return error(||"Frame size exceeded maximum allowed size")
         }
 
@@ -113,7 +113,7 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
         //iterate over each return (deepest first)
         for (v,t) in sig.returns.iter().rev().enumerate() {
             //Check if the returned value has the expected type
-            assert!(v <= u8::max_value() as usize);
+            assert!(v <= u8::MAX as usize);
             if self.stack.value_of(ValueRef(v as u16))? != *t {
                 return error(||"Returned value has different type from return type declaration of the signature")
             }
@@ -125,10 +125,10 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
         self.stack.end_block(block, rets)?;
 
         //Check that the function signature matches the resulting stack layout
-        assert!(sig.returns.len() <= u8::max_value() as usize);
+        assert!(sig.returns.len() <= u8::MAX as usize);
         self.stack.check_function_return_signature(sig.returns.len() as u8)?;
-        assert!(imp.params.len() <= u8::max_value() as usize);
-        assert!(sig.params.len() <= u8::max_value() as usize);
+        assert!(imp.params.len() <= u8::MAX as usize);
+        assert!(sig.params.len() <= u8::MAX as usize);
 
         for (v, p) in sig.params.iter().rev().enumerate() {
             if p.consumes {
@@ -185,7 +185,7 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
         for (idx,t) in func.shared.returns.iter().rev().enumerate() {
             //Check if the returned value has the expected type
             let ret_typ = t.fetch(&self.context)?;
-            assert!(idx <= u8::max_value() as usize);
+            assert!(idx <= u8::MAX as usize);
             if self.stack.value_of(ValueRef(idx as u16))? != ret_typ {
                 return error(||"Returned value has different type from return type declaration of function")
             }
@@ -197,9 +197,9 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
         self.stack.end_block(block, rets)?;
 
         //Check that the function signature matches the resulting stack layout
-        assert!(func.shared.returns.len() <= u8::max_value() as usize);
+        assert!(func.shared.returns.len() <= u8::MAX as usize);
         self.stack.check_function_return_signature(func.shared.returns.len() as u8)?;
-        assert!(func.shared.params.len() <= u8::max_value() as usize);
+        assert!(func.shared.params.len() <= u8::MAX as usize);
 
         for (v, p) in func.shared.params.iter().rev().enumerate() {
             if p.consumes {
@@ -445,7 +445,7 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
             }
         }
 
-        assert!(r_ctr[0].len() <= u8::max_value() as usize);
+        assert!(r_ctr[0].len() <= u8::MAX as usize);
         Ok(r_ctr[0].len() as u8)
     }
 
@@ -628,7 +628,7 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
         for p in produces {
             self.stack.provide(p.fetch(&self.context)?)?;
         }
-        assert!(produces.len() <= u8::max_value() as usize);
+        assert!(produces.len() <= u8::MAX as usize);
         Ok(produces.len() as u8)
     }
 
@@ -782,7 +782,7 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
         for ret in &signature.returns {
             self.stack.provide(ret.clone())?;
         }
-        assert!(vals.len() <= u8::max_value() as usize);
+        assert!(vals.len() <= u8::MAX as usize);
         Ok(signature.returns.len() as u8)
     }
 
@@ -851,12 +851,12 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
         //Consume the Inputs
         for (i,ValueRef(idx)) in vals.iter().enumerate() {
             //push it on top (the +i counteracts the already pushed ones)
-            if *idx as usize + i > u16::max_value() as usize {
+            if *idx as usize + i > u16::MAX as usize {
                 return error(||"Size limit reached")
             }
             self.stack.fetch(ValueRef(idx+i as u16), FetchMode::Consume)?;
         }
-        assert!(vals.len() <= u8::max_value() as usize);
+        assert!(vals.len() <= u8::MAX as usize);
         Ok(vals.len() as u8)
     }
 }

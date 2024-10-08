@@ -55,7 +55,7 @@ use rustyline::error::ReadlineError;
 use parser_model::Execute;
 use sanskrit_common::arena::{Heap, VirtualHeapArena};
 use sanskrit_interpreter::model::Entry;
-use sanskrit_common::encoding::{VirtualSize, Parser, NoCustomAlloc};
+use sanskrit_common::encoding::{Parser, NoCustomAlloc};
 use std::collections::BTreeSet;
 use std::cell::RefCell;
 use std::rc::Rc;

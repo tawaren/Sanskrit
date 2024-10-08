@@ -4,8 +4,8 @@ use sanskrit_common::errors::*;
 use crate::TransactionBundle;
 
 #[cfg(feature = "deployer")]
-#[derive(Clone, Debug, AllocParsable, Serializable, VirtualSize)]
-pub struct DeployTransaction</*#[AllocLifetime]*/ 'c> {
+#[derive(Clone, Debug, Parsable, Serializable)]
+pub struct DeployTransaction<'c> {
     //todo: add max_loads & max_byte_loads
     //todo: add max_stores & max_byte_stores
     pub typ:DeployType,
@@ -13,7 +13,7 @@ pub struct DeployTransaction</*#[AllocLifetime]*/ 'c> {
 }
 
 
-#[derive(Clone, Debug, AllocParsable, Serializable, VirtualSize)]
+#[derive(Clone, Debug, Parsable, Serializable)]
 pub struct TransactionBundleCore</*#[AllocLifetime]*/ 'c> {
     #[ByteSize]
     pub byte_size:Option<usize>,
@@ -51,7 +51,7 @@ pub struct TransactionBundleCore</*#[AllocLifetime]*/ 'c> {
 //      have an Vec (with bound)
 //       it contains: Type|TypeRef for managing them between borders
 //A set of transactions
-#[derive(Clone, Debug, AllocParsable, Serializable, VirtualSize)]
+#[derive(Clone, Debug, Parsable, Serializable)]
 pub struct BaseTransactionBundle</*#[AllocLifetime]*/ 'c> {
     #[ByteSize]
     pub byte_size:Option<usize>,
@@ -67,21 +67,21 @@ pub struct BundleWithHash<'c>{
 }
 
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Parsable, Serializable, VirtualSize)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Parsable, Serializable)]
 pub enum SectionType {
     Essential,
     Custom
 }
 
 #[cfg(feature = "deployer")]
-#[derive(Clone, Copy, Debug, Parsable, Serializable, VirtualSize)]
+#[derive(Clone, Copy, Debug, Parsable, Serializable)]
 pub enum DeployType {
     Module,
     Transaction
 }
 
 //A section of transactions
-#[derive(Clone, Copy, Debug, AllocParsable, Serializable, VirtualSize)]
+#[derive(Clone, Copy, Debug, Parsable, Serializable)]
 pub struct BundleSection</*#[AllocLifetime]*/ 'c> {
     //Section type
     pub typ:SectionType,
@@ -91,7 +91,7 @@ pub struct BundleSection</*#[AllocLifetime]*/ 'c> {
 
 
 //A transaction
-#[derive(Clone, Copy, Debug, AllocParsable, Serializable, VirtualSize)]
+#[derive(Clone, Copy, Debug, Parsable, Serializable)]
 pub struct Transaction</*#[AllocLifetime]*/ 'c> {
     //transaction type
     pub txt_desc: u16,
@@ -102,14 +102,14 @@ pub struct Transaction</*#[AllocLifetime]*/ 'c> {
 }
 
 
-#[derive(Copy, Eq, PartialEq, Clone, Parsable, Serializable, VirtualSize, Debug)]
+#[derive(Copy, Eq, PartialEq, Clone, Parsable, Serializable, Debug)]
 pub enum ParamMode {
     Copy,
     Borrow,
     Consume
 }
 
-#[derive(Copy, Eq, PartialEq, Clone, Parsable, Serializable, VirtualSize, Debug)]
+#[derive(Copy, Eq, PartialEq, Clone, Parsable, Serializable, Debug)]
 pub enum ParamRef {
     Load(ParamMode, u16),
     Fetch(ParamMode, u8),
@@ -118,7 +118,7 @@ pub enum ParamRef {
     Provided
 }
 
-#[derive(Copy, Eq, PartialEq, Clone, Parsable, Serializable, VirtualSize, Debug)]
+#[derive(Copy, Eq, PartialEq, Clone, Parsable, Serializable, Debug)]
 pub enum RetType {
     Store,
     Put(u8),

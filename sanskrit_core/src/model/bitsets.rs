@@ -69,7 +69,7 @@ pub trait BitSet<T:BitEntry> where Self:Sized {
 
 //A special set for representing the capabilities
 //it uses an u8 as bitset where each bit i 1 of the 8 capabilities
-#[derive(Ord, PartialOrd, Eq, PartialEq, Copy, Clone, Hash, Debug, Parsable, Serializable, VirtualSize)]
+#[derive(Ord, PartialOrd, Eq, PartialEq, Copy, Clone, Hash, Debug, Parsable, Serializable)]
 pub struct CapSet(pub u8);
 
 //Assosiation between capabilities and bits
@@ -149,7 +149,7 @@ impl CapSet {
 
 //A special set for representing the capabilities
 //it uses an u8 as bitset where each bit i 1 of the 8 capabilities
-#[derive(Ord, PartialOrd, Eq, PartialEq, Copy, Clone, Hash, Debug, Parsable, Serializable, VirtualSize)]
+#[derive(Ord, PartialOrd, Eq, PartialEq, Copy, Clone, Hash, Debug, Parsable, Serializable)]
 pub struct PermSet(pub u8);
 
 //Assosiation between permissions and bits

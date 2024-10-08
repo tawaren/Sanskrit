@@ -15,7 +15,7 @@ pub fn hash_from_slice(input:&[u8]) -> Hash {
 }
 
 //Represents a reference to the nTh element on the stack from the top (Bernouli Index)
-#[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone, Debug, Parsable, Serializable, VirtualSize)]
+#[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone, Debug, Parsable, Serializable)]
 pub struct ValueRef(pub u16);
 
 //Links that point to components in the storage
@@ -35,9 +35,9 @@ impl Serializable for ModuleLink {
     }
 }
 
-impl<'a> Parsable<'a> for ModuleLink {
-    fn parse<A: ParserAllocator>(p: &mut Parser, alloc: &'a A) -> Result<ModuleLink> {
-        Ok(ModuleLink::Remote(Hash::parse(p,alloc)?))
+impl Parsable for ModuleLink {
+    fn parse(p: &mut Parser) -> Result<ModuleLink> {
+        Ok(ModuleLink::Remote(Hash::parse(p)?))
     }
 }
 
@@ -55,15 +55,5 @@ impl ModuleLink {
 pub struct LargeVec<T>(pub Vec<T>);
 
 //Represents a Identifier for a constructor of a specific Adt
-#[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone, Debug, Parsable, Serializable, VirtualSize)]
+#[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone, Debug, Parsable, Serializable)]
 pub struct Tag(pub u8);
-
-//the Parsable Derive is special for the next two see encoding
-#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
-pub struct Ptr<'a, T>(pub &'a T);
-
-#[derive(Copy, Clone, Eq)]
-pub struct SlicePtr<'a, T>(pub u16, pub *const T, pub PhantomData<&'a [T]>);
-
-#[derive(Ord, PartialOrd, Eq, PartialEq)]
-pub struct MutSlicePtr<'a, T>(pub u16, pub *mut T, pub PhantomData<&'a [T]>);

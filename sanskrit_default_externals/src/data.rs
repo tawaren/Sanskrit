@@ -1,9 +1,8 @@
-use sanskrit_common::model::{Hash, SlicePtr, ValueRef};
-use sanskrit_common::arena::HeapArena;
+use alloc::vec::Vec;
+use sanskrit_common::model::{Hash, LargeVec, ValueRef};
 use sanskrit_common::errors::*;
-use sanskrit_common::encoding::*;
-use sanskrit_compile::externals::{just_local_gas_and_mem, CompilationResult};
-use sanskrit_interpreter::model::{ValueSchema, OpCode, Kind};
+use sanskrit_compile::externals::CompilationResult;
+use sanskrit_chain_code::model::{ValueSchema, OpCode, Kind};
 use crate::External;
 
 pub const EXT_DATA:&'static dyn External = &Data;
@@ -23,15 +22,15 @@ impl External for Data {
     global external(28) primitive data Data28
     global external(32) primitive data Data32
     */
-    fn compile_lit<'b, 'h>(&self, _data_idx: u8, data: SlicePtr<'b, u8>, _caller: &[u8; 20], _alloc: &'b HeapArena<'h>) -> Result<CompilationResult<'b>> {
-        Ok(just_local_gas_and_mem((13 + data.len()/50) as u64, data.len() as u64, OpCode::Data(data)))
+    fn compile_lit(&self, _data_idx: u8, data: &[u8], _caller: &Hash) -> Result<CompilationResult> {
+        Ok(CompilationResult::OpCodeResult(OpCode::Data(LargeVec(data.to_vec()))))
     }
 
-    fn get_literal_checker<'b, 'h>(&self, _data_idx: u8, len: u16, _alloc: &'b HeapArena<'h>) -> Result<ValueSchema<'b>> {
+    fn get_literal_checker(&self, _data_idx: u8, len: u16) -> Result<ValueSchema> {
         Ok(ValueSchema::Data(len))
     }
 
-    fn compile_call<'b, 'h>(&self, fun_idx: u8, params: SlicePtr<'b, ValueRef>, _caller: &[u8; 20], _alloc: &'b HeapArena<'h>) -> Result<CompilationResult<'b>> {
+    fn compile_call(&self, fun_idx: u8, params: Vec<ValueRef>, _caller: &Hash) -> Result<CompilationResult> {
         match fun_idx {
             /*
             global external function eq1(data1:Data1, data2:Data1):(res:Bool)
@@ -46,9 +45,9 @@ impl External for Data {
             global external function eq32(data1:Data32, data2:Data32):(res:Bool)
             */
             //currently we have max 32 Byte:
-            x if x < 10 => Ok(just_local_gas_and_mem(14, 0, OpCode::Eq(Kind::Data, params[0], params[1]))),
+            x if x < 10 => Ok(CompilationResult::OpCodeResult(OpCode::Eq(Kind::Data, params[0], params[1]))),
             // extFun joinHash(data1:.Data20, data2:.Data20):(res:.Data20);
-            10 => Ok(just_local_gas_and_mem(120, Hash::SIZE as u64, OpCode::SysInvoke(0, params))),
+            10 => Ok(CompilationResult::OpCodeResult(OpCode::SysInvoke(0, params))),
             /*
             global external function hash1(data1:Data1):Hash
             global external function hash2(data1:Data2):Hash
@@ -62,7 +61,7 @@ impl External for Data {
             global external function hash32(data1:Data32):Hash
             */
             //currently we have max 32 Byte:
-            _ =>  Ok(just_local_gas_and_mem(120, 20, OpCode::TypedSysInvoke(0, Kind::Data, params))),
+            _ =>  Ok(CompilationResult::OpCodeResult(OpCode::TypedSysInvoke(0, Kind::Data, params))),
         }
 
     }

@@ -18,4 +18,3 @@ pub mod store;
 pub mod errors;
 pub mod model;
 pub mod hashing;
-pub mod arena;

@@ -1,6 +1,4 @@
-use crate::model::{Hash, SlicePtr, hash_from_slice};
-use crate::errors::*;
-use crate::arena::VirtualHeapArena;
+use crate::model::{Hash, hash_from_slice};
 
 //Hashing Domains to ensure there are no collisions
 pub enum HashingDomain {
@@ -17,15 +15,6 @@ impl Hasher {
 
     pub fn update(&mut self, data:&[u8]) {
         self.0.update(data);
-    }
-
-    pub fn alloc_finalize<'a>(self, alloc:&'a VirtualHeapArena) ->  Result<SlicePtr<'a,u8>>{
-        //calc the Hash
-        let hash = self.0.finalize();
-        //generate a array to the hash
-        let hash_data_ref = array_ref!(hash.as_bytes(),0,20);
-        //allocate on the heap
-        alloc.copy_alloc_slice(hash_data_ref)
     }
 
     pub fn finalize(self) -> Hash {

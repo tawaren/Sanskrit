@@ -335,7 +335,7 @@ impl<T:Clone+Eq> LinearStack<T>  {
     //Takes a value and returns its content
     // it consumes the old value
     pub fn unpack(&mut self, index:ValueRef, results: &[T],  mode:FetchMode) -> Result<()> {
-        assert!(results.len() <= u8::max_value() as usize);
+        assert!(results.len() <= u8::MAX as usize);
         //fetches the input
         match mode {
             //it is consumed
@@ -355,7 +355,7 @@ impl<T:Clone+Eq> LinearStack<T>  {
     //Takes a value and returns its content
     // it consumes the old value
     pub fn inspect(&mut self, index:ValueRef, results: &[T]) -> Result<()> {
-        assert!(results.len() <= u8::max_value() as usize);
+        assert!(results.len() <= u8::MAX as usize);
         //check that the input was locked
         if !self.get_elem(index)?.locked {
             return error(||"A stack elem must be locked by the enclosing frame in order to be inspected")
@@ -436,7 +436,7 @@ impl<T:Clone+Eq> LinearStack<T>  {
         //push the returns back onto the stack
         self.push_elems(returns)?;
 
-        assert!(self.stack.len() <= u16::max_value() as usize);
+        assert!(self.stack.len() <= u16::MAX as usize);
 
         Ok(lost_marks)
     }
@@ -548,15 +548,8 @@ impl<T:Clone+Eq> LinearStack<T>  {
     //  The rets parameter is the result from the last branch, where as the recovery is the the expected result in case the block/last branch threw an exception.
     pub fn end_branching(&mut self, mut br: BranchInfo<T>, rets: u8) -> Result<()>{
         assert_eq!(br.remaining_branches, 1);
-
         //pop the frame
         let mut frame = self.frames.pop().unwrap();
-
-        //Release locks if any
-       /* if let Some(idx) = br.locks {
-            self.stack[idx].unlock();
-        }*/
-
         //Clean up the branch
         self.ret_branch(&mut br, rets, &mut frame)
     }

@@ -5,17 +5,18 @@ members = [
         "sanskrit_derive",
         "sanskrit_core",
         "sanskrit_deploy",
-        "sanskrit_interpreter",
-        "sanskrit_runtime",
         "sanskrit_compile",
         "sanskrit_memory_store",
         "sanskrit_sled_store",
-        "sanskrit_local_server",
         "sanskrit_default_externals",
         "sanskrit_preloaded_validation",
         "sanskrit_validator",
         "sanskrit_zero_validator",
-        "sanskrit_zero_validator_guest"
+        "sanskrit_zero_validator_guest",
+        "sanskrit_chain_code"
+        #"sanskrit_interpreter",
+        #"sanskrit_runtime",
+        #"sanskrit_local_server",
         #"sanskrit_wasm_deploy_compile", #Must be compiled to the wasm target - fails otherwise
 ]
 
@@ -23,7 +24,7 @@ members = [
 blake3_zkvm = { git = "https://github.com/sp1-patches/BLAKE3", package = "blake3", branch="patch-blake3_zkvm/v.1.0.0" }
 
 [workspace.dependencies]
-alloy-sol-types = "0.7.7"
+alloy-sol-types = "0.8.5"
 
 [profile.release]
 panic = "abort"

@@ -33,7 +33,7 @@ pub fn main() {
 
     match process_preloaded_deploy(modules, transactions, dependencies, system_mode) {
         Ok(hs) => {
-            let ser = Serializer::serialize_fully(&hs,usize::MAX).expect("serialisation failed");
+            let ser = Serializer::serialize_fully(&hs).expect("serialisation failed");
             sp1_zkvm::io::commit_slice(&ser)
         },
         Err(e) => {

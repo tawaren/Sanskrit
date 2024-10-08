@@ -9,7 +9,7 @@ use sanskrit_common::store::*;
 use sanskrit_core::utils::Crc;
 use sanskrit_core::loader::{Loader, FetchCache};
 
-const FUNCTION_LIMIT:usize = u16::max_value() as usize;
+const FUNCTION_LIMIT:usize = u16::MAX as usize;
 
 pub enum CollectResult {
     Function(FetchCache<FunctionComponent>),
