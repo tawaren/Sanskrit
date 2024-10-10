@@ -19,7 +19,7 @@ use sanskrit_core::model::bitsets::*;
 use crate::compacting::Compactor;
 use sanskrit_common::errors::*;
 use sanskrit_core::model::resolved::ResolvedType;
-use sanskrit_core::utils::Crc;
+use sanskrit_common::utils::Crc;
 use crate::externals::CompilationExternals;
 
 //Entry point that compiles all types and public functions of a module

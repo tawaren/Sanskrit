@@ -1,7 +1,6 @@
 use alloc::vec::Vec;
 use crate::encoding::*;
 use crate::errors::*;
-use core::marker::PhantomData;
 use core::fmt::Debug;
 use alloc::borrow::ToOwned;
 

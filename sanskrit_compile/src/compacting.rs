@@ -20,7 +20,7 @@ use sanskrit_common::errors::*;
 use sanskrit_common::model::*;
 use sanskrit_common::store::*;
 use core::mem;
-use sanskrit_core::utils::Crc;
+use sanskrit_common::utils::Crc;
 use crate::collector::{Collector, CollectResult};
 use sanskrit_core::loader::Loader;
 use crate::externals::{CompilationResult, CompilationExternals};

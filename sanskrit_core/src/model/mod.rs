@@ -8,8 +8,9 @@ use sanskrit_common::model::*;
 use sanskrit_common::encoding::*;
 use sanskrit_common::errors::*;
 use crate::model::resolved::ResolvedType;
-use crate::utils::Crc;
+use sanskrit_common::utils::Crc;
 use crate::model::bitsets::{CapSet, PermSet};
+use crate::model::linking::FastModuleLink;
 
 //Represents a Module
 #[derive(Debug, Parsable, Serializable)]
@@ -117,7 +118,7 @@ pub struct BitSerializedVec(pub Vec<bool>);
 //Represents a set of imports and type constructions usable in signatures
 #[derive(Debug, Parsable, Serializable)]
 pub struct PublicImport {
-    pub modules:Vec<ModuleLink>,               //Module Imports
+    pub modules:Vec<FastModuleLink>,           //Module Imports
     pub types:Vec<TypeImport>,                 //Type Imports
 }
 
@@ -130,7 +131,7 @@ pub struct BodyImport {
 }
 
 pub enum Imports<'a> {
-    Module(&'a Crc<ModuleLink>),
+    Module(&'a FastModuleLink),
     Generics(&'a [Crc<ResolvedType>]),
     Public(&'a PublicImport),
     Body(&'a BodyImport)

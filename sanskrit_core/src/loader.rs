@@ -1,25 +1,21 @@
-use alloc::collections::BTreeMap;
 use sanskrit_common::errors::*;
 use crate::model::resolved::*;
 use core::cell::RefCell;
-use alloc::rc::Rc;
 use core::cell::Cell;
-use crate::utils::{Crc, CrcDeDup};
+use sanskrit_common::utils::{Crc, CrcDeDup};
 use alloc::vec::Vec;
-use sanskrit_common::store::*;
 use crate::resolver::Context;
 use sanskrit_common::model::*;
 use crate::model::*;
-use crate::model::linking::{Link, Component};
+use crate::model::linking::{Link, Component, FastModuleLink};
 use core::marker::PhantomData;
+use sanskrit_common::supplier::Supplier;
 
-pub struct Loader<'a, S:Store + 'a> {
+pub struct Loader<'a, S:Supplier<Module> + 'a> {
     //Caches the modules
     // we treat the module link in this rust implementation as an object but it is not in the specification
     //  the specification specifies the loaded modules instead. We split them in two
-    dedup_hash:RefCell<CrcDeDup<ModuleLink>>,
-    modules:RefCell<BTreeMap<Hash,Crc<Module>>>,
-    store:&'a CachedStore<Module, S>, // a reference to the store in case a module is not cached
+    store:&'a S, // a reference to the store in case a module is not cached
     // Object loaders
     // deduplication
     dedup_type:RefCell<CrcDeDup<ResolvedType>>,
@@ -38,85 +34,56 @@ pub struct Loader<'a, S:Store + 'a> {
 
 pub struct FetchCache<T:Component> {
     module:Crc<Module>,         //The Corresponding cached Module
-    link:Crc<ModuleLink>,       //The Module in link form
+    link:FastModuleLink,        //The Module in link form
     offset:u8,                  //The offset of the Component
     phantom: PhantomData<*const T>,
 }
 
-impl<'a, S:Store + 'a> Loader<'a,S> {
+impl<'a, S:Supplier<Module> + 'a> Loader<'a,S> {
     //A new partially loaded Storage Cache
     //it starts out with the module currently processed
-    pub fn new_incremental(store:&'a CachedStore<Module, S>,  link:Hash, module:Rc<Module>) -> Self{
-        //A new empty cache
-        let mut modules = BTreeMap::new();
-        //Insert the Module
-        modules.insert(link,Crc{elem:module});
-
+    pub fn new_incremental(store:&'a S) -> Self{
         //Create the Storage Cache with 0 avaiable components
         Loader {
-            modules:RefCell::new(modules),
             store,
             dedup_type: RefCell::new(CrcDeDup::new()),
             dedup_call: RefCell::new(CrcDeDup::new()),
             dedup_perm: RefCell::new(CrcDeDup::new()),
             dedup_sig: RefCell::new(CrcDeDup::new()),
-            dedup_hash: RefCell::new(CrcDeDup::new()),
             dedup_ctr: RefCell::new(CrcDeDup::new()),
             this_deployed_data: Cell::new(0),
             this_deployed_sigs: Cell::new(0),
             this_deployed_functions: Cell::new(0),
             this_deployed_implements: Cell::new(0),
         }
-
     }
 
     //A new fully loaded storage cache
-    pub fn new_complete(store:&'a CachedStore<Module, S>) -> Self{
+    pub fn new_complete(store:&'a S) -> Self{
         //Works As: current need to use this and all other that can be used from this can not use this
         Loader {
-            modules:RefCell::new(BTreeMap::new()),
             store,
             dedup_type: RefCell::new(CrcDeDup::new()),
             dedup_call: RefCell::new(CrcDeDup::new()),
             dedup_perm: RefCell::new(CrcDeDup::new()),
             dedup_sig: RefCell::new(CrcDeDup::new()),
-            dedup_hash: RefCell::new(CrcDeDup::new()),
             dedup_ctr: RefCell::new(CrcDeDup::new()),
-            this_deployed_data: Cell::new(<usize>::MAX),          //as modules have max 255 adts this is ok
-            this_deployed_sigs: Cell::new(<usize>::MAX),           //as modules have max 255 sigs this is ok
+            this_deployed_data: Cell::new(<usize>::MAX),         //as modules have max 255 adts this is ok
+            this_deployed_sigs: Cell::new(<usize>::MAX),         //as modules have max 255 sigs this is ok
             this_deployed_functions: Cell::new(<usize>::MAX),    //as modules have max 255 funs this is ok
             this_deployed_implements: Cell::new(<usize>::MAX),   //as modules have max 255 impls this is ok
         }
     }
 
-    //Get the cache of a Module
-    fn get_cached_module(&self, hash:Hash) -> Result<Crc<Module>>{
-        //Borrow the cache
-        let mut modules = self.modules.borrow_mut();
-        //if already their ignore it else create it
-        if !modules.contains_key(&hash) {
-            //get the module from the store by its hash
-            let module = self.store.get_cached(&hash)?;
-            //Ref count it and insert it
-            let res = Crc{elem:module};
-            modules.insert(hash,res.clone());
-            Ok(res)
-        } else {
-            //just use the existing
-            Ok(modules[&hash].clone())
-        }
-    }
-
     //Get the module
     pub fn get_module(&self, link:Hash) -> Result<Crc<Module>>{
-        //Get the Module and extract the module from it
-        Ok(self.get_cached_module(link)?.clone())
+        self.store.unique_get(&link)
     }
 
     //Gets a component
-    pub fn get_component<C:Component>(&self, link:&Crc<ModuleLink>, offset:u8) -> Result<FetchCache<C>> {
+    pub fn get_component<C:Component>(&self, link:&FastModuleLink, offset:u8) -> Result<FetchCache<C>> {
         //Get the Module
-        let module = self.get_cached_module(link.to_hash())?;
+        let module = link.load(self)?;
         //Check if really their
 
         if offset as usize >= C::num_elems(&module) {
@@ -132,11 +99,6 @@ impl<'a, S:Store + 'a> Loader<'a,S> {
             offset,
             phantom: PhantomData,
         })
-    }
-
-    pub fn dedup_module_link(&self, link:ModuleLink) -> Crc<ModuleLink> {
-        //module links are not part of the specification so we exclude them from tests (as they are allowed and will be created outside of the loade)
-        self.dedup_hash.borrow_mut().dedup(link)
     }
 
     //Dedup a type
@@ -168,7 +130,7 @@ impl<T:Component> FetchCache<T> {
         &T::get(&self.module, self.offset)
     }
     //gets the modules link
-    pub fn module(&self) -> &Crc<ModuleLink> {
+    pub fn module(&self) -> &FastModuleLink {
         &self.link
     }
     //gets the offset
@@ -176,7 +138,7 @@ impl<T:Component> FetchCache<T> {
         self.offset
     }
     //Create a local context for it (but from the importers view -- meaning they are from a remote Module and the imported functions are ignored and the applies are substituted)
-    pub fn substituted_context<'a, 'b:'a,S:Store+'b>(&self, subs:&'a [Crc<ResolvedType>], store:&'b Loader<'b,S>) -> Result<Context<'b,S>> {
+    pub fn substituted_context<'a, 'b:'a,S:Supplier<Module>+'b>(&self, subs:&'a [Crc<ResolvedType>], store:&'b Loader<'b,S>) -> Result<Context<'b,S>> {
         //Generate a local context
         Context::create_and_resolve(&[
             Imports::Module(&self.link),

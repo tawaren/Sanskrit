@@ -1,18 +1,17 @@
 use sanskrit_common::errors::*;
 use crate::loader::Loader;
-use sanskrit_common::store::Store;
-use crate::utils::Crc;
+use sanskrit_common::utils::Crc;
 use crate::model::resolved::*;
 use crate::model::*;
 use alloc::vec::Vec;
-use sanskrit_common::model::*;
-use crate::model::linking::{Component, CallableComponent};
+use crate::model::linking::{Component, CallableComponent, FastModuleLink, Link};
 use alloc::rc::Rc;
+use sanskrit_common::supplier::Supplier;
 use crate::model::bitsets::{CapSet, BitSet};
 
 //All things that can be cached in an import
 pub struct CachedImports {
-    mref_cache:Vec<Crc<ModuleLink>>,                 //Cached Modules
+    mref_cache:Vec<FastModuleLink>,                  //Cached Modules
     tref_cache:Vec<Crc<ResolvedType>>,               //Cached Types
     pref_cache:Vec<Crc<ResolvedPermission>>,
     cref_cache:Vec<Crc<ResolvedCallable>>,           //Cached Callables
@@ -69,7 +68,7 @@ impl CachedImports {
     }
 }
 
-pub struct Context<'b, S: Store + 'b> {
+pub struct Context<'b, S: Supplier<Module> + 'b> {
     //The resolved imports
     pub cache: CachedImports,
     //The Backend Store
@@ -81,6 +80,8 @@ pub fn top_level_subs(generics:&[Generic]) -> Vec<Crc<ResolvedType>> {
     //Note: We do not account / deduplicate for the generics as these are:
     //         1: implicit
     //         2: unique (each is its own and should not be deduplicated)
+    //            meaning 2 generics with the same offset are different
+    //              unless they are the exact same generic (used in the same body)
     generics.iter().enumerate().map(|(i,c)| match *c {
         Generic::Phantom => Crc{elem:Rc::new(ResolvedType::Generic { caps: CapSet::empty(), offset:i as u8, is_phantom:true})},
         Generic::Physical(caps) => {
@@ -89,10 +90,10 @@ pub fn top_level_subs(generics:&[Generic]) -> Vec<Crc<ResolvedType>> {
     }).collect()
 }
 
-impl<'b, S:Store + 'b> Context<'b, S> {
+impl<'b, S:Supplier<Module> + 'b> Context<'b, S> {
 
     //Generates a top level local Context for a Component from input
-    pub fn from_module_component<T:Component>(comp:&T, module:&Crc<ModuleLink>, use_body:bool, store:&'b Loader<'b,S>) -> Result<Self> {
+    pub fn from_module_component<T:Component>(comp:&T, module:&FastModuleLink, use_body:bool, store:&'b Loader<'b,S>) -> Result<Self> {
         assert!(comp.get_generics().len() <= u8::MAX as usize);
         let top = top_level_subs(comp.get_generics());
         let public = comp.get_public_import();
@@ -134,9 +135,8 @@ impl<'b, S:Store + 'b> Context<'b, S> {
         return Self::create_and_resolve(&[Imports::Public(public)], store)
     }
 
-
     //Gets and resolves a Module from the local context
-    pub fn get_mod(&self, mref:ModRef) -> Result<Crc<ModuleLink>> {
+    pub fn get_mod(&self, mref:ModRef) -> Result<FastModuleLink> {
         unpack_or_error(self.cache.mref_cache.get(mref.0 as usize).cloned(),||"Requested module not imported")
     }
 
@@ -154,7 +154,7 @@ impl<'b, S:Store + 'b> Context<'b, S> {
     }
 
     //Gets and resolves a Module from the local context
-    pub fn list_mods(&self) -> &[Crc<ModuleLink>] {
+    pub fn list_mods(&self) -> &[FastModuleLink] {
         &self.cache.mref_cache
     }
 
@@ -183,17 +183,17 @@ impl<'b, S:Store + 'b> Context<'b, S> {
     fn resolve_all(&mut self, imports:&[Imports]) -> Result<()> {
         for import in imports {
             match *import {
-                Imports::Module(ref module) => {
-                    self.resolve_module_plain((*module).clone())?;
+                Imports::Module(module) => {
+                    self.resolve_module(module.clone())?;
                 },
                 Imports::Generics(gens) => {
                     self.resolve_generics(gens)?;
                 },
-                Imports::Public(ref public) => {
+                Imports::Public(public) => {
                     self.resolve_modules(&public.modules)?;
                     self.resolve_types(&public.types)?;
                 },
-                Imports::Body(ref body) => {
+                Imports::Body(body) => {
                     self.resolve_modules(&body.public.modules)?;
                     self.resolve_types(&body.public.types)?;
                     self.resolve_callables(&body.callables)?;
@@ -204,14 +204,9 @@ impl<'b, S:Store + 'b> Context<'b, S> {
         Ok(())
     }
 
-    fn resolve_module_plain(&mut self, res:Crc<ModuleLink>) -> Result<()> {
+    fn resolve_module(&mut self, res:FastModuleLink) -> Result<()> {
         //Make sure the module is loaded and accounted even if not used
-        match *res {
-            ModuleLink::Remote(hash) => {
-                self.store.get_module(hash)?;
-            },
-            ModuleLink::This(_) => {},
-        }
+        if !res.is_local_link() { res.resolve(self)?; };
         self.cache.mref_cache.push(res);
         Ok(())
     }
@@ -223,10 +218,9 @@ impl<'b, S:Store + 'b> Context<'b, S> {
         Ok(())
     }
 
-    fn resolve_modules(&mut self, imps:&[ModuleLink]) -> Result<()>  {
+    fn resolve_modules(&mut self, imps:&[FastModuleLink]) -> Result<()>  {
         for imp in imps {
-            let dedup = self.store.dedup_module_link(imp.clone());
-            self.resolve_module_plain(dedup)?;
+            self.resolve_module(imp.clone())?;
         }
         Ok(())
     }
@@ -263,7 +257,7 @@ impl<'b, S:Store + 'b> Context<'b, S> {
             let res = match imp {
                 PermissionImport::Type(perm,tref) => {
                     let typ = self.get_type(*tref)?;
-                    match **typ.get_target() {
+                    match *typ.get_target() {
                         ResolvedType::Data { .. } => self.store.dedup_permission(ResolvedPermission::TypeData{
                             perm: *perm,
                             ctrs:self.resolve_ctr_from_type(&typ)?,
@@ -380,7 +374,7 @@ impl<'b, S:Store + 'b> Context<'b, S> {
             ResolvedType::Projection { depth, .. } => depth+nesting,
             _ => nesting
         };
-        self.store.dedup_type(ResolvedType::Projection { depth, un_projected:inner.get_target().clone()})
+        self.store.dedup_type(ResolvedType::Projection { depth, un_projected:get_crc_target(inner).clone()})
     }
 
     fn resolve_projection_type(&self, inner:TypeRef) -> Result<Crc<ResolvedType>>{
@@ -417,7 +411,7 @@ impl<'b, S:Store + 'b> Context<'b, S> {
     }
 
 
-    fn resolve_signature_from_component<C:CallableComponent>(&self, module:&Crc<ModuleLink>, offset:u8, applies:&[Crc<ResolvedType>]) -> Result<Crc<ResolvedSignature>> {
+    fn resolve_signature_from_component<C:CallableComponent>(&self, module:&FastModuleLink, offset:u8, applies:&[Crc<ResolvedType>]) -> Result<Crc<ResolvedSignature>> {
         //Load the Comp
         let comp_cache = self.store.get_component::<C>(module, offset)?;
         // get the Comp

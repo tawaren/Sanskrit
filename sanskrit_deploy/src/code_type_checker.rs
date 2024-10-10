@@ -15,17 +15,17 @@ use sanskrit_core::model::linking::*;
 use sanskrit_core::model::resolved::*;
 use sanskrit_core::model::bitsets::*;
 use sanskrit_common::errors::*;
-use sanskrit_common::store::Store;
 use alloc::vec::Vec;
 use sanskrit_core::resolver::Context;
 use sanskrit_common::model::*;
-use sanskrit_core::utils::Crc;
+use sanskrit_common::supplier::Supplier;
+use sanskrit_common::utils::Crc;
 
 //Todo: Make Configurable
 //used to ensure that their is a stack size that prevents stack overflows
 const MAX_NESTING_DEPTH:usize = 50;
 
-pub struct TypeCheckerContext<'b, S:Store + 'b> {
+pub struct TypeCheckerContext<'b, S:Supplier<Module> + 'b> {
     context: Context<'b, S>,                 //The Resolved Components from the input
     stack: LinearStack<Crc<ResolvedType>>,   //The current stack layout
     transactional:bool,
@@ -33,7 +33,7 @@ pub struct TypeCheckerContext<'b, S:Store + 'b> {
     limit:usize,
 }
 
-impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
+impl<'b, S:Supplier<Module> + 'b> TypeCheckerContext<'b,S> {
     //Creates a new Empty context
     pub fn new(context: Context<'b, S>) -> Self {
         //Define some reused types and capabilities
@@ -343,7 +343,7 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
 
         if let ResolvedType::Projection{ depth, ref un_projected } = *v_typ {
             //check that it is of the right type
-            if n_typ.get_target() != un_projected || n_typ.get_projection_depth() != depth+1 {
+            if get_crc_target(&n_typ) != un_projected || n_typ.get_projection_depth() != depth+1 {
                 return error(||"Specified type mismatches input type")
             }
         } else if let ResolvedType::Projection{ depth, ref un_projected } = *n_typ {
@@ -370,7 +370,7 @@ impl<'b, S:Store + 'b> TypeCheckerContext<'b,S> {
             ResolvedType::Projection {depth, ref un_projected, ..} => {
                 assert!(if let ResolvedType::Projection{..} = **un_projected {false} else {true});
                 //check that it is of the right type
-                if n_typ.get_target() != un_projected || n_typ.get_projection_depth() != depth-1 {
+                if get_crc_target(&n_typ) != un_projected || n_typ.get_projection_depth() != depth-1 {
                     return error(||"Specified type mismatches input type")
                 }
                 if !un_projected.get_caps().contains(Capability::Primitive) {

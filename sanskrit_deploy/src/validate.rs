@@ -1,24 +1,18 @@
 //! A Validator that checks certain condition on the input and the linked Components
 //!
 
-use alloc::rc::Rc;
 use sanskrit_core::model::*;
 use sanskrit_core::model::linking::*;
 use sanskrit_core::model::resolved::*;
 use sanskrit_core::resolver::*;
 use sanskrit_common::errors::*;
-use sanskrit_common::encoding::*;
-use sanskrit_common::store::{CachedStore, Store};
-use sanskrit_core::utils::Crc;
+use sanskrit_common::supplier::Supplier;
+use sanskrit_common::utils::Crc;
 use sanskrit_core::loader::Loader;
 use crate::code_type_checker::TypeCheckerContext;
-use sanskrit_common::model::ModuleLink;
-use sanskrit_common::model::Hash;
 use sanskrit_core::model::bitsets::{CapSet, BitSet, PermSet};
 
-pub fn validate_top_function<S:Store>(data:&[u8], store:&CachedStore<Module,S>) -> Result<()>{
-    //Parse the function
-    let fun:FunctionComponent = Parser::parse_fully::<FunctionComponent>(data)?;
+pub fn validate_top_function<S:Supplier<Module>>(fun:FunctionComponent, store:&S) -> Result<()>{
     //Prepare the cache for this iteration
     let resolver = Loader::new_complete(store);
     //Prepare the context
@@ -35,23 +29,17 @@ pub fn validate_top_function<S:Store>(data:&[u8], store:&CachedStore<Module,S>) 
     Ok(())
 }
 
-pub fn validate<S:Store>(data:&[u8], store:&CachedStore<Module,S>, link:Hash, system_mode_on:bool) -> Result<()> {
-    //Parse the module
-    let parsed: Rc<Module> = store.get_direct(data, &link)?;
-    //Check if it is a system Module
-    if parsed.system_module != system_mode_on {
-        return if system_mode_on {
-            error(||"Only a system module can be deployed in system mode")
-        } else {
-            error(||"System modules can only be deployed in system mode")
-        }
-    }
+pub fn validate<S:Supplier<Module>>(store:&S, module_link:FastModuleLink, system_mode_allowed:bool) -> Result<()> {
     //Prepare the cache for this iteration
-    let resolver = Loader::new_incremental(store, link, parsed);
-    //Get a reference to the cached Module
-    let module = resolver.get_module(link)?;
-    // get the module lnk
-    let module_link = resolver.dedup_module_link(ModuleLink::This(link));
+    let resolver = Loader::new_incremental(store);
+    //this is safe as we are the entry point and the loader is literally the deduplicator
+    // thus initialising it with those ensure that these are the prime ones
+    let module = module_link.load(&resolver)?;
+    //Check if it is a system Module
+    let system_mode_on = module.system_module;
+    if system_mode_on & !system_mode_allowed {
+        return error(||"System modules can only be deployed in system mode");
+    }
 
     //Mange current sigs and adts for forward reference checking
     let mut cur_adt_offset = 0;
@@ -140,7 +128,7 @@ pub fn validate<S:Store>(data:&[u8], store:&CachedStore<Module,S>, link:Hash, sy
 }
 
 //Checks that an Adt declaration is semantically valid
-fn validate_adt<S:Store>(adt:&DataComponent, context:&Context<S>, system_mode_on:bool, #[cfg(feature = "forward_type_ref")] cur_adt_offset:usize) -> Result<()>{
+fn validate_adt<S:Supplier<Module>>(adt:&DataComponent, context:&Context<S>, system_mode_on:bool, #[cfg(feature = "forward_type_ref")] cur_adt_offset:usize) -> Result<()>{
     //Check the import section
     //ensure that no self referencing is used in applies unless they are phantom or literal
     #[cfg(feature = "forward_type_ref")]
@@ -174,7 +162,7 @@ fn validate_adt<S:Store>(adt:&DataComponent, context:&Context<S>, system_mode_on
 
 
 //Checks that an signature declaration is semantically valid
-fn validate_sig<S:Store>(sig:&SigComponent, ctx:&Context<S>) -> Result<()>{
+fn validate_sig<S:Supplier<Module>>(sig:&SigComponent, ctx:&Context<S>) -> Result<()>{
     //Check the import section
     //we allow no protection forwarding as sigs have 2 visibilities & should not need to import create, consumes & implements
     check_type_import_integrity(ctx)?;
@@ -192,7 +180,7 @@ fn validate_sig<S:Store>(sig:&SigComponent, ctx:&Context<S>) -> Result<()>{
 
 }
 
-fn check_body<S:Store>(fun:&CallableImpl, ctx:&Context<S>, system_mode_on:bool) -> Result<()> {    //load everithing
+fn check_body<S:Supplier<Module>>(fun:&CallableImpl, ctx:&Context<S>, system_mode_on:bool) -> Result<()> {    //load everithing
     match fun {
         CallableImpl::External => if !system_mode_on {return error(||"Deploying externals requires system mode")},
         CallableImpl::Internal { .. } => {
@@ -207,7 +195,7 @@ fn check_body<S:Store>(fun:&CallableImpl, ctx:&Context<S>, system_mode_on:bool) 
     Ok(())
 }
 
-fn validate_transaction<S:Store>(fun:&FunctionComponent, ctx:&Context<S>) -> Result<()> {
+fn validate_transaction<S:Supplier<Module>>(fun:&FunctionComponent, ctx:&Context<S>) -> Result<()> {
     //Transactions must be public
     match fun.scope {
         Accessibility::Guarded(_) | Accessibility::Local => return error(||"Transactions functions must be public"),
@@ -233,7 +221,7 @@ fn validate_transaction<S:Store>(fun:&FunctionComponent, ctx:&Context<S>) -> Res
 }
 
 //Checks that an function declaration is semantically valid
-fn validate_function<S:Store>(fun:&FunctionComponent, ctx:&Context<S>, system_mode_on:bool) -> Result<()> {
+fn validate_function<S:Supplier<Module>>(fun:&FunctionComponent, ctx:&Context<S>, system_mode_on:bool) -> Result<()> {
     //Check the import section
     check_type_import_integrity(ctx)?;
     //Check capability constraints
@@ -248,7 +236,7 @@ fn validate_function<S:Store>(fun:&FunctionComponent, ctx:&Context<S>, system_mo
 
 
 //Checks that an function declaration is semantically valid
-fn validate_implement<S:Store>(imp:&ImplementComponent, ctx:&Context<S>, system_mode_on:bool) -> Result<()> {
+fn validate_implement<S:Supplier<Module>>(imp:&ImplementComponent, ctx:&Context<S>, system_mode_on:bool) -> Result<()> {
     //Check the import section
     check_type_import_integrity(ctx)?;
 
@@ -326,7 +314,7 @@ fn check_generic_constraints(generics:&[Generic], applies:&[Crc<ResolvedType>]) 
 
 //Checks that there are no cycles in the apply graph
 #[cfg(feature = "forward_type_ref")]
-fn check_save_self_referencing<S:Store>(context:&Context<S>, cur_adt_offset:usize) -> Result<()> {
+fn check_save_self_referencing<S:Supplier<Module>>(context:&Context<S>, cur_adt_offset:usize) -> Result<()> {
     //iterate over all type imports
     for typ in context.list_types() {
         //resolve the type to ensure it is legit
@@ -366,7 +354,7 @@ fn check_save_self_referencing<S:Store>(context:&Context<S>, cur_adt_offset:usiz
 
 //Checks that native imports are allowed and have correct amount and kind of arguments
 //Checks that normal imports have correct amount and kind of arguments
-fn check_type_import_integrity<S:Store>(context:&Context<S>) -> Result<()> {
+fn check_type_import_integrity<S:Supplier<Module>>(context:&Context<S>) -> Result<()> {
     //iterate over all type imports
     for typ in context.list_types() {
         //resolve the type to ensure it is legit
@@ -411,7 +399,7 @@ fn check_type_import_integrity<S:Store>(context:&Context<S>) -> Result<()> {
     Ok(())
 }
 
-fn check_function_import_integrity<S:Store>(context:&Context<S>) -> Result<()> {
+fn check_function_import_integrity<S:Supplier<Module>>(context:&Context<S>) -> Result<()> {
     //iterate over all type imports
     for c in context.list_callables() {
         //resolve the type to ensure it is legit
@@ -449,7 +437,7 @@ fn check_cap_constraints(must_have_caps:CapSet, caps:CapSet) -> Result<()>{
 }
 
 //Checks that the fields in the constructor do not use phantoms as type and do not violate the recursive generics declared on the adt
-fn check_ctr_fields<S:Store>(provided_caps:CapSet, ctrs:&[Case], context:&Context<S>, #[cfg(feature = "forward_type_ref")] cur_adt_offset:usize) -> Result<()> {
+fn check_ctr_fields<S:Supplier<Module>>(provided_caps:CapSet, ctrs:&[Case], context:&Context<S>, #[cfg(feature = "forward_type_ref")] cur_adt_offset:usize) -> Result<()> {
     //Go over all constructors
     for ctr in ctrs {
         //Go over all fields
@@ -473,7 +461,8 @@ fn check_ctr_fields<S:Store>(provided_caps:CapSet, ctrs:&[Case], context:&Contex
                 },
                 ResolvedType::Generic { .. } => {},
                 //We have all capabilities on a projection
-                ResolvedType::Projection { ref un_projected, .. } => { },
+                // Note: Projections of phantoms are ok
+                ResolvedType::Projection { .. } => { },
             }
         }
     }
@@ -500,7 +489,7 @@ fn ensure_backwards_ref(typ:&ResolvedType, cur_adt_offset:usize) -> Result<()> {
 }
 
 //check the functions visibility
-fn check_access(comp_access:&Accessibility, comp_module:&Crc<ModuleLink>, comp_applies:&[Crc<ResolvedType>], system_mode_on:bool) -> Result<()> {
+fn check_access(comp_access:&Accessibility, comp_module:&FastModuleLink, comp_applies:&[Crc<ResolvedType>], system_mode_on:bool) -> Result<()> {
     //We have always access to types defined in the same module or if we are in system mode
     if comp_module.is_local_link() || system_mode_on {
         return Ok(())
@@ -525,7 +514,7 @@ fn check_access(comp_access:&Accessibility, comp_module:&Crc<ModuleLink>, comp_a
 }
 
 //Checks the visibility constraints
-fn check_callable_import_accessibility<S:Store>(context:&Context<S>, system_mode_on:bool) -> Result<()> {
+fn check_callable_import_accessibility<S:Supplier<Module>>(context:&Context<S>, system_mode_on:bool) -> Result<()> {
     //iterate over all imported functions
     for c in context.list_callables() {
         //fetch the function
@@ -553,7 +542,7 @@ fn check_callable_import_accessibility<S:Store>(context:&Context<S>, system_mode
 }
 
 //Checks the visibility constraints
-fn check_permission_accessibility<S:Store>(context:&Context<S>, system_mode_on:bool) -> Result<()> {
+fn check_permission_accessibility<S:Supplier<Module>>(context:&Context<S>, system_mode_on:bool) -> Result<()> {
     //iterate over all imported functions
     for p in context.list_perms() {
         //fetch the function
@@ -675,7 +664,7 @@ fn check_accessibility_integrity(vis:&Accessibility, num_gens:usize) -> Result<(
 }
 
 //Checks that params and return to not phantoms
-fn check_params_and_returns<S:Store>(params:&[Param], returns:&[TypeRef], context:&Context<S>) -> Result<()> {
+fn check_params_and_returns<S:Supplier<Module>>(params:&[Param], returns:&[TypeRef], context:&Context<S>) -> Result<()> {
 
     //process all params
     for &Param{ typ, ..} in params {
@@ -703,7 +692,7 @@ fn check_params_and_returns<S:Store>(params:&[Param], returns:&[TypeRef], contex
 
 
 //Checks that params and return to not phantoms
-fn check_txt_params_and_returns<S:Store>(_params:&[Param], returns:&[TypeRef], context:&Context<S>) -> Result<()> {
+fn check_txt_params_and_returns<S:Supplier<Module>>(_params:&[Param], returns:&[TypeRef], context:&Context<S>) -> Result<()> {
 
     //Nothing to do for params anymore
     //process all returns
@@ -717,7 +706,7 @@ fn check_txt_params_and_returns<S:Store>(_params:&[Param], returns:&[TypeRef], c
 }
 
 
-fn check_implement_constraints<S:Store>(imp:&ImplementComponent, context:&Context<S>) -> Result<()> {
+fn check_implement_constraints<S:Supplier<Module>>(imp:&ImplementComponent, context:&Context<S>) -> Result<()> {
     //Ensure we are permissioned
     let perm = imp.sig.fetch(context)?;
     //Check the permission type

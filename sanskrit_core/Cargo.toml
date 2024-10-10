@@ -6,7 +6,11 @@ edition = "2021"
 
 [features]
 default = ["std"]
+multi-thread = ["spin"]
 std = []
+
+[dependencies]
+spin = { version = "0.9.8", optional = true, default-features = false, features = ["spin_mutex"]}
 
 [dependencies.sanskrit_common]
 path = "../sanskrit_common"

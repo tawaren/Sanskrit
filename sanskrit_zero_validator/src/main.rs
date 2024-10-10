@@ -87,13 +87,17 @@ fn main() {
     let action = match mode {
         Mode::Execute => {
             // Execute the program
-            let (output, report) = client.execute(SANSKRIT_ZERO_VALIDATOR_ELF, stdin).run().unwrap();
+            let (_output, report) = client.execute(SANSKRIT_ZERO_VALIDATOR_ELF, stdin).run().unwrap();
             println!("Program executed successfully.");
             // Record the number of cycles executed.
 
             println!("Number of cycles: {}", report.total_instruction_count());
+            println!("Number of syscalls: {}", report.total_syscall_count());
+            println!("Number of Memory Addresses: {:#?}", report.touched_memory_addresses);
+
             println!("Cycle Tracker: {:#?}", report.cycle_tracker);
-            println!("Full Report: {}", report);
+
+            //println!("Full Report: {}", report);
 
             None
         }

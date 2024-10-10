@@ -1,8 +1,8 @@
-use crate::utils::Crc;
+use sanskrit_common::utils::Crc;
 use alloc::vec::Vec;
 use sanskrit_common::model::*;
 use sanskrit_common::errors::*;
-use crate::model::linking::Link;
+use crate::model::linking::{FastModuleLink, Link};
 use crate::model::bitsets::{CapSet, BitSet, PermSet};
 use crate::model::Permission;
 
@@ -19,11 +19,11 @@ pub enum ResolvedType {
     Projection { depth:u8, un_projected: Crc<ResolvedType> },
     //An signature type (can be from same module if Module == This)
     // As a signature ignores its generics when computing its caps generic_caps == caps == base_caps
-    Sig { caps: CapSet, module:Crc<ModuleLink>, offset:u8, applies: Vec<Crc<ResolvedType>>},
+    Sig { caps: CapSet, module:FastModuleLink, offset:u8, applies: Vec<Crc<ResolvedType>>},
     //An imported type (can be from same module if Module == This)
-    Data { generic_caps: CapSet, caps: CapSet, module:Crc<ModuleLink>, offset:u8, applies: Vec<Crc<ResolvedType>>},
+    Data { generic_caps: CapSet, caps: CapSet, module:FastModuleLink, offset:u8, applies: Vec<Crc<ResolvedType>>},
     //An imported type (can be from same module if Module == This)
-    Lit { generic_caps: CapSet, caps: CapSet, module:Crc<ModuleLink>, offset:u8, applies: Vec<Crc<ResolvedType>>, size:u16},
+    Lit { generic_caps: CapSet, caps: CapSet, module:FastModuleLink, offset:u8, applies: Vec<Crc<ResolvedType>>, size:u16},
     //An External Type
     Virtual(Hash)
 }
@@ -40,8 +40,8 @@ pub enum ResolvedPermission{
 //A Callable
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub enum ResolvedCallable {
-    Function{module:Crc<ModuleLink>, offset:u8, applies: Vec<Crc<ResolvedType>>},
-    Implement{module:Crc<ModuleLink>, offset:u8, applies: Vec<Crc<ResolvedType>>},
+    Function{module:FastModuleLink, offset:u8, applies: Vec<Crc<ResolvedType>>},
+    Implement{module:FastModuleLink, offset:u8, applies: Vec<Crc<ResolvedType>>},
 }
 
 //A function signature (retrieved from applying generics to a function)
@@ -60,10 +60,10 @@ pub struct ResolvedParam {
     pub consumes: bool,               //is it consumed when the function is applied
 }
 
-impl Crc<ResolvedPermission> {
+impl ResolvedPermission {
 
     pub fn check_value_permission(&self, expected_typ:&Crc<ResolvedType>, expected_perm:Permission) -> bool {
-        match **self {
+        match *self {
             ResolvedPermission::TypeLit { perm, ref typ, ..}
             | ResolvedPermission::TypeData { perm, ref typ, .. }
             | ResolvedPermission::TypeSig { perm, ref typ, .. } => expected_typ == typ && perm.contains(expected_perm),
@@ -72,7 +72,7 @@ impl Crc<ResolvedPermission> {
     }
 
     pub fn check_permission(&self, expected_perm:Permission) -> bool {
-        match **self {
+        match *self {
             ResolvedPermission::TypeSig { perm, .. }
             | ResolvedPermission::TypeData { perm, .. }
             | ResolvedPermission::TypeLit { perm, .. }
@@ -81,7 +81,7 @@ impl Crc<ResolvedPermission> {
     }
 
     pub fn get_type(&self) -> Result<&Crc<ResolvedType>> {
-        match **self {
+        match *self {
             ResolvedPermission::TypeLit { ref typ, ..}
             | ResolvedPermission::TypeData { ref typ, .. }
             | ResolvedPermission::TypeSig { ref typ, .. } => Ok(typ),
@@ -90,7 +90,7 @@ impl Crc<ResolvedPermission> {
     }
 
     pub fn get_fun(&self) -> Result<&Crc<ResolvedCallable>> {
-        match **self {
+        match *self {
             ResolvedPermission::FunSig { ref fun, .. } => Ok(fun),
             _ => error(||"Only fun permissions have funs"),
         }
@@ -98,7 +98,7 @@ impl Crc<ResolvedPermission> {
 
 
     pub fn get_sig(&self) -> Result<&Crc<ResolvedSignature>> {
-        match **self {
+        match *self {
             ResolvedPermission::TypeSig { ref signature, .. }
             | ResolvedPermission::FunSig { ref signature, .. } => Ok(signature),
             _ => error(||"Only call & implement permissions have signatures"),
@@ -106,14 +106,14 @@ impl Crc<ResolvedPermission> {
     }
 
     pub fn get_ctrs(&self) -> Result<&Crc<Vec<Vec<Crc<ResolvedType>>>>> {
-        match **self {
+        match *self {
             ResolvedPermission::TypeData { ref ctrs, .. } => Ok(ctrs),
             _ => error(||"Only create, consume & inspect permissions have constructors"),
         }
     }
 
     pub fn get_lit_size(&self) -> Result<u16> {
-        match **self {
+        match *self {
             ResolvedPermission::TypeLit { size, .. } => Ok(size),
             _ => error(||"Only lit create permissions have a size"),
         }
@@ -122,7 +122,7 @@ impl Crc<ResolvedPermission> {
 }
 
 //Some usefull functions on the Type
-impl Crc<ResolvedType> {
+impl ResolvedType {
     //Extracts the capabilities
     // This has the recursive caps injected into the generics to ensure that we can build types that are polymorphic in respect to recursive capabilities
     //   Thanks to this we can have: <Copy,Drop,Persist,...> Option[<Embed> T]{None;Some(T);} and use it safely with Copy, Drop & Persist types (the Option will loose Copy, Drop, Persist if T does not have it)
@@ -130,7 +130,7 @@ impl Crc<ResolvedType> {
     //  This must be used when checking adt fields against the adt base caps
     // Note: this only influences generics and applied types with generic inputs
     pub fn get_generic_caps(&self) -> CapSet {
-        match **self {
+        match *self {
             ResolvedType::Sig { caps:generic_caps, .. } //For Sigs: generic_caps == caps (all sigs ignore generics)
             | ResolvedType::Lit { generic_caps, .. }
             | ResolvedType::Data { generic_caps, .. } => generic_caps,
@@ -147,7 +147,7 @@ impl Crc<ResolvedType> {
     //  This must be used when checking if the correct caps are available to execute a operation
     // Note: this only influences generics and applied types with generic inputs
     pub fn get_caps(&self) -> CapSet {
-        match **self {
+        match *self {
             ResolvedType::Generic { caps, .. }
             | ResolvedType::Sig { caps, .. }
             | ResolvedType::Lit { caps, .. }
@@ -157,18 +157,18 @@ impl Crc<ResolvedType> {
         }
     }
 
-    pub fn get_target(&self) -> &Crc<ResolvedType> {
-        match **self {
+    pub fn get_target(&self) -> &ResolvedType {
+        match *self {
             ResolvedType::Projection { ref un_projected, .. } => {
                 assert!(if let ResolvedType::Projection{..} = **un_projected {false} else {true});
-                un_projected
+                &un_projected
             },
             _ => self
         }
     }
 
     pub fn get_projection_depth(&self) -> u8 {
-        match **self {
+        match *self {
             ResolvedType::Projection { depth, .. } => depth,
             _ => 0
         }
@@ -176,7 +176,7 @@ impl Crc<ResolvedType> {
 
     //checks if this type is a literal
     pub fn is_literal(&self) -> bool {
-        match **self {
+        match *self {
             ResolvedType::Lit {  .. }  => true,
             _ => false
         }
@@ -184,7 +184,7 @@ impl Crc<ResolvedType> {
 
     //checks if this type is a literal
     pub fn is_data(&self) -> bool {
-        match **self {
+        match *self {
             ResolvedType::Data {  .. }  => true,
             _ => false
         }
@@ -192,7 +192,7 @@ impl Crc<ResolvedType> {
 
     //checks if this type is local (from current module)
     pub fn is_local(&self) -> bool {
-        match **self {
+        match *self {
             ResolvedType::Sig { ref module, .. }
             | ResolvedType::Lit { ref module, .. }
             | ResolvedType::Data { ref module, .. } => module.is_local_link(),
@@ -203,13 +203,23 @@ impl Crc<ResolvedType> {
     }
 }
 
+pub fn get_crc_target(typ:&Crc<ResolvedType>) -> &Crc<ResolvedType> {
+    match **typ {
+        ResolvedType::Projection { ref un_projected, .. } => {
+            assert!(if let ResolvedType::Projection{..} = **un_projected {false} else {true});
+            &un_projected
+        },
+        _ => typ
+    }
+}
+
 
 //Some usefull functions on the Callable
-impl Crc<ResolvedCallable> {
+impl ResolvedCallable {
 
     //checks if this type is local (from current module)
     pub fn is_local(&self) -> bool {
-        match **self {
+        match *self {
             ResolvedCallable::Function { ref module, .. }
             | ResolvedCallable::Implement { ref module, .. } => module.is_local_link(),
         }

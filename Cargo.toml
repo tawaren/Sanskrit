@@ -5,7 +5,6 @@ members = [
         "sanskrit_derive",
         "sanskrit_core",
         "sanskrit_deploy",
-        "sanskrit_compile",
         "sanskrit_memory_store",
         "sanskrit_sled_store",
         "sanskrit_default_externals",
@@ -14,6 +13,7 @@ members = [
         "sanskrit_zero_validator",
         "sanskrit_zero_validator_guest",
         "sanskrit_chain_code"
+        #"sanskrit_compile",
         #"sanskrit_interpreter",
         #"sanskrit_runtime",
         #"sanskrit_local_server",
@@ -21,7 +21,8 @@ members = [
 ]
 
 [patch.crates-io]
-blake3_zkvm = { git = "https://github.com/sp1-patches/BLAKE3", package = "blake3", branch="patch-blake3_zkvm/v.1.0.0" }
+#blake3_zkvm = { git = "https://github.com/sp1-patches/BLAKE3", package = "blake3", branch="patch-blake3_zkvm/v.1.0.0" }
+sha2-v0-10-8 = { git = "https://github.com/sp1-patches/RustCrypto-hashes", package = "sha2", branch = "patch-sha2-v0.10.8" }
 
 [workspace.dependencies]
 alloy-sol-types = "0.8.5"

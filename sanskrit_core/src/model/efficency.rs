@@ -63,6 +63,7 @@ impl PartialOrd for ResolvedType {
         Some(self.cmp(other))
     }
 }
+
 impl Ord for ResolvedType {
     fn cmp(&self, other: &Self) -> Ordering {
         match (self,other) {

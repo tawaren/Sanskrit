@@ -1,4 +1,5 @@
 use crate::model::{Hash, hash_from_slice};
+use sha2::{Sha256, Digest};
 
 //Hashing Domains to ensure there are no collisions
 pub enum HashingDomain {
@@ -8,10 +9,10 @@ pub enum HashingDomain {
     Index
 }
 
-pub struct Hasher(blake3::Hasher);
+pub struct Hasher(Sha256);
 
 impl Hasher {
-    pub fn new() -> Self { Hasher(blake3::Hasher::new())  }
+    pub fn new() -> Self { Hasher(Sha256::new())  }
 
     pub fn update(&mut self, data:&[u8]) {
         self.0.update(data);
@@ -21,7 +22,7 @@ impl Hasher {
         //calc the Hash
         let hash = self.0.finalize();
         //generate a array to the hash
-        hash_from_slice(hash.as_bytes())
+        hash_from_slice(&hash[..])
     }
 }
 
