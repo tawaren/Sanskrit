@@ -1,28 +1,34 @@
 use sanskrit_common::errors::*;
 use crate::model::resolved::*;
-use core::cell::RefCell;
 use core::cell::Cell;
-use sanskrit_common::utils::{Crc, CrcDeDup};
 use alloc::vec::Vec;
 use crate::resolver::Context;
 use sanskrit_common::model::*;
 use crate::model::*;
-use crate::model::linking::{Link, Component, FastModuleLink};
+use crate::model::linking::{Component, FastModuleLink};
 use core::marker::PhantomData;
-use sanskrit_common::supplier::Supplier;
+use sp1_zkvm_col::arena::URef;
 
-pub struct Loader<'a, S:Supplier<Module> + 'a> {
-    //Caches the modules
-    // we treat the module link in this rust implementation as an object but it is not in the specification
-    //  the specification specifies the loaded modules instead. We split them in two
-    store:&'a S, // a reference to the store in case a module is not cached
-    // Object loaders
-    // deduplication
-    dedup_type:RefCell<CrcDeDup<ResolvedType>>,
-    dedup_call:RefCell<CrcDeDup<ResolvedCallable>>,
-    dedup_perm:RefCell<CrcDeDup<ResolvedPermission>>,
-    dedup_sig:RefCell<CrcDeDup<ResolvedSignature>>,
-    dedup_ctr:RefCell<CrcDeDup<Vec<Vec<Crc<ResolvedType>>>>>,
+pub type ResolvedCtrs = Vec<Vec<URef<'static,ResolvedType>>>;
+
+pub trait StateManager {
+    fn get_unique_module(&self, hash: URef<'static, ModuleLink>) -> Result<URef<'static,Module>>;
+    fn create_generic_type(&self, gen:ResolvedType) -> URef<'static,ResolvedType>;
+    fn sig_type_dedup(&self, sig:ResolvedType) -> URef<'static,ResolvedType>;
+    fn virtual_type_dedup(&self, virt:ResolvedType) -> URef<'static,ResolvedType>;
+    fn projection_type_dedup(&self, proj:ResolvedType) -> URef<'static,ResolvedType>;
+    fn data_type_dedup(&self, param:ResolvedComponent, extra:&DataComponent) -> URef<'static,ResolvedType>;
+    fn dedup_callable(&self, call:ResolvedCallable) -> URef<'static,ResolvedCallable>;
+    fn dedup_permission(&self, perm:ResolvedPermission) -> URef<'static,ResolvedPermission>;
+    fn dedup_signature(&self, sig:ResolvedSignature) -> URef<'static,ResolvedSignature>;
+    fn dedup_ctr(&self, ctr:ResolvedCtrs) -> URef<'static,ResolvedCtrs>;
+}
+
+pub struct Loader<S:StateManager> {
+    //The backing global Module store
+    store:S, // a reference to the store in case a module is not cached
+    // The current Module
+    this:Option<FastModuleLink>,
     //Helper to simulate partially loaded modules (necessary to detect cycles in component dependencies)
     //could be removed if turing completeness is required (but then tail call needed to prevent stack depth problems)
     pub this_deployed_data:Cell<usize>,
@@ -33,24 +39,20 @@ pub struct Loader<'a, S:Supplier<Module> + 'a> {
 }
 
 pub struct FetchCache<T:Component> {
-    module:Crc<Module>,         //The Corresponding cached Module
+    module:URef<'static, Module>,         //The Corresponding cached Module
     link:FastModuleLink,        //The Module in link form
     offset:u8,                  //The offset of the Component
     phantom: PhantomData<*const T>,
 }
 
-impl<'a, S:Supplier<Module> + 'a> Loader<'a,S> {
+impl<S:StateManager> Loader<S> {
     //A new partially loaded Storage Cache
     //it starts out with the module currently processed
-    pub fn new_incremental(store:&'a S) -> Self{
-        //Create the Storage Cache with 0 avaiable components
+    pub fn new_for_module(store:S, module: FastModuleLink) -> Self{
         Loader {
+            //Create with 0 available components
             store,
-            dedup_type: RefCell::new(CrcDeDup::new()),
-            dedup_call: RefCell::new(CrcDeDup::new()),
-            dedup_perm: RefCell::new(CrcDeDup::new()),
-            dedup_sig: RefCell::new(CrcDeDup::new()),
-            dedup_ctr: RefCell::new(CrcDeDup::new()),
+            this: Some(module), //transactions are not in a module
             this_deployed_data: Cell::new(0),
             this_deployed_sigs: Cell::new(0),
             this_deployed_functions: Cell::new(0),
@@ -59,25 +61,24 @@ impl<'a, S:Supplier<Module> + 'a> Loader<'a,S> {
     }
 
     //A new fully loaded storage cache
-    pub fn new_complete(store:&'a S) -> Self{
+    pub fn new_for_transaction(store:S) -> Self{
         //Works As: current need to use this and all other that can be used from this can not use this
         Loader {
             store,
-            dedup_type: RefCell::new(CrcDeDup::new()),
-            dedup_call: RefCell::new(CrcDeDup::new()),
-            dedup_perm: RefCell::new(CrcDeDup::new()),
-            dedup_sig: RefCell::new(CrcDeDup::new()),
-            dedup_ctr: RefCell::new(CrcDeDup::new()),
-            this_deployed_data: Cell::new(<usize>::MAX),         //as modules have max 255 adts this is ok
-            this_deployed_sigs: Cell::new(<usize>::MAX),         //as modules have max 255 sigs this is ok
-            this_deployed_functions: Cell::new(<usize>::MAX),    //as modules have max 255 funs this is ok
-            this_deployed_implements: Cell::new(<usize>::MAX),   //as modules have max 255 impls this is ok
+            this: None, //transactions are not in a module
+            this_deployed_data: Cell::new(usize::MAX),
+            this_deployed_sigs: Cell::new(usize::MAX),
+            this_deployed_functions: Cell::new(usize::MAX),
+            this_deployed_implements: Cell::new(usize::MAX),
         }
     }
 
-    //Get the module
-    pub fn get_module(&self, link:Hash) -> Result<Crc<Module>>{
-        self.store.unique_get(&link)
+    pub fn is_this_module(&self, target:&FastModuleLink) -> bool {
+        self.this.as_ref().is_some_and(|this|this==target)
+    }
+
+    pub fn is_local_type(&self, target:URef<'static,ResolvedType>) -> bool {
+        self.this.as_ref().is_some_and(|this|target.is_defining_module(this))
     }
 
     //Gets a component
@@ -89,7 +90,7 @@ impl<'a, S:Supplier<Module> + 'a> Loader<'a,S> {
         if offset as usize >= C::num_elems(&module) {
             return error(||"Linked component is not available")
         }
-        if link.is_local_link() && offset as usize >= C::get_local_limit(self) {
+        if self.is_this_module(link) && offset as usize >= C::get_local_limit(self) {
             return error(||"Linked component is not available")
         }
         //Extract the Adt Cache
@@ -101,27 +102,46 @@ impl<'a, S:Supplier<Module> + 'a> Loader<'a,S> {
         })
     }
 
-    //Dedup a type
-    pub fn dedup_type(&self, typ:ResolvedType) -> Crc<ResolvedType> {
-        self.dedup_type.borrow_mut().dedup(typ)
+    //Get the module
+    pub fn get_module(&self, link:URef<'static, ModuleLink>) -> Result<URef<'static, Module>>{
+        self.store.get_unique_module(link)
     }
 
-    pub fn dedup_callable(&self, call:ResolvedCallable) -> Crc<ResolvedCallable> {
-        self.dedup_call.borrow_mut().dedup(call)
+    pub fn create_generic_type(&self, gen: ResolvedType) -> URef<'static,ResolvedType> {
+        self.store.create_generic_type(gen)
     }
 
-    pub fn dedup_permission(&self, perm:ResolvedPermission) -> Crc<ResolvedPermission> {
-        self.dedup_perm.borrow_mut().dedup(perm)
+    pub fn sig_type_dedup(&self, sig: ResolvedType) -> URef<'static,ResolvedType> {
+        self.store.sig_type_dedup(sig)
     }
 
-    pub fn dedup_signature(&self, sig:ResolvedSignature) -> Crc<ResolvedSignature> {
-        self.dedup_sig.borrow_mut().dedup(sig)
+    pub fn virtual_type_dedup(&self, virt: ResolvedType) -> URef<'static,ResolvedType> {
+        self.store.virtual_type_dedup(virt)
     }
 
-    pub fn dedup_ctr(&self, ctr:Vec<Vec<Crc<ResolvedType>>>) -> Crc<Vec<Vec<Crc<ResolvedType>>>> {
-        self.dedup_ctr.borrow_mut().dedup(ctr)
+    pub fn projection_type_dedup(&self, proj: ResolvedType) -> URef<'static,ResolvedType> {
+        self.store.projection_type_dedup(proj)
     }
 
+    pub fn data_type_dedup(&self, param:ResolvedComponent, extra:&DataComponent) -> URef<'static,ResolvedType> {
+        self.store.data_type_dedup(param, extra)
+    }
+
+    pub fn dedup_callable(&self, call: ResolvedCallable) -> URef<'static,ResolvedCallable> {
+        self.store.dedup_callable(call)
+    }
+
+    pub fn dedup_permission(&self, perm: ResolvedPermission) -> URef<'static,ResolvedPermission> {
+        self.store.dedup_permission(perm)
+    }
+
+    pub fn dedup_signature(&self, sig: ResolvedSignature) -> URef<'static,ResolvedSignature> {
+        self.store.dedup_signature(sig)
+    }
+
+    pub fn dedup_ctr(&self, ctr: ResolvedCtrs) -> URef<'static,ResolvedCtrs> {
+        self.store.dedup_ctr(ctr)
+    }
 }
 
 impl<T:Component> FetchCache<T> {
@@ -138,7 +158,7 @@ impl<T:Component> FetchCache<T> {
         self.offset
     }
     //Create a local context for it (but from the importers view -- meaning they are from a remote Module and the imported functions are ignored and the applies are substituted)
-    pub fn substituted_context<'a, 'b:'a,S:Supplier<Module>+'b>(&self, subs:&'a [Crc<ResolvedType>], store:&'b Loader<'b,S>) -> Result<Context<'b,S>> {
+    pub fn substituted_context<'a, S:StateManager>(&'a self, subs:&[URef<'static,ResolvedType>], store:&'a Loader<S>) -> Result<Context<S>> {
         //Generate a local context
         Context::create_and_resolve(&[
             Imports::Module(&self.link),

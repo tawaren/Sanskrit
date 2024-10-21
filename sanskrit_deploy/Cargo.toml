@@ -22,3 +22,7 @@ default-features = false
 path = "../sanskrit_core"
 version = "0.1.0"
 default-features = false
+
+[dependencies.sp1_zkvm_col]
+path = "../sp1_zkvm_col"
+version = "0.1.0"

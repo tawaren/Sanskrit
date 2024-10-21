@@ -16,24 +16,26 @@ use sanskrit_core::model::resolved::*;
 use sanskrit_core::model::bitsets::*;
 use sanskrit_common::errors::*;
 use alloc::vec::Vec;
+use core::cell::Cell;
 use sanskrit_core::resolver::Context;
 use sanskrit_common::model::*;
-use sanskrit_common::supplier::Supplier;
-use sanskrit_common::utils::Crc;
+use sanskrit_core::loader::StateManager;
+use sp1_zkvm_col::arena::URef;
 
 //Todo: Make Configurable
 //used to ensure that their is a stack size that prevents stack overflows
 const MAX_NESTING_DEPTH:usize = 50;
 
-pub struct TypeCheckerContext<'b, S:Supplier<Module> + 'b> {
-    context: Context<'b, S>,                 //The Resolved Components from the input
-    stack: LinearStack<Crc<ResolvedType>>,   //The current stack layout
+pub struct TypeCheckerContext<'b, S:StateManager +'b> {
+    context: Context<'b, S>,                              //The Resolved Components from the input
+    stack: LinearStack<URef<'static,ResolvedType>>,   //The current stack layout
     transactional:bool,
     depth:usize,
     limit:usize,
 }
 
-impl<'b, S:Supplier<Module> + 'b> TypeCheckerContext<'b,S> {
+impl<'b, S:StateManager +'b> TypeCheckerContext<'b,S> {
+
     //Creates a new Empty context
     pub fn new(context: Context<'b, S>) -> Self {
         //Define some reused types and capabilities
@@ -94,9 +96,9 @@ impl<'b, S:Supplier<Module> + 'b> TypeCheckerContext<'b,S> {
         for c in &sig.params {
             //distinguish between owned and borrowed (read-only) parameters
             if c.consumes {
-                self.stack.provide(c.typ.clone())?;
+                self.stack.provide(c.typ)?;
             } else {
-                self.stack.borrow(c.typ.clone())?;
+                self.stack.borrow(c.typ)?;
             }
         }
 
@@ -301,7 +303,7 @@ impl<'b, S:Supplier<Module> + 'b> TypeCheckerContext<'b,S> {
             return error(||"Supplied byte stream has wrong size for literal construction")
         }
         //Tell the Stack that an element has appeared out of nowhere
-        self.stack.provide(r_perm.get_type()?.clone())?;
+        self.stack.provide(r_perm.get_type()?)?;
         Ok(1)
     }
 
@@ -341,14 +343,14 @@ impl<'b, S:Supplier<Module> + 'b> TypeCheckerContext<'b,S> {
         //the wrapped type
         let n_typ = typ.fetch(&self.context)?;
 
-        if let ResolvedType::Projection{ depth, ref un_projected } = *v_typ {
+        if let ResolvedType::Projection{ depth, un_projected } = *v_typ {
             //check that it is of the right type
-            if get_crc_target(&n_typ) != un_projected || n_typ.get_projection_depth() != depth+1 {
+            if get_target(n_typ) != un_projected || n_typ.get_projection_depth() != depth+1 {
                 return error(||"Specified type mismatches input type")
             }
-        } else if let ResolvedType::Projection{ depth, ref un_projected } = *n_typ {
+        } else if let ResolvedType::Projection{ depth, un_projected } = *n_typ {
             //check that it is of the right type
-            if un_projected != &v_typ || depth != 1{
+            if un_projected != v_typ || depth != 1{
                 return error(||"Specified type mismatches input type")
             }
         } else {
@@ -367,10 +369,10 @@ impl<'b, S:Supplier<Module> + 'b> TypeCheckerContext<'b,S> {
         let n_typ = typ.fetch(&self.context)?;
         //check that it is a nested image
         match *v_typ  {
-            ResolvedType::Projection {depth, ref un_projected, ..} => {
-                assert!(if let ResolvedType::Projection{..} = **un_projected {false} else {true});
+            ResolvedType::Projection {depth, un_projected, ..} => {
+                assert!(if let ResolvedType::Projection{..} = *un_projected {false} else {true});
                 //check that it is of the right type
-                if get_crc_target(&n_typ) != un_projected || n_typ.get_projection_depth() != depth-1 {
+                if get_target(n_typ) != un_projected || n_typ.get_projection_depth() != depth-1 {
                     return error(||"Specified type mismatches input type")
                 }
                 if !un_projected.get_caps().contains(Capability::Primitive) {
@@ -418,7 +420,7 @@ impl<'b, S:Supplier<Module> + 'b> TypeCheckerContext<'b,S> {
         };
 
         //check that it is of the right type
-        if !r_perm.check_value_permission(&r_typ, perm_type) {
+        if !r_perm.check_value_permission(r_typ, perm_type) {
             //expected type does not much provided type
             return error(||"Wrong Permission supplied")
         }
@@ -461,7 +463,7 @@ impl<'b, S:Supplier<Module> + 'b> TypeCheckerContext<'b,S> {
         };
 
         //check that it is of the right type
-        if !r_perm.check_value_permission(&r_typ, perm_type) {
+        if !r_perm.check_value_permission(r_typ, perm_type) {
             //expected type does not much provided type
             return error(||"Wrong Permission supplied")
         }
@@ -475,11 +477,11 @@ impl<'b, S:Supplier<Module> + 'b> TypeCheckerContext<'b,S> {
         };
 
         //get the value typ
-        let typ = r_ctr[0 as usize][field as usize].clone();
+        let typ = r_ctr[0usize][field as usize];
 
         if mode == FetchMode::Consume {
             //Non-fetched values need the drop capability
-            for (idx,field_type) in r_ctr[0 as usize].iter().enumerate() {
+            for (idx,field_type) in r_ctr[0usize].iter().enumerate() {
                 if idx != field as usize && !field_type.get_caps().contains(Capability::Drop) {
                     return error(||"Consume field requires drop capability for not accessed fields")
                 }
@@ -510,7 +512,7 @@ impl<'b, S:Supplier<Module> + 'b> TypeCheckerContext<'b,S> {
         };
 
         //check that it is of the right type
-        if !r_perm.check_value_permission(&r_typ,perm_type) {
+        if !r_perm.check_value_permission(r_typ,perm_type) {
             //expected type does not mach provided type
             return error(||"Wrong Permission supplied")
         }
@@ -615,7 +617,7 @@ impl<'b, S:Supplier<Module> + 'b> TypeCheckerContext<'b,S> {
             }
         }
         //Tell the stack to pack the value and place the result onto the stack
-        self.stack.pack(&values, r_perm.get_type()?.clone(), mode)?;
+        self.stack.pack(&values, r_perm.get_type()?, mode)?;
         Ok(1)
     }
 
@@ -638,7 +640,7 @@ impl<'b, S:Supplier<Module> + 'b> TypeCheckerContext<'b,S> {
         //fetch the permission
         let r_perm = perm.fetch(&self.context)?;
         //check that it is of the right type
-        if !r_perm.check_value_permission(&r_typ, Permission::Call) {
+        if !r_perm.check_value_permission(r_typ, Permission::Call) {
             //expected type does not much provided type
             return error(||"Wrong Permission supplied")
         }
@@ -658,7 +660,7 @@ impl<'b, S:Supplier<Module> + 'b> TypeCheckerContext<'b,S> {
         //fetch the permission
         let r_perm = perm.fetch(&self.context)?;
         //check that it is of the right type
-        if !r_perm.check_value_permission(&r_typ, Permission::Call) {
+        if !r_perm.check_value_permission(r_typ, Permission::Call) {
             //expected type does not much provided type
             return error(||"Wrong Permission supplied")
         }
@@ -714,10 +716,10 @@ impl<'b, S:Supplier<Module> + 'b> TypeCheckerContext<'b,S> {
             //check the repetition condition
             Some(cond_arg) => {
                 //check that it is not an implement (the are not  callaberepeatedl)
-                if let ResolvedCallable::Implement { .. }  = **r_perm.get_fun()? {
+                if let ResolvedCallable::Implement { .. }  = *r_perm.get_fun()? {
                     return error(||"Signature generation can not be used over repeated Call")
                 }
-                Self::check_repetition_condition(sig,cond_arg)?;
+                Self::check_repetition_condition(&sig,cond_arg)?;
                 if !self.transactional {
                     return error(||"Repeated function calls can only be made in a transactional function")
                 }
@@ -738,7 +740,7 @@ impl<'b, S:Supplier<Module> + 'b> TypeCheckerContext<'b,S> {
             return error(||"Wrong Permission supplied")
         }
         //check that it is not an implement (the are not try callabel)
-        if let ResolvedCallable::Implement { .. }  = **r_perm.get_fun()? {
+        if let ResolvedCallable::Implement { .. }  = *r_perm.get_fun()? {
             return error(||"Signature generation can not be used over Try Call")
         }
 
@@ -748,7 +750,7 @@ impl<'b, S:Supplier<Module> + 'b> TypeCheckerContext<'b,S> {
         //is this a repeated invoke?
         match rep_cond {
             //check the repetition condition
-            Some(cond_arg) => Self::check_repetition_condition(sig,cond_arg)?,
+            Some(cond_arg) => Self::check_repetition_condition(&sig,cond_arg)?,
             None => {}
         }
 
@@ -780,7 +782,7 @@ impl<'b, S:Supplier<Module> + 'b> TypeCheckerContext<'b,S> {
         self.stack.consume_params(&inputs)?;
         //Advice the stack to produce the returns
         for ret in &signature.returns {
-            self.stack.provide(ret.clone())?;
+            self.stack.provide(*ret)?;
         }
         assert!(vals.len() <= u8::MAX as usize);
         Ok(signature.returns.len() as u8)
@@ -826,7 +828,7 @@ impl<'b, S:Supplier<Module> + 'b> TypeCheckerContext<'b,S> {
             //Produce the returns
             //Advice the stack to produce the returns
             for ret in &signature.returns {
-                self.stack.provide(ret.clone())?;
+                self.stack.provide(*ret)?;
             }
             //on success operations are specified by branch sys and now type checked
             let suc_res = self.type_check_exp(succ)?;
@@ -836,7 +838,7 @@ impl<'b, S:Supplier<Module> + 'b> TypeCheckerContext<'b,S> {
         self.stack.next_branch( &mut branching, suc_res)?;
             //Advice the stack to recover the essential params (the non essentials are implicitly dropped or where not consumed in the first place)
             for (_, param) in vals.iter().zip(signature.params.iter()).filter(|((e,_),_)|*e) {
-                self.stack.provide(param.typ.clone())?;
+                self.stack.provide(param.typ)?;
             }
             //on failure operations are specified by branch sys and now type checked
             let fail_res = self.type_check_exp(fail)?;

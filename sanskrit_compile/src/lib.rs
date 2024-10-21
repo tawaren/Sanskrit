@@ -12,7 +12,6 @@ pub mod compiler;
 pub mod externals;
 
 use sanskrit_common::model::*;
-use sanskrit_common::store::*;
 use sanskrit_common::errors::*;
 use sanskrit_common::encoding::*;
 use alloc::vec::Vec;
@@ -37,7 +36,6 @@ pub fn compile_function<S:Store, CE:CompilationExternals>(store:&CachedStore<Mod
     if auto_commit {
         store.commit(StorageClass::Descriptor);
     }
-
 
     Ok((key, size))
 }

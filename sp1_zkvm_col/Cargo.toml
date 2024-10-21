@@ -1,0 +1,12 @@
+[package]
+name = "sp1_zkvm_col"
+version = "0.1.0"
+authors = ["tawaren <markus.knecht85@gmail.com>"]
+edition = "2021"
+
+[features]
+default = ["std"]
+std = []
+
+[dependencies]
+sp1-zkvm = { version = "2.0.0" }

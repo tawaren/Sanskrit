@@ -2,13 +2,14 @@ pub mod resolved;
 pub mod linking;
 pub mod bitsets;
 pub mod efficency;
+pub mod provider;
 
 use alloc::vec::Vec;
 use sanskrit_common::model::*;
 use sanskrit_common::encoding::*;
 use sanskrit_common::errors::*;
 use crate::model::resolved::ResolvedType;
-use sanskrit_common::utils::Crc;
+use sp1_zkvm_col::arena::URef;
 use crate::model::bitsets::{CapSet, PermSet};
 use crate::model::linking::FastModuleLink;
 
@@ -132,7 +133,7 @@ pub struct BodyImport {
 
 pub enum Imports<'a> {
     Module(&'a FastModuleLink),
-    Generics(&'a [Crc<ResolvedType>]),
+    Generics(&'a [URef<'static,ResolvedType>]),
     Public(&'a PublicImport),
     Body(&'a BodyImport)
 }

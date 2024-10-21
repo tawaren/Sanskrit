@@ -18,35 +18,12 @@ pub fn hash_from_slice(input:&[u8]) -> Hash {
 pub struct ValueRef(pub u16);
 
 //Links that point to components in the storage
-#[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone, Debug)]
-pub enum ModuleLink{
-    Remote(Hash),
-    This(Hash), //Runtime Only (never serialized)
-}
-
-impl Serializable for ModuleLink {
-    fn serialize(&self, s: &mut Serializer) -> Result<()> {
-        match *self {
-            ModuleLink::Remote(h) => h.serialize(s)?,
-            ModuleLink::This(h) => h.serialize(s)?
-        };
-        Ok(())
-    }
-}
-
-impl Parsable for ModuleLink {
-    fn parse(p: &mut Parser) -> Result<ModuleLink> {
-        Ok(ModuleLink::Remote(Hash::parse(p)?))
-    }
-}
+#[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone, Debug, Parsable, Serializable)]
+pub struct ModuleLink(Hash);
 
 impl ModuleLink {
-    pub fn to_hash(&self) -> Hash {
-        match *self {
-            ModuleLink::Remote(h) => h,
-            ModuleLink::This(h) => h,
-        }
-    }
+    pub fn new(module_hash:Hash) -> Self {ModuleLink(module_hash)}
+    pub fn module_hash(&self) -> &Hash { &self.0 }
 }
 
 //Most vectors used in sanskrit have a max len of 255, in some places more is needed

@@ -22,6 +22,7 @@ use sanskrit_common::model::ValueRef;
 use alloc::vec::Vec;
 use alloc::rc::Rc;
 use core::cell::Cell;
+use sp1_zkvm_col::no_free::SRef;
 
 
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
@@ -33,18 +34,18 @@ pub enum Status {
 
 //An elem has a type and a status (type is used by type checker)
 #[derive(Eq, PartialEq, Debug)]
-pub struct Elem<T:Clone> {status:Rc<Cell<Status>>, locked:bool, mark:bool, value:T}
+pub struct Elem<T:Clone> {status:SRef<Cell<Status>>, locked:bool, mark:bool, value:T}
 
 pub struct LinearStack<T:Clone> {
     stack:Vec<Elem<T>>,           //The actual Elems
     frames:Vec<Frame>,            //Frame borders, to record consumes in branches
-    status_owned:Rc<Cell<Status>>,
-    status_borrowed:Rc<Cell<Status>>
+    status_owned:SRef<Cell<Status>>,
+    status_borrowed:SRef<Cell<Status>>
 }
 
 struct Frame{
     start_index:usize,                  //Where does the frame start
-    consume_cell:Rc<Cell<Status>>,      //active consume cell
+    consume_cell:SRef<Cell<Status>>,      //active consume cell
     new_marks:usize,
     remarked:usize,
 }
@@ -69,7 +70,7 @@ pub enum FetchMode {
 
 impl<T:Clone> Elem<T> {
 
-    pub fn new(value:T, status: Rc<Cell<Status>>) -> Self {
+    pub fn new(value:T, status: SRef<Cell<Status>>) -> Self {
         Elem{
             status,
             value,
@@ -79,7 +80,7 @@ impl<T:Clone> Elem<T> {
     }
 
     //Consumes the Elem (which then is no longer usable)
-    fn consume(&mut self, active_consume_cell:Rc<Cell<Status>>) -> Result<()>{
+    fn consume(&mut self, active_consume_cell:SRef<Cell<Status>>) -> Result<()>{
         // Nothing can be consumed twice (linear types must be consumed exactly once)
         if !self.is_owned() {
             return error(||"Consumed, borrowed, or locked element can not be consumed")
@@ -130,12 +131,12 @@ impl<T:Clone+Eq> LinearStack<T>  {
             stack: vec![],
             frames:vec![Frame{
                 start_index: 0,
-                consume_cell:Rc::new(Cell::new(Status::Consumed)),
+                consume_cell:SRef::new(Cell::new(Status::Consumed)),
                 new_marks: 0,
                 remarked: 0
             }],
-            status_owned: Rc::new(Cell::new(Status::Owned)),
-            status_borrowed: Rc::new(Cell::new(Status::Borrowed)),
+            status_owned: SRef::new(Cell::new(Status::Owned)),
+            status_borrowed: SRef::new(Cell::new(Status::Borrowed)),
         }
     }
 
@@ -172,8 +173,8 @@ impl<T:Clone+Eq> LinearStack<T>  {
         Ok(())
     }
 
-    fn get_consume_cell(&self) -> Rc<Cell<Status>> {
-        self.frames.last().unwrap().consume_cell.clone()
+    fn get_consume_cell(&self) -> SRef<Cell<Status>> {
+        self.frames.last().unwrap().consume_cell
     }
 
     //gets an element and consumes it
@@ -280,12 +281,12 @@ impl<T:Clone+Eq> LinearStack<T>  {
 
     //allows to put elems on the stack that appear out of nowhere (literals, empties, parameters, unpacks)
     pub fn provide(&mut self, typ:T) -> Result<()> {
-        self.push_elem(Elem::new(typ,self.status_owned.clone()))
+        self.push_elem(Elem::new(typ,self.status_owned))
     }
 
     //allows to put a read only param on the stack that appear out of nowhere (parameters, switch unpacks)
     pub fn borrow(&mut self, value:T) -> Result<()> {
-        self.push_elem(Elem::new(value, self.status_borrowed.clone()))
+        self.push_elem(Elem::new(value, self.status_borrowed))
     }
 
 
@@ -306,7 +307,7 @@ impl<T:Clone+Eq> LinearStack<T>  {
 
         // push the elem with same status but new typ
         // new status does already contain borrowed if needed
-        self.push_elem( Elem::new(value, self.status_owned.clone()))
+        self.push_elem( Elem::new(value, self.status_owned))
     }
 
     //Like a transform but keeps the same type
@@ -329,7 +330,7 @@ impl<T:Clone+Eq> LinearStack<T>  {
                 self.non_consuming_fetch(*index)?;
             }
         };
-        self.push_elem(Elem::new(res, self.status_owned.clone()))
+        self.push_elem(Elem::new(res, self.status_owned))
     }
 
     //Takes a value and returns its content
@@ -347,7 +348,7 @@ impl<T:Clone+Eq> LinearStack<T>  {
         // unpacked values
         for value in results {
             //put each unpacked value on the stack
-            self.push_elem( Elem::new(value.clone(),self.status_owned.clone()))?;
+            self.push_elem( Elem::new(value.clone(),self.status_owned))?;
         }
         Ok(())
     }
@@ -364,7 +365,7 @@ impl<T:Clone+Eq> LinearStack<T>  {
         // unpacked values
         for value in results {
             //put each unpacked value on the stack
-            self.push_elem(Elem::new(value.clone(),self.status_borrowed.clone()))?;
+            self.push_elem(Elem::new(value.clone(),self.status_borrowed))?;
         }
         Ok(())
     }
@@ -409,7 +410,7 @@ impl<T:Clone+Eq> LinearStack<T>  {
 
             let elem = &self.stack[index];
             // save the element for later re pushing it
-            returns.push(Elem::new(elem.value.clone(), self.status_owned.clone()));
+            returns.push(Elem::new(elem.value.clone(), self.status_owned));
             //ensure its owned
             if !self.stack[index].is_owned() {
                 return error(||"Only owned values can be the result of an expression")
@@ -457,9 +458,9 @@ impl<T:Clone+Eq> LinearStack<T>  {
         let consume_cell = if branches == 1 {
             //The last branch is not rollbacked by this branching operator so we use the parents cell
             //delegating the unsetting to them
-            self.frames.last().unwrap().consume_cell.clone()
+            self.frames.last().unwrap().consume_cell
         } else {
-            Rc::new(Cell::new(Status::Consumed))
+            SRef::new(Cell::new(Status::Consumed))
         };
 
         //Create the new frame and push it
@@ -529,9 +530,9 @@ impl<T:Clone+Eq> LinearStack<T>  {
         let consume_cell = if br.remaining_branches == 1 {
             //The last branch is not rollbacked by this branching operator so we use the parents cell
             //delegating the unsetting to them
-            self.frames.last().unwrap().consume_cell.clone()
+            self.frames.last().unwrap().consume_cell
         } else {
-            Rc::new(Cell::new(Status::Consumed))
+            SRef::new(Cell::new(Status::Consumed))
         };
 
         //Push new empty frame for the next branch

@@ -73,21 +73,21 @@ lazy_static! {
 pub struct ServerExternals;
 impl CompilationExternals for ServerExternals {
     fn compile_call(module: &ModuleLink, fun_idx: u8, params: Vec<ValueRef>, caller: &Hash) -> Result<CompilationResult> {
-        match EXT_MAP.lock().get(&module.to_hash()) {
+        match EXT_MAP.lock().get(module.module_hash()) {
             None => error(||"Implementation for external module is missing"),
             Some(ref imp) => imp.compile_call(fun_idx, params, caller)
         }
     }
 
     fn compile_lit(module: &ModuleLink, data_idx: u8, data: &[u8], caller: &Hash) -> Result<CompilationResult> {
-        match EXT_MAP.lock().get(&module.to_hash()) {
+        match EXT_MAP.lock().get(module.module_hash()) {
             None => error(||"Implementation for external module is missing"),
             Some(ref imp) => imp.compile_lit(data_idx, data, caller)
         }
     }
 
     fn get_literal_checker(module: &ModuleLink, data_idx: u8, len: u16) -> Result<ValueSchema> {
-        match EXT_MAP.lock().get(&module.to_hash()) {
+        match EXT_MAP.lock().get(module.module_hash()) {
             None => error(||"Implementation for external module is missing"),
             Some(ref imp) => imp.get_literal_checker(data_idx, len)
         }

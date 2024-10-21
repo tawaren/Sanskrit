@@ -5,7 +5,6 @@ use sanskrit_core::model::*;
 use sanskrit_core::model::resolved::*;
 use sanskrit_common::errors::*;
 use sanskrit_common::model::*;
-use sanskrit_common::store::*;
 use sanskrit_common::utils::Crc;
 use sanskrit_core::loader::{Loader, FetchCache};
 

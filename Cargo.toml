@@ -5,14 +5,15 @@ members = [
         "sanskrit_derive",
         "sanskrit_core",
         "sanskrit_deploy",
-        "sanskrit_memory_store",
-        "sanskrit_sled_store",
+        #"sanskrit_memory_store",
+        #"sanskrit_sled_store",
         "sanskrit_default_externals",
         "sanskrit_preloaded_validation",
         "sanskrit_validator",
         "sanskrit_zero_validator",
         "sanskrit_zero_validator_guest",
-        "sanskrit_chain_code"
+        "sanskrit_chain_code",
+        "sp1_zkvm_col"
         #"sanskrit_compile",
         #"sanskrit_interpreter",
         #"sanskrit_runtime",

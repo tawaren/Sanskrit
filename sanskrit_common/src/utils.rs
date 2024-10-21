@@ -1,11 +1,12 @@
 use alloc::borrow::ToOwned;
-use alloc::collections::BTreeMap;
 use alloc::rc::Rc;
 use core::ops::Deref;
 use core::borrow::Borrow;
+use core::cell::RefCell;
 use core::clone::Clone;
 use core::cmp::Ordering;
 use core::hash::{Hash, Hasher};
+use sp1_zkvm_col::map::HintMap;
 
 //A complexity counting Rc to prevent complexity based attacks
 //it tracks the Elems and depth and produces an error if the Limits are reached
@@ -83,20 +84,90 @@ impl<T> Hash for Crc<T> {
     }
 }
 
-pub struct CrcDeDup<E>  {
+pub struct CrcDeDup<E> where E:Eq+Ord {
     //Todo: why RC as key and not E?
-    elems:BTreeMap<Rc<E>,Crc<E>>
+    elems:HintMap<Rc<E>,Crc<E>>
 }
 
+/*
+pub static mut dedup_max:usize = 0;
+pub static mut dedup_count:usize = 0;
+pub static mut dedup_miss_count:usize = 0;
+*/
 impl<E:Ord+Eq> CrcDeDup<E> {
     pub fn new() -> Self {
         Self {
-            elems: BTreeMap::new()
+            elems: HintMap::new()
+        }
+    }
+
+    pub const fn new_unvalidated() -> Self {
+        Self {
+            elems: HintMap::new_unvalidated()
         }
     }
 
     pub fn dedup(&mut self, elem:E) -> Crc<E> {
+        //unsafe {dedup_count+=1};
         let rc = Rc::new(elem);
-        self.elems.entry(rc).or_insert_with_key(|rc|Crc{ elem: rc.clone() }).to_owned()
+        let res = self.elems.insert_if_missing(rc,|rc|{
+            //unsafe {dedup_miss_count+=1};
+            Crc{ elem: rc.clone() }
+        }).to_owned();
+        //unsafe {dedup_max = dedup_max.max(self.elems.len())};
+        res
     }
+
+    pub fn validate(&self) {
+        self.elems.validate()
+    }
+}
+
+pub struct CtrDedup<K,V> where K:Eq+Ord {
+    dedup:RefCell<HintMap<K,Crc<V>>>
+}
+
+impl<K:Ord+Eq,V> CtrDedup<K,V> {
+    pub fn dedup<F:FnOnce(&K)-> V>(&self, key:K, ctr:F) -> Crc<V>{
+        //unsafe{dedup_count+=1}
+        let res = self.dedup.borrow_mut().insert_if_missing(key,|k|{
+            let res = ctr(k);
+            //unsafe {dedup_miss_count+=1};
+            Crc{elem:Rc::new(res)}
+        }).to_owned();
+        //unsafe {dedup_max = dedup_max.max(self.dedup.borrow().len())};
+        res
+    }
+
+    pub fn new() -> Self{
+        CtrDedup{dedup:RefCell::new(HintMap::new())}
+    }
+
+    pub const fn new_unvalidated() -> Self{
+        CtrDedup{dedup:RefCell::new(HintMap::new_unvalidated())}
+    }
+
+    pub fn validate(&self) {
+        self.dedup.borrow().validate()
+    }
+
+}
+
+impl<K:Ord+Eq,V> Default for CtrDedup<K,V> {
+    fn default() -> Self {
+        CtrDedup::new()
+    }
+}
+
+
+//Helper to calc the key for a storage slot
+pub fn store_hash(data:&[&[u8]]) -> crate::model::Hash {
+    //Make a 20 byte digest hascher
+    let mut context = crate::hashing::Hasher::new();
+    //push the data into it
+    for d in data {
+        context.update(*d);
+    }
+    //calc the Hash
+    context.finalize()
 }

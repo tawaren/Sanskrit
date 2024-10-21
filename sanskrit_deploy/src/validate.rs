@@ -6,15 +6,14 @@ use sanskrit_core::model::linking::*;
 use sanskrit_core::model::resolved::*;
 use sanskrit_core::resolver::*;
 use sanskrit_common::errors::*;
-use sanskrit_common::supplier::Supplier;
-use sanskrit_common::utils::Crc;
-use sanskrit_core::loader::Loader;
+use sanskrit_core::loader::{StateManager, Loader};
 use crate::code_type_checker::TypeCheckerContext;
 use sanskrit_core::model::bitsets::{CapSet, BitSet, PermSet};
+use sp1_zkvm_col::arena::URef;
 
-pub fn validate_top_function<S:Supplier<Module>>(fun:FunctionComponent, store:&S) -> Result<()>{
-    //Prepare the cache for this iteration
-    let resolver = Loader::new_complete(store);
+pub fn validate_top_function<S:StateManager>(fun:FunctionComponent, supplier:S) -> Result<()>{
+    //Prepare the loader for this iteration
+    let resolver = Loader::new_for_transaction(supplier);
     //Prepare the context
     let context = Context::from_top_component(&fun, &resolver)?;
 
@@ -29,9 +28,9 @@ pub fn validate_top_function<S:Supplier<Module>>(fun:FunctionComponent, store:&S
     Ok(())
 }
 
-pub fn validate<S:Supplier<Module>>(store:&S, module_link:FastModuleLink, system_mode_allowed:bool) -> Result<()> {
+pub fn validate<S:StateManager>(supplier:S, module_link:FastModuleLink, system_mode_allowed:bool) -> Result<()> {
     //Prepare the cache for this iteration
-    let resolver = Loader::new_incremental(store);
+    let resolver = Loader::new_for_module(supplier, module_link.clone());
     //this is safe as we are the entry point and the loader is literally the deduplicator
     // thus initialising it with those ensure that these are the prime ones
     let module = module_link.load(&resolver)?;
@@ -128,7 +127,7 @@ pub fn validate<S:Supplier<Module>>(store:&S, module_link:FastModuleLink, system
 }
 
 //Checks that an Adt declaration is semantically valid
-fn validate_adt<S:Supplier<Module>>(adt:&DataComponent, context:&Context<S>, system_mode_on:bool, #[cfg(feature = "forward_type_ref")] cur_adt_offset:usize) -> Result<()>{
+fn validate_adt<S:StateManager>(adt:&DataComponent, context:&Context<S>, system_mode_on:bool, #[cfg(feature = "forward_type_ref")] cur_adt_offset:usize) -> Result<()>{
     //Check the import section
     //ensure that no self referencing is used in applies unless they are phantom or literal
     #[cfg(feature = "forward_type_ref")]
@@ -162,7 +161,7 @@ fn validate_adt<S:Supplier<Module>>(adt:&DataComponent, context:&Context<S>, sys
 
 
 //Checks that an signature declaration is semantically valid
-fn validate_sig<S:Supplier<Module>>(sig:&SigComponent, ctx:&Context<S>) -> Result<()>{
+fn validate_sig<S:StateManager>(sig:&SigComponent, ctx:&Context<S>) -> Result<()>{
     //Check the import section
     //we allow no protection forwarding as sigs have 2 visibilities & should not need to import create, consumes & implements
     check_type_import_integrity(ctx)?;
@@ -180,7 +179,7 @@ fn validate_sig<S:Supplier<Module>>(sig:&SigComponent, ctx:&Context<S>) -> Resul
 
 }
 
-fn check_body<S:Supplier<Module>>(fun:&CallableImpl, ctx:&Context<S>, system_mode_on:bool) -> Result<()> {    //load everithing
+fn check_body<S:StateManager>(fun:&CallableImpl, ctx:&Context<S>, system_mode_on:bool) -> Result<()> {    //load everithing
     match fun {
         CallableImpl::External => if !system_mode_on {return error(||"Deploying externals requires system mode")},
         CallableImpl::Internal { .. } => {
@@ -195,7 +194,7 @@ fn check_body<S:Supplier<Module>>(fun:&CallableImpl, ctx:&Context<S>, system_mod
     Ok(())
 }
 
-fn validate_transaction<S:Supplier<Module>>(fun:&FunctionComponent, ctx:&Context<S>) -> Result<()> {
+fn validate_transaction<S:StateManager>(fun:&FunctionComponent, ctx:&Context<S>) -> Result<()> {
     //Transactions must be public
     match fun.scope {
         Accessibility::Guarded(_) | Accessibility::Local => return error(||"Transactions functions must be public"),
@@ -221,7 +220,7 @@ fn validate_transaction<S:Supplier<Module>>(fun:&FunctionComponent, ctx:&Context
 }
 
 //Checks that an function declaration is semantically valid
-fn validate_function<S:Supplier<Module>>(fun:&FunctionComponent, ctx:&Context<S>, system_mode_on:bool) -> Result<()> {
+fn validate_function<S:StateManager>(fun:&FunctionComponent, ctx:&Context<S>, system_mode_on:bool) -> Result<()> {
     //Check the import section
     check_type_import_integrity(ctx)?;
     //Check capability constraints
@@ -236,7 +235,7 @@ fn validate_function<S:Supplier<Module>>(fun:&FunctionComponent, ctx:&Context<S>
 
 
 //Checks that an function declaration is semantically valid
-fn validate_implement<S:Supplier<Module>>(imp:&ImplementComponent, ctx:&Context<S>, system_mode_on:bool) -> Result<()> {
+fn validate_implement<S:StateManager>(imp:&ImplementComponent, ctx:&Context<S>, system_mode_on:bool) -> Result<()> {
     //Check the import section
     check_type_import_integrity(ctx)?;
 
@@ -288,7 +287,7 @@ fn check_generic_capability_constraints(gens:&[Generic]) -> Result<()> {
 }
 
 
-fn check_generic_constraints(generics:&[Generic], applies:&[Crc<ResolvedType>]) -> Result<()>{
+fn check_generic_constraints(generics:&[Generic], applies:&[URef<'static,ResolvedType>]) -> Result<()>{
     // check that the number of applies is correct
     if generics.len() != applies.len() {
         return error(||"Applied types mismatch required generics")
@@ -314,7 +313,7 @@ fn check_generic_constraints(generics:&[Generic], applies:&[Crc<ResolvedType>]) 
 
 //Checks that there are no cycles in the apply graph
 #[cfg(feature = "forward_type_ref")]
-fn check_save_self_referencing<S:Supplier<Module>>(context:&Context<S>, cur_adt_offset:usize) -> Result<()> {
+fn check_save_self_referencing<S:StateManager>(context:&Context<S>, cur_adt_offset:usize) -> Result<()> {
     //iterate over all type imports
     for typ in context.list_types() {
         //resolve the type to ensure it is legit
@@ -330,21 +329,21 @@ fn check_save_self_referencing<S:Supplier<Module>>(context:&Context<S>, cur_adt_
             //We need to ensure that their is no cycle in the data graph
             // This is needed as the applies can appear in the constructor
             // leading to infinitely large data structures
-            ResolvedType::Data { ref module, offset, ref applies, .. } => {
+            ResolvedType::Data { ref base, .. } => {
                 //Fetch the Cache Entry
-                let data_cache = context.store.get_component::<DataComponent>(&*module, offset)?;
+                let data_cache = context.store.get_component::<DataComponent>(&base.module, base.offset)?;
                 //Retrieve the data component from the cache
                 let data_comp = data_cache.retrieve();
 
-                for (g,apply) in data_comp.generics.iter().zip(applies.iter()) {
+                for (g,apply) in data_comp.generics.iter().zip(base.applies.iter()) {
                    match g {
                        Generic::Phantom => {},
-                       Generic::Physical(_) => ensure_backwards_ref(apply, cur_adt_offset)?
+                       Generic::Physical(_) => ensure_backwards_ref(apply, cur_adt_offset, context)?
                    }
                }
             },
             ResolvedType::Projection { ref un_projected,.. } => {
-                ensure_backwards_ref(un_projected, cur_adt_offset)?;
+                ensure_backwards_ref(un_projected, cur_adt_offset, context)?;
             }
 
         }
@@ -354,7 +353,7 @@ fn check_save_self_referencing<S:Supplier<Module>>(context:&Context<S>, cur_adt_
 
 //Checks that native imports are allowed and have correct amount and kind of arguments
 //Checks that normal imports have correct amount and kind of arguments
-fn check_type_import_integrity<S:Supplier<Module>>(context:&Context<S>) -> Result<()> {
+fn check_type_import_integrity<S:StateManager>(context:&Context<S>) -> Result<()> {
     //iterate over all type imports
     for typ in context.list_types() {
         //resolve the type to ensure it is legit
@@ -362,64 +361,64 @@ fn check_type_import_integrity<S:Supplier<Module>>(context:&Context<S>) -> Resul
             //Nothing has to be checked for Generics and Virtuals
             ResolvedType::Generic { .. }
             | ResolvedType::Virtual(_) => {},
-            ResolvedType::Projection { ref un_projected, .. } => {
+            ResolvedType::Projection { un_projected, .. } => {
                 //only value types can be projected
                 if !un_projected.get_caps().contains(Capability::Value) {
                     return error(||"Only value types can be projected")
                 }
             }
             //we need to check implement and call visibility
-            ResolvedType::Sig { ref module, offset, ref applies, .. } => {
+            ResolvedType::Sig { ref base, .. } => {
                 //Fetch the Cache Entry
-                let imp_sig_cache = context.store.get_component::<SigComponent>(&*module, offset)?;
+                let imp_sig_cache = context.store.get_component::<SigComponent>(&base.module, base.offset)?;
                 //Retrieve the function from the cache
                 let imp_sig_comp = imp_sig_cache.retrieve();
                 //check it
-                check_generic_constraints(&imp_sig_comp.shared.generics, applies)?;
+                check_generic_constraints(&imp_sig_comp.shared.generics, &base.applies)?;
             },
-            ResolvedType::Data { ref module, offset, ref applies, .. } => {
+            ResolvedType::Data { ref base, .. } => {
                 //Fetch the Cache Entry
-                let imp_data_cache = context.store.get_component::<DataComponent>(&*module, offset)?;
+                let imp_data_cache = context.store.get_component::<DataComponent>(&base.module, base.offset)?;
                 //Retrieve the function from the cache
                 let imp_data_comp = imp_data_cache.retrieve();
                 //check it
-                check_generic_constraints(&imp_data_comp.generics, applies)?;
+                check_generic_constraints(&imp_data_comp.generics, &base.applies)?;
             }
             //An imported type (can be from same module if Module == This)
-            ResolvedType::Lit { ref module, offset, ref applies, .. } => {
+            ResolvedType::Lit { ref base, .. } => {
                 //Fetch the Cache Entry
-                let imp_data_cache = context.store.get_component::<DataComponent>(&*module, offset)?;
+                let imp_data_cache = context.store.get_component::<DataComponent>(&base.module, base.offset)?;
                 //Retrieve the function from the cache
                 let imp_data_comp = imp_data_cache.retrieve();
                 //check it
-                check_generic_constraints(&imp_data_comp.generics, applies)?;
+                check_generic_constraints(&imp_data_comp.generics, &base.applies)?;
             }
         }
     }
     Ok(())
 }
 
-fn check_function_import_integrity<S:Supplier<Module>>(context:&Context<S>) -> Result<()> {
+fn check_function_import_integrity<S:StateManager>(context:&Context<S>) -> Result<()> {
     //iterate over all type imports
     for c in context.list_callables() {
         //resolve the type to ensure it is legit
         match **c {
             //we need to check implement consraints
-            ResolvedCallable::Implement { ref module, offset, ref applies, .. } => {
+            ResolvedCallable::Implement { ref base, .. } => {
                 //Fetch the Cache Entry
-                let imp_cache = context.store.get_component::<ImplementComponent>(&*module, offset)?;
+                let imp_cache = context.store.get_component::<ImplementComponent>(&base.module, base.offset)?;
                 //Retrieve the function from the cache
                 let imp_comp = imp_cache.retrieve();
                 //check it
-                check_generic_constraints(&imp_comp.generics, applies)?;
+                check_generic_constraints(&imp_comp.generics, &base.applies)?;
             },
-            ResolvedCallable::Function { ref module, offset, ref applies, .. } => {
+            ResolvedCallable::Function { ref base, .. } => {
                 //Fetch the Cache Entry
-                let imp_fun_cache = context.store.get_component::<FunctionComponent>(&*module, offset)?;
+                let imp_fun_cache = context.store.get_component::<FunctionComponent>(&base.module, base.offset)?;
                 //Retrieve the function from the cache
                 let imp_fun_comp = imp_fun_cache.retrieve();
                 //check it
-                check_generic_constraints(&imp_fun_comp.shared.generics, applies)?;
+                check_generic_constraints(&imp_fun_comp.shared.generics, &base.applies)?;
             }
         }
     }
@@ -437,7 +436,7 @@ fn check_cap_constraints(must_have_caps:CapSet, caps:CapSet) -> Result<()>{
 }
 
 //Checks that the fields in the constructor do not use phantoms as type and do not violate the recursive generics declared on the adt
-fn check_ctr_fields<S:Supplier<Module>>(provided_caps:CapSet, ctrs:&[Case], context:&Context<S>, #[cfg(feature = "forward_type_ref")] cur_adt_offset:usize) -> Result<()> {
+fn check_ctr_fields<S:StateManager>(provided_caps:CapSet, ctrs:&[Case], context:&Context<S>, #[cfg(feature = "forward_type_ref")] cur_adt_offset:usize) -> Result<()> {
     //Go over all constructors
     for ctr in ctrs {
         //Go over all fields
@@ -445,7 +444,7 @@ fn check_ctr_fields<S:Supplier<Module>>(provided_caps:CapSet, ctrs:&[Case], cont
             let typ = field.typ.fetch(context)?;
             //checks that the constructor fields are not self referential
             #[cfg(feature = "forward_type_ref")]
-            ensure_backwards_ref(&*typ, cur_adt_offset)?;
+            ensure_backwards_ref(&*typ, cur_adt_offset, context)?;
             //Resolve the field type
             match *typ {
                 //if the type is generic ensure it is not a phantom
@@ -472,16 +471,16 @@ fn check_ctr_fields<S:Supplier<Module>>(provided_caps:CapSet, ctrs:&[Case], cont
 //ensures that their are no cycles in type references or adt compositions
 // this is achieved by requiring that types can not point to the current or future definition in general
 #[cfg(feature = "forward_type_ref")]
-fn ensure_backwards_ref(typ:&ResolvedType, cur_adt_offset:usize) -> Result<()> {
+fn ensure_backwards_ref<S:StateManager>(typ:&ResolvedType, cur_adt_offset:usize, context: &Context<S>) -> Result<()> {
     match *typ {
         //Data types additionally need to check that the constructor fields are not self referential
-        ResolvedType::Data { ref module, offset, .. } => {
-            if module.is_local_link() && cur_adt_offset <= offset as usize {
+        ResolvedType::Data { ref base, .. } => {
+            if context.is_this_module(&base.module) && cur_adt_offset <= base.offset as usize {
                 return error(||"Data constructors can not contain forward references involving other data types")
             }
         },
         ResolvedType::Projection { ref un_projected, .. } => {
-            ensure_backwards_ref(un_projected, cur_adt_offset)?
+            ensure_backwards_ref(un_projected, cur_adt_offset, context)?
         },
         _ => {}
     }
@@ -489,9 +488,9 @@ fn ensure_backwards_ref(typ:&ResolvedType, cur_adt_offset:usize) -> Result<()> {
 }
 
 //check the functions visibility
-fn check_access(comp_access:&Accessibility, comp_module:&FastModuleLink, comp_applies:&[Crc<ResolvedType>], system_mode_on:bool) -> Result<()> {
+fn check_access<S:StateManager>(comp_access:&Accessibility, comp_module:&FastModuleLink, comp_applies:&[URef<'static,ResolvedType>], context:&Context<S>, system_mode_on:bool) -> Result<()> {
     //We have always access to types defined in the same module or if we are in system mode
-    if comp_module.is_local_link() || system_mode_on {
+    if context.is_this_module(comp_module) || system_mode_on {
         return Ok(())
     }
     match comp_access {
@@ -504,7 +503,7 @@ fn check_access(comp_access:&Accessibility, comp_module:&FastModuleLink, comp_ap
             //check that all protected types are ok
             for &GenRef(index) in guards {
                 //check the ownership protection
-               if !comp_applies[index as usize].is_local() {
+               if !context.is_local_type(comp_applies[index as usize]) {
                     return error(||"A type from the current module is required to be applied to a guarded generic")
                }
             }
@@ -514,27 +513,27 @@ fn check_access(comp_access:&Accessibility, comp_module:&FastModuleLink, comp_ap
 }
 
 //Checks the visibility constraints
-fn check_callable_import_accessibility<S:Supplier<Module>>(context:&Context<S>, system_mode_on:bool) -> Result<()> {
+fn check_callable_import_accessibility<S:StateManager>(context:&Context<S>, system_mode_on:bool) -> Result<()> {
     //iterate over all imported functions
     for c in context.list_callables() {
         //fetch the function
         match **c {
-            ResolvedCallable::Function { ref module,offset, ref applies, ..} => {
+            ResolvedCallable::Function { ref base, ..} => {
                 //Fetch the Cache Entry
-                let imp_fun_cache = context.store.get_component::<FunctionComponent>(&*module, offset)?;
+                let imp_fun_cache = context.store.get_component::<FunctionComponent>(&base.module, base.offset)?;
                 //Retrieve the function from the cache
                 let imp_fun_comp = imp_fun_cache.retrieve();
                 //check it
-                check_access(&imp_fun_comp.scope, module, &applies, system_mode_on)?;
+                check_access(&imp_fun_comp.scope, &base.module, &base.applies, context, system_mode_on)?;
             },
 
-            ResolvedCallable::Implement  { ref module,offset, ref applies, ..} => {
+            ResolvedCallable::Implement  { ref base, ..} => {
                 //Fetch the Cache Entry
-                let imp_cache = context.store.get_component::<ImplementComponent>(&*module, offset)?;
+                let imp_cache = context.store.get_component::<ImplementComponent>(&base.module, base.offset)?;
                 //Retrieve the function from the cache
                 let imp_comp = imp_cache.retrieve();
                 //check it
-                check_access(&imp_comp.scope, module, &applies, system_mode_on)?;
+                check_access(&imp_comp.scope, &base.module, &base.applies, context, system_mode_on)?;
             }
         }
     }
@@ -542,7 +541,7 @@ fn check_callable_import_accessibility<S:Supplier<Module>>(context:&Context<S>, 
 }
 
 //Checks the visibility constraints
-fn check_permission_accessibility<S:Supplier<Module>>(context:&Context<S>, system_mode_on:bool) -> Result<()> {
+fn check_permission_accessibility<S:StateManager>(context:&Context<S>, system_mode_on:bool) -> Result<()> {
     //iterate over all imported functions
     for p in context.list_perms() {
         //fetch the function
@@ -552,24 +551,24 @@ fn check_permission_accessibility<S:Supplier<Module>>(context:&Context<S>, syste
                     return error(||"Permissions not applicable to callable")
                 }
                 match **fun {
-                    ResolvedCallable::Function {ref module,offset, ref applies,..} => {
+                    ResolvedCallable::Function {ref base,..} => {
                         if perm.contains(Permission::Call) {
                             //Fetch the Cache Entry
-                            let fun_cache = context.store.get_component::<FunctionComponent>(&*module, offset)?;
+                            let fun_cache = context.store.get_component::<FunctionComponent>(&base.module, base.offset)?;
                             //Retrieve the function from the cache
                             let fun = fun_cache.retrieve();
                             //check it
-                            check_access(&fun.scope, module, &applies, system_mode_on)?;
+                            check_access(&fun.scope, &base.module, &base.applies, context, system_mode_on)?;
                         }
                     },
-                    ResolvedCallable::Implement {ref module,offset, ref applies,..} => {
+                    ResolvedCallable::Implement {ref base,..} => {
                         if perm.contains(Permission::Call) {
                             //Fetch the Cache Entry
-                            let imp_cache = context.store.get_component::<ImplementComponent>(&*module, offset)?;
+                            let imp_cache = context.store.get_component::<ImplementComponent>(&base.module, base.offset)?;
                             //Retrieve the function from the cache
                             let imp = imp_cache.retrieve();
                             //check it
-                            check_access(&imp.scope, module, &applies, system_mode_on)?;
+                            check_access(&imp.scope, &base.module, &base.applies, context, system_mode_on)?;
                         }
                     }
                 }
@@ -581,14 +580,16 @@ fn check_permission_accessibility<S:Supplier<Module>>(context:&Context<S>, syste
                 match **typ {
                     //We have all permissions on a projection
                     ResolvedType::Projection { .. } => {}
-                    ResolvedType::Lit {ref module,offset, ..} => {
+                    ResolvedType::Lit {ref base, ..} => {
                         if perm.contains(Permission::Create) {
                             //Fetch the Cache Entry
-                            let imp_data_cache = context.store.get_component::<DataComponent>(&*module, offset)?;
+                            let imp_data_cache = context.store.get_component::<DataComponent>(&base.module, base.offset)?;
                             //Retrieve the function from the cache
                             let imp_data_comp = imp_data_cache.retrieve();
-                            //check it
-                            check_access(&imp_data_comp.create_scope, module, &[], system_mode_on)?;
+                            //check it -- //TODO: Note: had &[] as applies but I think this is wrong
+                            //            // I understand why: guarded[T] some lit[T](..) makes no sense as lits do not have bodies
+                            //            //                   however you can still write it before we would had an indexing error
+                            check_access(&imp_data_comp.create_scope, &base.module, &base.applies, context, system_mode_on)?;
                         }
                     },
                     _ =>  return error(||"Create permission must be used on a lit type")
@@ -601,20 +602,20 @@ fn check_permission_accessibility<S:Supplier<Module>>(context:&Context<S>, syste
                 match **typ {
                     //We have all permissions on a projection
                     ResolvedType::Projection { .. } => {}
-                    ResolvedType::Data { ref module, offset, ref applies, .. } => {
+                    ResolvedType::Data { ref base, .. } => {
                         //Fetch the Cache Entry
-                        let imp_data_cache = context.store.get_component::<DataComponent>(&*module, offset)?;
+                        let imp_data_cache = context.store.get_component::<DataComponent>(&base.module, base.offset)?;
                         //Retrieve the function from the cache
                         let imp_data_comp = imp_data_cache.retrieve();
                         //check it
                         if perm.contains(Permission::Create) {
-                            check_access(&imp_data_comp.create_scope, module, &applies, system_mode_on)?;
+                            check_access(&imp_data_comp.create_scope, &base.module, &base.applies, context, system_mode_on)?;
                         }
                         if perm.contains(Permission::Consume) {
-                            check_access(&imp_data_comp.consume_scope, module, &applies, system_mode_on)?;
+                            check_access(&imp_data_comp.consume_scope, &base.module, &base.applies, context, system_mode_on)?;
                         }
                         if perm.contains(Permission::Inspect) {
-                            check_access(&imp_data_comp.inspect_scope, module, &applies, system_mode_on)?;
+                            check_access(&imp_data_comp.inspect_scope, &base.module, &base.applies, context, system_mode_on)?;
                         }
                     },
                     _ => return error(|| "TypeData permissions must be used on a data type")
@@ -626,17 +627,17 @@ fn check_permission_accessibility<S:Supplier<Module>>(context:&Context<S>, syste
                     return error(|| "Permissions not applicable to signature")
                 }
                 match **typ {
-                    ResolvedType::Sig {ref module,offset, ref applies,..} => {
+                    ResolvedType::Sig {ref base,..} => {
                         //Fetch the Cache Entry
-                        let imp_sig_cache = context.store.get_component::<SigComponent>(&*module, offset)?;
+                        let imp_sig_cache = context.store.get_component::<SigComponent>(&base.module, base.offset)?;
                         //Retrieve the function from the cache
                         let imp_sig_comp = imp_sig_cache.retrieve();
                         //check it
                         if perm.contains(Permission::Call) {
-                            check_access(&imp_sig_comp.call_scope, module, &applies, system_mode_on)?;
+                            check_access(&imp_sig_comp.call_scope, &base.module, &base.applies, context, system_mode_on)?;
                         }
                         if perm.contains(Permission::Implement) {
-                            check_access(&imp_sig_comp.implement_scope, module, &applies, system_mode_on)?;
+                            check_access(&imp_sig_comp.implement_scope, &base.module, &base.applies, context, system_mode_on)?;
                         }
                     } ,
                     _ => return error(||"Call permission must be used on a not projected signature type")
@@ -664,7 +665,7 @@ fn check_accessibility_integrity(vis:&Accessibility, num_gens:usize) -> Result<(
 }
 
 //Checks that params and return to not phantoms
-fn check_params_and_returns<S:Supplier<Module>>(params:&[Param], returns:&[TypeRef], context:&Context<S>) -> Result<()> {
+fn check_params_and_returns<S:StateManager>(params:&[Param], returns:&[TypeRef], context:&Context<S>) -> Result<()> {
 
     //process all params
     for &Param{ typ, ..} in params {
@@ -692,7 +693,7 @@ fn check_params_and_returns<S:Supplier<Module>>(params:&[Param], returns:&[TypeR
 
 
 //Checks that params and return to not phantoms
-fn check_txt_params_and_returns<S:Supplier<Module>>(_params:&[Param], returns:&[TypeRef], context:&Context<S>) -> Result<()> {
+fn check_txt_params_and_returns<S:StateManager>(_params:&[Param], returns:&[TypeRef], context:&Context<S>) -> Result<()> {
 
     //Nothing to do for params anymore
     //process all returns
@@ -706,7 +707,7 @@ fn check_txt_params_and_returns<S:Supplier<Module>>(_params:&[Param], returns:&[
 }
 
 
-fn check_implement_constraints<S:Supplier<Module>>(imp:&ImplementComponent, context:&Context<S>) -> Result<()> {
+fn check_implement_constraints<S:StateManager>(imp:&ImplementComponent, context:&Context<S>) -> Result<()> {
     //Ensure we are permissioned
     let perm = imp.sig.fetch(context)?;
     //Check the permission type
@@ -716,7 +717,7 @@ fn check_implement_constraints<S:Supplier<Module>>(imp:&ImplementComponent, cont
 
     let transactional = perm.get_sig()?.transactional;
 
-    if let ResolvedType::Sig {caps:sig_caps , ..} = **perm.get_type()? {
+    if let ResolvedType::Sig {caps:sig_caps , ..} = *perm.get_type()? {
         for capture in &imp.params {
             //The captures must be consumed (owned)
             if !capture.consumes {

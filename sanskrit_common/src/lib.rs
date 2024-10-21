@@ -6,7 +6,7 @@
 
 //extern crate blake3;
 extern crate sha2;
-
+extern crate sp1_zkvm_col;
 extern crate byteorder;
 extern crate alloc;
 #[macro_use]
@@ -18,5 +18,4 @@ pub mod encoding;
 pub mod errors;
 pub mod model;
 pub mod hashing;
-pub mod supplier;
 pub mod utils;

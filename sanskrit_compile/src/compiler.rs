@@ -8,7 +8,6 @@
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use sanskrit_chain_code::model::*;
-use sanskrit_common::store::*;
 use sanskrit_common::model::*;
 use sanskrit_core::model::Exp as SExp;
 use sanskrit_core::model::*;
@@ -27,7 +26,7 @@ pub fn compile_transaction<S:Store, CE:CompilationExternals>(transaction_hash:&H
 
     //load the module
     let fun:FunctionComponent = store.parsed_get(StorageClass::Transaction, transaction_hash)?;
-    let resolver = Loader::new_complete(store);
+    let resolver = Loader::new_transaction(store);
 
     //generate descriptors for all internal functions
     if fun.scope != Accessibility::Global {

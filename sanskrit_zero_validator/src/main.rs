@@ -19,19 +19,29 @@ use sp1_sdk::{ProverClient, SP1Stdin};
 pub const SANSKRIT_ZERO_VALIDATOR_ELF: &[u8] = include_bytes!("../elf/validator-sp1-elf");
 
 fn process_validation(stdin: &mut SP1Stdin, mods:Vec<Vec<u8>>, txts:Vec<Vec<u8>>,deps:Vec<Vec<u8>>,sys_mode:bool) {
+    let mut count = 0;
+    count+=1;
     stdin.write(&sys_mode);
+    count+=4;
     stdin.write(&(mods.len() as u32));
     for m in mods {
-      stdin.write_vec(m);
+        count+=m.len()+4;
+        stdin.write_vec(m);
     }
+    count+=4;
     stdin.write(&(txts.len() as u32));
     for t in txts {
+        count+=t.len()+4;
         stdin.write_vec(t);
     }
+    count+=4;
     stdin.write(&(deps.len() as u32));
     for d in deps {
-      stdin.write_vec(d);
+        count+=d.len()+4;
+        stdin.write_vec(d);
     }
+
+    println!("Size of Input = {}", count);
 }
 
 enum Mode {

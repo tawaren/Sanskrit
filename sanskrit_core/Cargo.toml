@@ -11,6 +11,7 @@ std = []
 
 [dependencies]
 spin = { version = "0.9.8", optional = true, default-features = false, features = ["spin_mutex"]}
+sp1-zkvm = { version = "2.0.0" }
 
 [dependencies.sanskrit_common]
 path = "../sanskrit_common"
@@ -19,4 +20,8 @@ default-features = false
 
 [dependencies.sanskrit_derive]
 path = "../sanskrit_derive"
+version = "0.1.0"
+
+[dependencies.sp1_zkvm_col]
+path = "../sp1_zkvm_col"
 version = "0.1.0"

@@ -47,10 +47,10 @@ impl PartialEq for ResolvedType {
             => off1 == off2,
             (ResolvedType::Projection { depth:depth1,  un_projected:typ1, .. }, ResolvedType::Projection { depth:depth2, un_projected:typ2, .. })
             => typ1 == typ2 && depth1 == depth2,
-            (ResolvedType::Sig { module:mod1, offset:off1, applies:applies1, .. }, ResolvedType::Sig { module:mod2, offset:off2, applies:applies2, .. })
-            | (ResolvedType::Data { module:mod1, offset:off1, applies:applies1, .. }, ResolvedType::Data { module:mod2, offset:off2, applies:applies2, .. })
-            | (ResolvedType::Lit { module:mod1, offset:off1, applies:applies1, .. }, ResolvedType::Lit { module:mod2, offset:off2, applies:applies2, .. })
-            => off1 == off2 && mod1 == mod2 && applies1 == applies2,
+            (ResolvedType::Sig { base:base1, .. }, ResolvedType::Sig { base:base2, .. })
+            | (ResolvedType::Data { base:base1, .. }, ResolvedType::Data { base:base2, .. })
+            | (ResolvedType::Lit { base:base1, .. }, ResolvedType::Lit { base:base2, .. })
+            => base1 == base2,
             (ResolvedType::Virtual(hash1), ResolvedType::Virtual(hash2))
             => hash1 == hash2,
             _ => false
@@ -71,10 +71,10 @@ impl Ord for ResolvedType {
             => off1.cmp(off2),
             (ResolvedType::Projection {  depth:depth1, un_projected:typ1, .. }, ResolvedType::Projection {  depth:depth2, un_projected:typ2, .. })
             => typ1.cmp(typ2).then_with(||depth1.cmp(depth2)),
-            (ResolvedType::Sig { module:mod1, offset:off1, applies:applies1, .. }, ResolvedType::Sig { module:mod2, offset:off2, applies:applies2, .. })
-            | (ResolvedType::Data { module:mod1, offset:off1, applies:applies1, .. }, ResolvedType::Data { module:mod2, offset:off2, applies:applies2, .. })
-            | (ResolvedType::Lit { module:mod1, offset:off1, applies:applies1, .. }, ResolvedType::Lit { module:mod2, offset:off2, applies:applies2, .. })
-            => off1.cmp(off2).then_with(||mod1.cmp(mod2) ).then_with(||applies1.cmp(applies2)),
+            (ResolvedType::Sig { base:base1, .. }, ResolvedType::Sig { base:base2, .. })
+            | (ResolvedType::Data { base:base1, .. }, ResolvedType::Data { base:base2, .. })
+            | (ResolvedType::Lit { base:base1, .. }, ResolvedType::Lit { base:base2, .. })
+            => base1.cmp(base2),
             (ResolvedType::Virtual(hash1), ResolvedType::Virtual(hash2))
             => hash1.cmp(hash2),
             (ResolvedType::Generic{ .. }, _) => Ordering::Less,
@@ -105,23 +105,23 @@ impl Hash for ResolvedType {
                 state.write_u8(*depth);
                 un_projected.hash(state)
             },
-            ResolvedType::Sig { module, offset, applies, .. } => {
+            ResolvedType::Sig { base, .. } => {
                 state.write_u8(2);
-                state.write_u8(*offset);
-                module.hash(state);
-                applies.hash(state)
+                state.write_u8(base.offset);
+                base.module.hash(state);
+                base.applies.hash(state)
             },
-            ResolvedType::Data { module, offset, applies, .. } => {
+            ResolvedType::Data { base, .. } => {
                 state.write_u8(3);
-                state.write_u8(*offset);
-                module.hash(state);
-                applies.hash(state)
+                state.write_u8(base.offset);
+                base.module.hash(state);
+                base.applies.hash(state)
             },
-            ResolvedType::Lit { module, offset, applies, .. } => {
+            ResolvedType::Lit { base, .. } => {
                 state.write_u8(4);
-                state.write_u8(*offset);
-                module.hash(state);
-                applies.hash(state)
+                state.write_u8(base.offset);
+                base.module.hash(state);
+                base.applies.hash(state)
             },
             ResolvedType::Virtual(hash) => {
                 state.write_u8(5);
