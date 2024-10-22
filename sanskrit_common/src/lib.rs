@@ -15,7 +15,6 @@ extern crate arrayref;
 extern crate sanskrit_derive;
 
 pub mod encoding;
-pub mod errors;
 pub mod model;
 pub mod hashing;
 pub mod utils;

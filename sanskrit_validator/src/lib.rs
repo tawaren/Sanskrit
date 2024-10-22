@@ -2,7 +2,6 @@
 use std::{env, fs};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
-use sanskrit_common::errors::*;
 
 pub trait PathExtensions {
     fn extensions(&self, count: usize) -> Option<String>;
@@ -22,59 +21,32 @@ impl PathExtensions for Path {
 }
 
 
-fn load_dep_from_file(cols:&mut [(&str, Vec<Vec<u8>>)], exts:usize, file:PathBuf) -> Result<()> {
+fn load_dep_from_file(cols:&mut [(&str, Vec<Vec<u8>>)], exts:usize, file:PathBuf) {
     if file.is_file() {
         match file.extensions(exts) {
             Some(ext) => {
                 for col in cols {
                     if ext.eq(col.0) {
-                        return match fs::read(file) {
-                            Ok(content) => {
-                                col.1.push(content);
-                                Ok(())
-                            }
-                            Err(_) => error(|| "Could not read file")
-                        }
+                        return col.1.push(fs::read(file).unwrap());
                     }
                 }
-                Ok(())
             }
-            _ => Ok(())
+            _ => {}
         }
-    } else {
-        Ok(())
     }
 }
 
-fn load_deps_from_dir(cols:&mut [(&str, Vec<Vec<u8>>)], exts:usize, dir:PathBuf) -> Result<()> {
-    match fs::read_dir(dir) {
-        Ok(dir) => {
-            for entry in dir {
-                match entry {
-                    Ok(e) => {
-                        let path = e.path();
-                        load_dep_from_file(cols, exts, path)?;
-                    }
-                    Err(_) => error(||"Could not read directory content")?
-                }
-            }
-            Ok(())
-        }
-        Err(_) => error(||"Could not read file")
+fn load_deps_from_dir(cols:&mut [(&str, Vec<Vec<u8>>)], exts:usize, dir:PathBuf) {
+    for entry in fs::read_dir(dir).unwrap() {
+        let path = entry.unwrap().path();
+        load_dep_from_file(cols, exts, path);
     }
 }
 
 //Todo: use clap for args parsing
-pub fn execute_with_args<T,F:FnOnce(Vec<Vec<u8>>, Vec<Vec<u8>>, Vec<Vec<u8>>, bool) -> Result<T>>(args:&[String], f:F) -> Result<T>{
-    let work_dir = match env::current_dir(){
-        Ok(w_dir) => w_dir,
-        Err(_) => error(||"could not get working directory")?
-    };
-
-    if args.len() < 1 {
-        return error(||"not enough arguments");
-    }
-
+pub fn execute_with_args<T,F:FnOnce(Vec<Vec<u8>>, Vec<Vec<u8>>, Vec<Vec<u8>>, bool) -> T>(args:&[String], f:F) -> T{
+    let work_dir = env::current_dir().unwrap();
+    assert!(args.len() >= 1);
     //Collection configuration (inkl. collectors)
     let exts = 2;
     let mut mod_and_txts = vec![("mod.sans", Vec::new()), ("txt.sans", Vec::new())];
@@ -91,9 +63,9 @@ pub fn execute_with_args<T,F:FnOnce(Vec<Vec<u8>>, Vec<Vec<u8>>, Vec<Vec<u8>>, bo
         } else {
             let mod_path = work_dir.join(arg);
             if mod_path.is_dir() {
-                load_deps_from_dir(active_cols, exts, mod_path)?;
+                load_deps_from_dir(active_cols, exts, mod_path);
             } else {
-                load_dep_from_file(active_cols, exts, mod_path)?;
+                load_dep_from_file(active_cols, exts, mod_path);
             }
         }
     }

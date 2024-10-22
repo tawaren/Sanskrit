@@ -1,10 +1,7 @@
-use sanskrit_common::errors::*;
 use crate::loader::{StateManager, Loader, ResolvedCtrs};
 use crate::model::resolved::*;
 use crate::model::*;
 use alloc::vec::Vec;
-use sp1_zkvm::io::{hint_slice, read_vec};
-use sp1_zkvm::lib::unconstrained;
 use crate::model::linking::{Component, CallableComponent, FastModuleLink};
 use sp1_zkvm_col::arena::{Embedding, URef};
 use crate::model::bitsets::{CapSet, BitSet};
@@ -19,7 +16,7 @@ pub struct CachedImports {
 
 impl CachedImports {
     //Generates a fresh Empty Cache
-    pub fn new(/*imports:&[Imports]*/) -> Result<Self> {
+    pub fn new(/*imports:&[Imports]*/) -> Self {
             /*let mut num_modules = 0;
             let mut num_types = 0;
             let mut num_permission = 0;
@@ -49,31 +46,19 @@ impl CachedImports {
             */
         //let res = read_vec();
         //assert!(res.len() == 4);
-        Ok(CachedImports {
+        CachedImports {
             mref_cache: Vec::with_capacity(256),
             tref_cache: Vec::with_capacity(256),
             pref_cache: Vec::with_capacity(256),
             cref_cache: Vec::with_capacity(256)
-        })
+        }
     }
 
-    fn size_check(&self) -> Result<()> {
-        if self.mref_cache.len() > 256 {
-            return error(||"Can not import more than 256 Modules")
-        }
-
-        if self.tref_cache.len() > 256 {
-            return error(||"Can not import more than 256 Types")
-        }
-
-        if self.pref_cache.len() > 256 {
-            return error(||"Can not import more than 256 Permisisons")
-        }
-
-        if self.cref_cache.len() > 256 {
-            return error(||"Can not import more than 256 Callables")
-        }
-        Ok(())
+    fn size_check(&self) {
+        assert!(self.mref_cache.len() <= 256);
+        assert!(self.tref_cache.len() <= 256);
+        assert!(self.pref_cache.len() <= 256);
+        assert!(self.cref_cache.len() <= 256);
     }
 }
 
@@ -100,7 +85,7 @@ pub fn top_level_subs<S:StateManager>(store: &Loader<S>, generics:&[Generic]) ->
 
 impl<'a, S:StateManager> Context<'a,S> {
     //Generates a top level local Context for a Component from input
-    pub fn from_module_component<T: Component>(comp: &T, module: &FastModuleLink, use_body: bool, store: &'a Loader<S>) -> Result<Self> {
+    pub fn from_module_component<T: Component>(comp: &T, module: &FastModuleLink, use_body: bool, store: &'a Loader<S>) -> Self {
         assert!(comp.get_generics().len() <= u8::MAX as usize);
         let top = top_level_subs(store, comp.get_generics());
         let public = comp.get_public_import();
@@ -128,7 +113,7 @@ impl<'a, S:StateManager> Context<'a,S> {
 
 
     //Generates a top level local Context for a standalone Component from Input
-    pub fn from_top_component<T: Component>(comp: &T, store: &'a Loader<S>) -> Result<Self> {
+    pub fn from_top_component<T: Component>(comp: &T, store: &'a Loader<S>) -> Self {
         assert_eq!(comp.get_generics().len(), 0);
         let public = comp.get_public_import();
         match comp.get_body_import() {
@@ -144,24 +129,21 @@ impl<'a, S:StateManager> Context<'a,S> {
     }
 
     //Gets and resolves a Module from the local context
-    pub fn get_mod(&self, mref: ModRef) -> Result<FastModuleLink> {
-        unpack_or_error(self.cache.mref_cache.get(mref.0 as usize).cloned(), || "Requested module not imported")
+    pub fn get_mod(&self, mref: ModRef) -> FastModuleLink {
+        self.cache.mref_cache[mref.0 as usize]
     }
 
-    pub fn get_type(&self, tref: TypeRef) -> Result<URef<'static,ResolvedType>> {
-        if (tref.0 as usize) >= self.cache.tref_cache.len() {return error(|| "Requested type not imported") }
-        Ok(self.cache.tref_cache[tref.0 as usize])
+    pub fn get_type(&self, tref: TypeRef) -> URef<'static,ResolvedType> {
+        self.cache.tref_cache[tref.0 as usize]
     }
 
-    pub fn get_callable(&self, cref: CallRef) -> Result<URef<'static,ResolvedCallable>> {
-        if (cref.0 as usize) >= self.cache.cref_cache.len() {return error(|| "Requested callable not imported") }
-        Ok(self.cache.cref_cache[cref.0 as usize])
+    pub fn get_callable(&self, cref: CallRef) -> URef<'static,ResolvedCallable> {
+        self.cache.cref_cache[cref.0 as usize]
     }
 
     //Gets and resolves a type from the local context
-    pub fn get_perm(&self, pref: PermRef) -> Result<URef<'static,ResolvedPermission>> {
-        if (pref.0 as usize) >= self.cache.pref_cache.len() {return error(|| "Requested permission not imported") }
-        Ok(self.cache.pref_cache[pref.0 as usize])
+    pub fn get_perm(&self, pref: PermRef) -> URef<'static,ResolvedPermission> {
+        self.cache.pref_cache[pref.0 as usize]
     }
 
     //Gets and resolves a Module from the local context
@@ -182,38 +164,37 @@ impl<'a, S:StateManager> Context<'a,S> {
         &self.cache.pref_cache
     }
 
-    pub fn create_and_resolve(imports: &[Imports], store: &'a Loader<S>) -> Result<Self> {
+    pub fn create_and_resolve(imports: &[Imports], store: &'a Loader<S>) -> Self {
         let mut context = Context {
-            cache: CachedImports::new(/*&imports*/)?,
+            cache: CachedImports::new(/*&imports*/),
             store,
         };
-        context.resolve_all(imports)?;
-        context.cache.size_check()?;
-        Ok(context)
+        context.resolve_all(imports);
+        context.cache.size_check();
+        context
     }
 
-    fn resolve_all(&mut self, imports: &[Imports]) -> Result<()> {
+    fn resolve_all(&mut self, imports: &[Imports]) {
         for import in imports {
             match *import {
                 Imports::Module(module) => {
-                    self.resolve_module(module)?;
+                    self.resolve_module(module);
                 },
                 Imports::Generics(gens) => {
-                    self.resolve_generics(gens)?;
+                    self.resolve_generics(gens);
                 },
                 Imports::Public(public) => {
-                    self.resolve_modules(&public.modules)?;
-                    self.resolve_types(&public.types)?;
+                    self.resolve_modules(&public.modules);
+                    self.resolve_types(&public.types);
                 },
                 Imports::Body(body) => {
-                    self.resolve_modules(&body.public.modules)?;
-                    self.resolve_types(&body.public.types)?;
-                    self.resolve_callables(&body.callables)?;
-                    self.resolve_perms(&body.permissions)?;
+                    self.resolve_modules(&body.public.modules);
+                    self.resolve_types(&body.public.types);
+                    self.resolve_callables(&body.callables);
+                    self.resolve_perms(&body.permissions);
                 },
             }
         }
-        Ok(())
     }
 
     pub fn is_this_module(&self, target: &FastModuleLink) -> bool {
@@ -224,28 +205,25 @@ impl<'a, S:StateManager> Context<'a,S> {
         self.store.is_local_type(target)
     }
 
-    fn resolve_module(&mut self, res: &FastModuleLink) -> Result<()> {
+    fn resolve_module(&mut self, res: &FastModuleLink) {
         //Make sure the module is loaded and accounted even if not used
-        if !self.is_this_module(res) { res.resolve(self)?; };
+        if !self.is_this_module(res) { res.resolve(self); };
         self.cache.mref_cache.push(*res);
-        Ok(())
     }
 
-    fn resolve_generics(&mut self, generics: &[URef<'static,ResolvedType>]) -> Result<()> {
+    fn resolve_generics(&mut self, generics: &[URef<'static,ResolvedType>]){
         for gens in generics {
             self.cache.tref_cache.push(*gens);
         }
-        Ok(())
     }
 
-    fn resolve_modules(&mut self, imps: &[FastModuleLink]) -> Result<()> {
+    fn resolve_modules(&mut self, imps: &[FastModuleLink]) {
         for imp in imps {
-            self.resolve_module(imp)?;
+            self.resolve_module(imp);
         }
-        Ok(())
     }
 
-    fn resolve_types(&mut self, imps: &[TypeImport]) -> Result<()> {
+    fn resolve_types(&mut self, imps: &[TypeImport]) {
         for imp in imps {
             let res = match imp {
                 TypeImport::Data { link: DataLink { module, offset }, applies } => self.resolve_data_type(*module, *offset, applies),
@@ -254,60 +232,57 @@ impl<'a, S:StateManager> Context<'a,S> {
                 //its an image type
                 TypeImport::Projection { typ } => self.resolve_projection_type(*typ),
                 //A special virtual type
-                TypeImport::Virtual(hash) => Ok(self.store.virtual_type_dedup(ResolvedType::Virtual(*hash))),
-            }?;
+                TypeImport::Virtual(hash) => self.store.virtual_type_dedup(ResolvedType::Virtual(*hash)),
+            };
             self.cache.tref_cache.push(res);
         }
-        Ok(())
     }
 
-    fn resolve_callables(&mut self, imps: &[CallableImport]) -> Result<()> {
+    fn resolve_callables(&mut self, imps: &[CallableImport]) {
         for imp in imps {
             let res = match imp {
                 CallableImport::Function { link: FuncLink { module, offset }, ref applies, .. } => self.resolve_function_callable(*module, *offset, applies),
                 CallableImport::Implement { link: ImplLink { module, offset }, ref applies, .. } => self.resolve_implement_callable(*module, *offset, applies),
-            }?;
+            };
             self.cache.cref_cache.push(res);
         }
-        Ok(())
     }
 
-    fn resolve_perms(&mut self, imps: &[PermissionImport]) -> Result<()> {
+    fn resolve_perms(&mut self, imps: &[PermissionImport])  {
         for imp in imps {
             let res = match imp {
                 PermissionImport::Type(perm, tref) => {
-                    let typ = self.get_type(*tref)?;
+                    let typ = self.get_type(*tref);
                     match *typ.get_target() {
                         ResolvedType::Data { .. } => self.store.dedup_permission(ResolvedPermission::TypeData {
                             perm: *perm,
-                            ctrs: self.resolve_ctr_from_type(typ)?,
+                            ctrs: self.resolve_ctr_from_type(typ),
                             typ
                         }),
                         ResolvedType::Sig { .. } => self.store.dedup_permission(ResolvedPermission::TypeSig {
                             perm: *perm,
-                            signature: self.resolve_signature_from_type(typ)?,
+                            signature: self.resolve_signature_from_type(typ),
                             typ
                         }),
                         ResolvedType::Lit { .. } => self.store.dedup_permission(ResolvedPermission::TypeLit {
                             perm: *perm,
-                            size: self.resolve_size_from_type(typ)?,
+                            size: self.resolve_size_from_type(typ),
                             typ
                         }),
-                        _ => return error(|| "Provided type does not support Permissions")
+                        _ => panic!("Provided type does not support Permissions")
                     }
                 },
                 PermissionImport::Callable(perm, cref) => {
-                    let fun = self.get_callable(*cref)?;
+                    let fun = self.get_callable(*cref);
                     self.store.dedup_permission(ResolvedPermission::FunSig {
                         perm: *perm,
-                        signature: self.resolve_signature_from_callable(fun)?,
+                        signature: self.resolve_signature_from_callable(fun),
                         fun
                     })
                 }
             };
             self.cache.pref_cache.push(res);
         }
-        Ok(())
     }
 }
 
@@ -355,58 +330,53 @@ impl Embedding<ResolvedType> for ResolvedComponent {
 //New start to have the Embeding near the use
 impl<'a, S:StateManager> Context<'a, S> {
 
-    fn resolve_data_type(&self, module:ModRef, offset:u8, applies:&[TypeRef]) -> Result<URef<'static,ResolvedType>>{
+    fn resolve_data_type(&self, module:ModRef, offset:u8, applies:&[TypeRef]) -> URef<'static,ResolvedType>{
         //Fetch the link
-        let module_link =  self.get_mod(module)?;
+        let module_link =  self.get_mod(module);
         //Load the Adt
-        let adt_cache = self.store.get_component::<DataComponent>(&module_link, offset)?;
+        let adt_cache = self.store.get_component::<DataComponent>(&module_link, offset);
         // get the adt
         let adt = adt_cache.retrieve();
         //prepare the applies vector
-        let result:Vec<URef<'static,ResolvedType>> = applies.iter().map(|appl|self.get_type(*appl)).collect::<Result<_>>()?;
+        let result:Vec<URef<'static,ResolvedType>> = applies.iter().map(|appl|self.get_type(*appl)).collect();
         //check that the number of generics match
         //Note we do this here so nobody can cause extra iterations in are_phantom & apply_types
-        if adt.generics.len() != applies.len() {
-            return error(||"Applied types mismatch required generics")
-        }
+        assert!(adt.generics.len() == applies.len());
         //Check if we already have it
-        Ok(self.store.data_type_dedup(ResolvedComponent{
+        self.store.data_type_dedup(ResolvedComponent{
             module: module_link,
             offset,
             applies:result
-        }, adt))
+        }, adt)
     }
 
-    fn resolve_sig_type(&self, module:ModRef, offset:u8,  applies:&[TypeRef]) -> Result<URef<'static,ResolvedType>>{
+    fn resolve_sig_type(&self, module:ModRef, offset:u8,  applies:&[TypeRef]) -> URef<'static,ResolvedType>{
         //build the type
         //Fetch the link
-        let module_link = self.get_mod(module)?;
+        let module_link = self.get_mod(module);
         //Load the Sig
-        let sig_cache = self.store.get_component::<SigComponent>(&module_link,offset)?;
+        let sig_cache = self.store.get_component::<SigComponent>(&module_link,offset);
         // get the function
         let sig = sig_cache.retrieve();
         //prepare the applies vector
-        let result:Vec<URef<'static,ResolvedType>> = applies.iter().map(|appl|self.get_type(*appl)).collect::<Result<_>>()?;
+        let result:Vec<URef<'static,ResolvedType>> = applies.iter().map(|appl|self.get_type(*appl)).collect();
         //check that the number of generics match
         //Note we do this here so nobody can cause extra iterations in are_phantom & apply_types
-        if sig.shared.generics.len() != applies.len() {
-            return error(||"Applied types mismatch required generics")
-        }
-
+        assert!(sig.shared.generics.len() == applies.len());
         //Check if we already have it
         //Signatures ignore the caps of generics as a signature does not store values of these type (just take them as param & return them)
         // A Signature can Capture (store) these types but captures are checked on implement side so that they are covered by the signatures capabilities
         //  This is needed any way as they could contain anything with any cap (like adt fields)
         //   But unlike adt fields we can not abstract over them as they may depend on things not declared in the Signature
         //let (generic_caps,caps) = apply_types(sig.provided_caps,are_phantom,&result);
-        Ok(self.store.sig_type_dedup(ResolvedType::Sig {
+        self.store.sig_type_dedup(ResolvedType::Sig {
             caps: sig.provided_caps,
             base: ResolvedComponent {
                 module:module_link,
                 offset,
                 applies:result,
             }
-        }))
+        })
     }
 
     fn project(&self, inner:URef<'static,ResolvedType>, nesting:u8) -> URef<'static,ResolvedType>{
@@ -419,63 +389,63 @@ impl<'a, S:StateManager> Context<'a, S> {
         self.store.projection_type_dedup(ResolvedType::Projection { depth, un_projected:inner})
     }
 
-    fn resolve_projection_type(&self, inner:TypeRef) -> Result<URef<'static,ResolvedType>>{
+    fn resolve_projection_type(&self, inner:TypeRef) -> URef<'static,ResolvedType>{
         //get the inner type
-        Ok(self.project(self.get_type(inner)?, 1))
+        self.project(self.get_type(inner), 1)
     }
 
-    fn resolve_function_callable(&self, module:ModRef, offset:u8,  applies:&[TypeRef]) -> Result<URef<'static,ResolvedCallable>>{
+    fn resolve_function_callable(&self, module:ModRef, offset:u8,  applies:&[TypeRef]) -> URef<'static,ResolvedCallable>{
         //Fetch the link
-        let module_link =  self.get_mod(module)?;
+        let module_link =  self.get_mod(module);
         // prepare the applies vector
-        let result:Vec<URef<'static,ResolvedType>> = applies.iter().map(|appl|self.get_type(*appl)).collect::<Result<_>>()?;
+        let result:Vec<URef<'static,ResolvedType>> = applies.iter().map(|appl|self.get_type(*appl)).collect();
 
-        Ok(self.store.dedup_callable(ResolvedCallable::Function { base:ResolvedComponent{
+        self.store.dedup_callable(ResolvedCallable::Function { base:ResolvedComponent{
             offset,
             module: module_link, //Get the Module
             //Resolve the applied types
             applies:result
-        }}))
+        }})
     }
 
-    fn resolve_implement_callable(&self, module:ModRef, offset:u8,  applies:&[TypeRef]) -> Result<URef<'static,ResolvedCallable>>{
+    fn resolve_implement_callable(&self, module:ModRef, offset:u8,  applies:&[TypeRef]) -> URef<'static,ResolvedCallable>{
         //Fetch the link
-        let module_link =  self.get_mod(module)?;
+        let module_link =  self.get_mod(module);
         // prepare the applies vector
-        let result:Vec<URef<'static,ResolvedType>> = applies.iter().map(|appl|self.get_type(*appl)).collect::<Result<_>>()?;
+        let result:Vec<URef<'static,ResolvedType>> = applies.iter().map(|appl|self.get_type(*appl)).collect();
 
-        Ok(self.store.dedup_callable(ResolvedCallable::Implement { base:ResolvedComponent{
+        self.store.dedup_callable(ResolvedCallable::Implement { base:ResolvedComponent{
             offset,
             module: module_link, //Get the Module
             //Resolve the applied types
             applies:result
-        }}))
+        }})
     }
 
 
-    fn resolve_signature_from_component<C:CallableComponent>(&self, base:&ResolvedComponent) -> Result<URef<'static,ResolvedSignature>> {
+    fn resolve_signature_from_component<C:CallableComponent>(&self, base:&ResolvedComponent) -> URef<'static,ResolvedSignature> {
         //Load the Comp
-        let comp_cache = self.store.get_component::<C>(&base.module, base.offset)?;
+        let comp_cache = self.store.get_component::<C>(&base.module, base.offset);
         // get the Comp
         let comp = comp_cache.retrieve();
         //get its context with the applies as substitutions
-        let context = comp_cache.substituted_context(&base.applies,&self.store)?;
+        let context = comp_cache.substituted_context(&base.applies,&self.store);
         //Create the sig
-        Ok(self.store.dedup_signature(ResolvedSignature {
+        self.store.dedup_signature(ResolvedSignature {
             //Map the params to the resolved type
             params: comp.get_params().iter().map(|c|{
-                let typ = context.get_type(c.typ)?;
-                Ok(ResolvedParam{ typ, consumes: c.consumes })
-            }).collect::<Result<_>>()?,
+                let typ = context.get_type(c.typ);
+                ResolvedParam{ typ, consumes: c.consumes }
+            }).collect(),
             //Map the returns to the resolved type
             returns: comp.get_returns().iter().map(|rt|{
                 context.get_type(*rt)
-            }).collect::<Result<_>>()?,
+            }).collect(),
             transactional: comp.is_transactional()
-        }))
+        })
     }
 
-    fn resolve_signature_from_callable(&self, fun:URef<'static,ResolvedCallable>) -> Result<URef<'static,ResolvedSignature>> {
+    fn resolve_signature_from_callable(&self, fun:URef<'static,ResolvedCallable>) -> URef<'static,ResolvedSignature> {
         match *fun {
             ResolvedCallable::Function {  ref base, .. } => {
                 //create the sig
@@ -488,7 +458,7 @@ impl<'a, S:StateManager> Context<'a, S> {
         }
     }
 
-    fn resolve_signature_from_type(&self, typ:URef<'static,ResolvedType>) -> Result<URef<'static,ResolvedSignature>> {
+    fn resolve_signature_from_type(&self, typ:URef<'static,ResolvedType>) -> URef<'static,ResolvedSignature> {
         match *typ {
             ResolvedType::Sig { ref base, .. }  => {
                 //create the sig
@@ -499,62 +469,55 @@ impl<'a, S:StateManager> Context<'a, S> {
             | ResolvedType::Projection { .. }
             | ResolvedType::Lit { .. }
             | ResolvedType::Data { .. }
-            | ResolvedType::Virtual(_) => error(||"Only sig types and its projection have signatures ")
+            | ResolvedType::Virtual(_) => panic!("Only sig types and its projection have signatures")
         }
     }
 
 
-    fn resolve_size_from_type(&self, typ:URef<'static,ResolvedType>) -> Result<u16> {
+    fn resolve_size_from_type(&self, typ:URef<'static,ResolvedType>) -> u16 {
         match *typ {
-            ResolvedType::Lit { size, .. } => Ok(size),
+            ResolvedType::Lit { size, .. } => size,
             ResolvedType::Projection { un_projected, .. } => match *un_projected {
-                ResolvedType::Lit { size, .. } => Ok(size),
-                _ => error(||"Only literals and its projection have sizes")
+                ResolvedType::Lit { size, .. } => size,
+                _ => panic!("Only literals and its projection have sizes")
             },
-            _ => error(||"Only literals and its projection have sizes")
+            _ => panic!("Only literals and its projection have sizes")
         }
     }
 
-    fn resolve_ctr_from_type(&self, typ:URef<'static,ResolvedType>) -> Result<URef<'static,ResolvedCtrs>> {
+    fn resolve_ctr_from_type(&self, typ:URef<'static,ResolvedType>) -> URef<'static,ResolvedCtrs> {
         match *typ {
             ResolvedType::Data { ref base, .. }  => {
                 //Load the Adt
-                let adt_cache = self.store.get_component::<DataComponent>(&base.module, base.offset)?;
+                let adt_cache = self.store.get_component::<DataComponent>(&base.module, base.offset);
                 // get the adt
                 let adt = adt_cache.retrieve();
                 //get its context with the applies as substitutions
-                let context = adt_cache.substituted_context(&base.applies,&self.store)?;
+                let context = adt_cache.substituted_context(&base.applies,&self.store);
                 //Create the Ctr
                 match adt.body {
                     DataImpl::Internal { ref constructors, .. } => {
-                        Ok(self.store.dedup_ctr(constructors.iter().map(|c|{
-                            c.fields.iter().map(|t|context.get_type(t.typ)).collect::<Result<_>>()
-                        }).collect::<Result<_>>()?))
+                        self.store.dedup_ctr(constructors.iter().map(|c|{
+                            c.fields.iter().map(|t|context.get_type(t.typ)).collect()
+                        }).collect())
                     }
-                    DataImpl::External(_) => error(||"Extrnal data does not have ctrs")
+                    DataImpl::External(_) => panic!("Extrnal data does not have ctrs")
                 }
             },
             ResolvedType::Projection { depth, un_projected, .. } => {
                 assert!(if let ResolvedType::Projection{..} = *un_projected {false} else {true});
                 //recurses only once (assert checks assumption)
-                let ctrs = self.resolve_ctr_from_type(un_projected)?;
-                Ok(self.store.dedup_ctr(ctrs.iter().map(|cases| cases.iter().map(|field|{
+                let ctrs = self.resolve_ctr_from_type(un_projected);
+                self.store.dedup_ctr(ctrs.iter().map(|cases| cases.iter().map(|field|{
                     self.project(*field, depth)
-                }).collect()).collect()))
+                }).collect()).collect())
             },
 
             ResolvedType::Generic { .. }
             | ResolvedType::Lit { .. }
             | ResolvedType::Sig { .. }
-            | ResolvedType::Virtual(_) => error(||"Only data and its projection have ctrs ")
+            | ResolvedType::Virtual(_) => panic!("Only data and its projection have ctrs ")
         }
-    }
-}
-
-fn unpack_or_error<T,F:FnOnce()-> &'static str>(opt:Option<T>, msg:F) -> Result<T>{
-    match opt {
-        None => error(msg),
-        Some(t) => Ok(t),
     }
 }
 

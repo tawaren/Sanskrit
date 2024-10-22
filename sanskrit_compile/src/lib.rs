@@ -12,7 +12,6 @@ pub mod compiler;
 pub mod externals;
 
 use sanskrit_common::model::*;
-use sanskrit_common::errors::*;
 use sanskrit_common::encoding::*;
 use alloc::vec::Vec;
 use externals::CompilationExternals;

@@ -7,7 +7,6 @@ pub mod provider;
 use alloc::vec::Vec;
 use sanskrit_common::model::*;
 use sanskrit_common::encoding::*;
-use sanskrit_common::errors::*;
 use crate::model::resolved::ResolvedType;
 use sp1_zkvm_col::arena::URef;
 use crate::model::bitsets::{CapSet, PermSet};

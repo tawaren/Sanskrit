@@ -2,7 +2,6 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 use sanskrit_common::model::*;
 use sanskrit_common::encoding::*;
-use sanskrit_common::errors::*;
 
 //A Block
 #[derive(Clone, Debug, Parsable, Serializable)]

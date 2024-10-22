@@ -16,7 +16,6 @@ use sanskrit_core::resolver::Context;
 use sanskrit_core::model::linking::Ref;
 use sanskrit_core::model::bitsets::*;
 use crate::compacting::Compactor;
-use sanskrit_common::errors::*;
 use sanskrit_core::model::resolved::ResolvedType;
 use sanskrit_common::utils::Crc;
 use crate::externals::CompilationExternals;

@@ -5,9 +5,8 @@ authors = ["tawaren <markus.knecht85@gmail.com>"]
 edition = "2021"
 
 [features]
-default = ["std", "string_errors"]
+default = ["std"]
 std = []
-string_errors = ["sanskrit_common/string_errors"]
 
 [dependencies.sanskrit_common]
 path = "../sanskrit_common"

@@ -32,18 +32,10 @@ pub fn main() {
     let dependencies = load_vec();
     //println!("cycle-tracker-report-end: loading");
 
-    match process_preloaded_deploy(modules, transactions, dependencies, system_mode) {
-        Ok(hs) => {
-            let ser = Serializer::serialize_fully(&hs).expect("serialisation failed");
-            //println!("DeDup Counter was: {}", unsafe{dedup_count});
-            //println!("DeDup Counter fresh was: {}", unsafe{dedup_miss_count});
-            //println!("DeDup Max size was: {}", unsafe{dedup_max});
-
-            sp1_zkvm::io::commit_slice(&ser)
-        },
-        Err(e) => {
-            println!("{:?}", e);
-            assert!(false)
-        }
-    }
+    let hs = process_preloaded_deploy(modules, transactions, dependencies, system_mode);
+    let ser = Serializer::serialize_fully(&hs);
+    //println!("DeDup Counter was: {}", unsafe{dedup_count});
+    //println!("DeDup Counter fresh was: {}", unsafe{dedup_miss_count});
+    //println!("DeDup Max size was: {}", unsafe{dedup_max});
+    sp1_zkvm::io::commit_slice(&ser);
 }

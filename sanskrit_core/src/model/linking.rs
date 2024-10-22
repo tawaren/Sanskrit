@@ -1,11 +1,9 @@
 use alloc::borrow::ToOwned;
-use alloc::rc::Rc;
 use core::cell::RefCell;
 use core::cmp::Ordering;
 use core::fmt::Debug;
 use core::hash::{Hash, Hasher};
 use crate::model::resolved::*;
-use sanskrit_common::errors::*;
 use crate::loader::{StateManager, Loader};
 use crate::resolver::Context;
 use sanskrit_common::model::ModuleLink;
@@ -17,33 +15,33 @@ use sp1_zkvm_col::arena::URef;
 
 //The ref trait allows to fetch the target it reference from a context
 pub trait Ref<T, S:StateManager> {
-    fn fetch(self, ctx:&Context<S>) -> Result<T>;      //Gets the target and throws if in existent
+    fn fetch(self, ctx:&Context<S>) -> T;      //Gets the target and throws if in existent
 }
 
 //ModRef is a Ref to a ModuleLink
 impl<S:StateManager> Ref<FastModuleLink,S> for ModRef {
-    fn fetch(self, ctx:&Context<S>) ->  Result<FastModuleLink> {
+    fn fetch(self, ctx:&Context<S>) ->  FastModuleLink {
         ctx.get_mod(self)
     }
 }
 
 //TypeRef is a Ref to a Type
 impl<S:StateManager> Ref<URef<'static,ResolvedType>,S> for TypeRef {
-    fn fetch(self, ctx: &Context<S>) ->  Result<URef<'static,ResolvedType>> {
+    fn fetch(self, ctx: &Context<S>) ->  URef<'static,ResolvedType> {
         ctx.get_type(self)
     }
 }
 
 //PermRef is a Ref to a Type
 impl<S:StateManager> Ref<URef<'static,ResolvedPermission>,S> for PermRef {
-    fn fetch(self, ctx: &Context<S>) ->  Result<URef<'static,ResolvedPermission>> {
+    fn fetch(self, ctx: &Context<S>) -> URef<'static,ResolvedPermission> {
         ctx.get_perm(self)
     }
 }
 
 //FuncRef is a Ref to a FunctionImport
 impl<S:StateManager> Ref<URef<'static,ResolvedCallable>,S> for CallRef {
-    fn fetch(self, ctx: &Context<S>) ->  Result<URef<'static,ResolvedCallable>> {
+    fn fetch(self, ctx: &Context<S>) -> URef<'static,ResolvedCallable> {
         ctx.get_callable(self)
     }
 }
@@ -52,8 +50,8 @@ pub trait Component {
     fn get(module:&Module, offset:u8) -> &Self;
     fn num_elems(module:&Module) -> usize;
     fn get_local_limit<S:StateManager>(cache:&Loader<S>) -> usize;
-    fn get_signature_byte_size(&self) -> Result<usize>;
-    fn get_full_byte_size(&self) -> Result<usize>;
+    fn get_signature_byte_size(&self) -> usize;
+    fn get_full_byte_size(&self) -> usize;
     fn get_public_import(&self) -> &PublicImport;
     fn get_body_import(&self) -> Option<&BodyImport>;
     fn get_generics(&self) -> &[Generic];
@@ -78,14 +76,11 @@ impl Component for DataComponent {
         cache.this_deployed_data.get()
     }
 
-    fn get_signature_byte_size(&self) -> Result<usize> {
-        match self.byte_size {
-            None => error(||"Byte size is missing"),
-            Some(size) => Ok(size),
-        }
+    fn get_signature_byte_size(&self) -> usize {
+        self.byte_size.unwrap()
     }
 
-    fn get_full_byte_size(&self) -> Result<usize> {
+    fn get_full_byte_size(&self) -> usize {
         self.get_signature_byte_size()
     }
 
@@ -115,14 +110,11 @@ impl Component for SigComponent {
         cache.this_deployed_sigs.get()
     }
 
-    fn get_signature_byte_size(&self) -> Result<usize> {
-        match self.byte_size {
-            None => error(|| "Byte size is missing"),
-            Some(size) => Ok(size),
-        }
+    fn get_signature_byte_size(&self) -> usize {
+        self.byte_size.unwrap()
     }
 
-    fn get_full_byte_size(&self) -> Result<usize> {
+    fn get_full_byte_size(&self) -> usize {
         self.get_signature_byte_size()
     }
 
@@ -166,21 +158,16 @@ impl Component for FunctionComponent {
         cache.this_deployed_functions.get()
     }
 
-    fn get_signature_byte_size(&self) -> Result<usize> {
-        match self.byte_size {
-            None => error(||"Byte size is missing"),
-            Some(size) => match self.body {
-                CallableImpl::Internal { byte_size:Some(body_size), .. } => Ok(size - body_size),
-                _ => Ok(size)
-            },
+    fn get_signature_byte_size(&self) -> usize {
+        let size = self.byte_size.unwrap();
+        match self.body {
+            CallableImpl::Internal { byte_size:Some(body_size), .. } => size - body_size,
+            _ => size
         }
     }
 
-    fn get_full_byte_size(&self) -> Result<usize> {
-        match self.byte_size {
-            None => error(||"Byte size is missing"),
-            Some(size) => Ok(size),
-        }
+    fn get_full_byte_size(&self) -> usize {
+        self.byte_size.unwrap()
     }
 
     fn get_public_import(&self) -> &PublicImport {
@@ -226,21 +213,16 @@ impl Component for ImplementComponent {
         cache.this_deployed_implements.get()
     }
 
-    fn get_signature_byte_size(&self) -> Result<usize> {
-        match self.byte_size {
-            None => error(||"Byte size is missing"),
-            Some(size) => match self.body {
-                CallableImpl::Internal { byte_size:Some(body_size), .. } => Ok(size - body_size),
-                _ => Ok(size)
-            },
+    fn get_signature_byte_size(&self) -> usize {
+        let size = self.byte_size.unwrap();
+        match self.body {
+            CallableImpl::Internal { byte_size:Some(body_size), .. } => size - body_size,
+            _ => size
         }
     }
 
-    fn get_full_byte_size(&self) -> Result<usize> {
-        match self.byte_size {
-            None => error(||"Byte size is missing"),
-            Some(size) => Ok(size),
-        }
+    fn get_full_byte_size(&self) -> usize {
+        self.byte_size.unwrap()
     }
 
     fn get_public_import(&self) -> &PublicImport {
@@ -292,17 +274,17 @@ impl FastModuleLink {
         FastModuleLink(link,URef::identity_leak(RefCell::new(cache)))
     }
 
-    pub fn load<S:StateManager>(&self, store:&Loader<S>) -> Result<URef<'static,Module>> {
+    pub fn load<S:StateManager>(&self, store:&Loader<S>) -> URef<'static,Module> {
         if self.1.borrow().is_some() {
-            Ok(self.1.borrow().to_owned().unwrap())
+            self.1.borrow().to_owned().unwrap()
         } else {
-            let module = store.get_module(self.0)?;
-            let _ = self.1.borrow_mut().insert(module.clone());
-            Ok(module)
+            let module = store.get_module(self.0);
+            let _ = self.1.borrow_mut().insert(module);
+            module
         }
     }
 
-    pub fn resolve<'b, S:StateManager>(&self, context:&Context<'b,S>) -> Result<URef<'static,Module>> {
+    pub fn resolve<'b, S:StateManager>(&self, context:&Context<'b,S>) -> URef<'static,Module> {
         self.load(&context.store)
     }
 

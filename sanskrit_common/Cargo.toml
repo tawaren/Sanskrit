@@ -5,10 +5,8 @@ authors = ["tawaren <markus.knecht85@gmail.com>"]
 edition = "2021"
 
 [features]
-default = ["std", "string_errors"]
+default = ["std"]
 std = []
-string_errors = []
-panic_errors = []
 
 [dependencies]
 #blake3 = {  version = "=1.5.0", default-features = false }

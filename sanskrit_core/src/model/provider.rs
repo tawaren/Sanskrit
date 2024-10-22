@@ -1,6 +1,5 @@
 use alloc::borrow::ToOwned;
 use sanskrit_common::encoding::{Parsable, Parser, Serializable, Serializer};
-use sanskrit_common::errors::error;
 use sanskrit_common::model::{Hash, ModuleLink};
 use sanskrit_common::utils::store_hash;
 use sp1_zkvm_col::arena::{UniqueArena, UniqueEmbeddableArena, URef};
@@ -68,20 +67,20 @@ pub fn fast_link(mod_link:URef<'static, ModuleLink>) -> FastModuleLink {
     //unsafe{dedup_count+=1}
     let res = unsafe {EAGER_FAST_LINKS.insert_if_missing(mod_link,|link|{
         //unsafe {dedup_miss_count+=1};
-        unsafe {FastModuleLink::identity_leak(mod_link,None)}
+        FastModuleLink::identity_leak(mod_link,None)
     })}.to_owned();
     //unsafe {dedup_max = dedup_max.max(EAGER_FAST_LINKS.len())};
     res
 }
 
 impl Parsable for FastModuleLink {
-    fn parse(p: &mut Parser) -> sanskrit_common::errors::Result<Self> {
-        Ok(parse_link(Hash::parse(p)?))
+    fn parse(p: &mut Parser) -> Self {
+        parse_link(Hash::parse(p))
     }
 }
 
 impl Serializable for FastModuleLink {
-    fn serialize(&self, s: &mut Serializer) -> sanskrit_common::errors::Result<()> {
+    fn serialize(&self, s: &mut Serializer) {
         self.get_module_link().serialize(s)
     }
 }
@@ -96,15 +95,15 @@ impl StaticProvider {
         StaticProvider
     }
 
-    pub fn add(&mut self, data:&[u8]) -> sanskrit_common::errors::Result<FastModuleLink> {
+    pub fn add(&mut self, data:&[u8]) -> FastModuleLink {
         let key = store_hash(&[data]);
         let fast_link = parse_link(key);
         if fast_link.get_cache().borrow().is_none() {
-            let module: Module = Parser::parse_fully(data)?;
+            let module: Module = Parser::parse_fully(data);
             let unique_module = unsafe { URef::identity_leak(module) };
             let _ = fast_link.get_cache().borrow_mut().insert(unique_module);
         }
-        Ok(fast_link)
+        fast_link
     }
 
     pub fn validate(self) {
@@ -115,13 +114,13 @@ impl StaticProvider {
 
 
 impl StateManager for StaticProvider {
-    fn get_unique_module(&self, key: URef<'static, ModuleLink>) -> sanskrit_common::errors::Result<URef<'static, Module>> {
+    fn get_unique_module(&self, key: URef<'static, ModuleLink>) -> URef<'static, Module> {
         //println!("cycle-tracker-report-start: fetch module");
         let fast_link = fast_link(key);
         let res = if fast_link.get_cache().borrow().is_some() {
-            Ok(fast_link.get_cache().borrow().to_owned().unwrap())
+            fast_link.get_cache().borrow().to_owned().unwrap()
         } else {
-            error(||"Required module is missing")
+            panic!("Required module is missing")
         };
         //println!("cycle-tracker-report-end: fetch module");
         return res;

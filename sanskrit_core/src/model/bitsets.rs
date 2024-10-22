@@ -1,4 +1,3 @@
-use sanskrit_common::errors::*;
 use sanskrit_common::encoding::*;
 use crate::model::{Capability, Permission};
 
@@ -114,15 +113,14 @@ impl CapSet {
 
     const PRIMITIVE_IMPLICATIONS: u8 = DROP_MASK | COPY_MASK | PERSIST_MASK | VALUE_MASK | UNBOUND_MASK ;
 
-    pub fn check_constraints(self) -> Result<()> {
+    pub fn check_constraints(self){
         if self.contains(Capability::Primitive) && !CapSet(CapSet::PRIMITIVE_IMPLICATIONS).is_subset_of(self) {
-            return error(||"Types with the Primitive capability must have Drop, Copy, Persist, and Unbound as well")
+            panic!("Types with the Primitive capability must have Drop, Copy, Persist, and Unbound as well")
         }
         /* Todo: is this usefull if yes comment in (and change a lot of tests)
         if self.contains(Capability::Persist) && !self.contains(Capability::Unbound) {
             return error(||"Types with the Persist capability must have Unbound as well")
         }*/
-        Ok(())
     }
 
     //generate a empty set

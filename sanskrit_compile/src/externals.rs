@@ -1,8 +1,6 @@
 use alloc::vec::Vec;
 use sanskrit_chain_code::model::{OpCode, ValueSchema};
 use sanskrit_common::model::{ModuleLink, ValueRef, Hash};
-use sanskrit_common::errors::*;
-
 
 pub enum CompilationResult {
     OpCodeResult(OpCode),

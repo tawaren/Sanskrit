@@ -14,9 +14,7 @@ use sanskrit_core::model::*;
 use sanskrit_core::model::linking::*;
 use sanskrit_core::model::resolved::*;
 use sanskrit_core::model::bitsets::*;
-use sanskrit_common::errors::*;
 use alloc::vec::Vec;
-use core::cell::Cell;
 use sanskrit_core::resolver::Context;
 use sanskrit_common::model::*;
 use sanskrit_core::loader::StateManager;
@@ -48,41 +46,32 @@ impl<'b, S:StateManager +'b> TypeCheckerContext<'b,S> {
         }
     }
 
-    fn clean_frame(&mut self, results:u8, start:usize) -> Result<()> {
+    fn clean_frame(&mut self, results:u8, start:usize) {
         //how many values are on the stack
         let frame_size = self.stack.stack_depth() - start;
 
         //is the stack to big?
-        if frame_size > u16::MAX as usize {
-            return error(||"Frame size exceeded maximum allowed size")
-        }
-
+        assert!(frame_size <= u16::MAX as usize);
         assert!(results as usize <= frame_size);
         //check every not returned item on the stack (start with the last one to clean bottom up)
         for v in (results as u16)..(frame_size as u16) {
             let target = ValueRef(v);
             //discard it if allowed
             //returns the status of a stack elem without modifying anything
-            if !self.stack.get_elem(target)?.can_be_freed() {
-                self.discard(target)?;
+            if !self.stack.get_elem(target).can_be_freed() {
+                self.discard(target);
             }
         }
-
-        //all fine
-        Ok(())
     }
 
     //todo: I hate this duplication but the signtures are different and unification is hard
-    pub fn type_check_implement(&mut self, imp:&ImplementComponent, code:&Exp) -> Result<()>{
+    pub fn type_check_implement(&mut self, imp:&ImplementComponent, code:&Exp) {
         //Fetch the Permission
-        let r_perm = imp.sig.fetch(&self.context)?;
+        let r_perm = imp.sig.fetch(&self.context);
         //Check that it is the correct one
-        if !r_perm.check_permission(Permission::Implement) {
-            //expected type does not much provided type
-            return error(||"Wrong Permission supplied")
-        }
+        assert!(r_perm.check_permission(Permission::Implement));
         //get the signature
-        let sig = r_perm.get_sig()?;
+        let sig = r_perm.get_sig();
         //Capture transactional declaration
         self.transactional = sig.transactional;
         // num params
@@ -90,45 +79,41 @@ impl<'b, S:StateManager +'b> TypeCheckerContext<'b,S> {
         //Push the capt parameters onto the stack
         for c in &imp.params {
             //captures are always owned
-            self.stack.provide(c.typ.fetch(&self.context)?)?;
+            self.stack.provide(c.typ.fetch(&self.context));
         }
         //Push the provided parameters onto the stack
         for c in &sig.params {
             //distinguish between owned and borrowed (read-only) parameters
             if c.consumes {
-                self.stack.provide(c.typ)?;
+                self.stack.provide(c.typ);
             } else {
-                self.stack.borrow(c.typ)?;
+                self.stack.borrow(c.typ);
             }
         }
 
         //Start a new block for th body of the function
         let block = self.stack.start_block();
         //Type check the function body
-        let rets = self.type_check_exp(code)?;
+        let rets = self.type_check_exp(code);
 
         //Type check the Result
         //Ensure the amount is correct
-        if rets as usize != sig.returns.len() {
-            return error(||"Number of returned values mismatches number of returned values in the signature declaration")
-        }
+        assert!(rets as usize == sig.returns.len());
         //iterate over each return (deepest first)
         for (v,t) in sig.returns.iter().rev().enumerate() {
             //Check if the returned value has the expected type
             assert!(v <= u8::MAX as usize);
-            if self.stack.value_of(ValueRef(v as u16))? != *t {
-                return error(||"Returned value has different type from return type declaration of the signature")
-            }
+            assert!(self.stack.value_of(ValueRef(v as u16)) == *t);
         }
 
         //discard unneeded items
-        self.clean_frame(rets, num_params)?;
+        self.clean_frame(rets, num_params);
         //Close the function body block (leaves just params & results on the Stack)
-        self.stack.end_block(block, rets)?;
+        self.stack.end_block(block, rets);
 
         //Check that the function signature matches the resulting stack layout
         assert!(sig.returns.len() <= u8::MAX as usize);
-        self.stack.check_function_return_signature(sig.returns.len() as u8)?;
+        self.stack.check_function_return_signature(sig.returns.len() as u8);
         assert!(imp.params.len() <= u8::MAX as usize);
         assert!(sig.params.len() <= u8::MAX as usize);
 
@@ -137,8 +122,8 @@ impl<'b, S:StateManager +'b> TypeCheckerContext<'b,S> {
                 let target = ValueRef(v as u16);
                 //discard it if allowed
                 //returns the status of a stack elem without modifying anything
-                if !self.stack.get_elem(target)?.can_be_freed() {
-                    self.discard(target)?;
+                if !self.stack.get_elem(target).can_be_freed() {
+                    self.discard(target);
                 }
             }
         }
@@ -149,8 +134,8 @@ impl<'b, S:StateManager +'b> TypeCheckerContext<'b,S> {
                 let target = ValueRef((offset + v) as u16);
                 //discard it if allowed
                 //returns the status of a stack elem without modifying anything
-                if !self.stack.get_elem(target)?.can_be_freed() {
-                    self.discard(target)?;
+                if !self.stack.get_elem(target).can_be_freed() {
+                    self.discard(target);
                 }
             }
         }
@@ -160,47 +145,43 @@ impl<'b, S:StateManager +'b> TypeCheckerContext<'b,S> {
     }
 
     //Type checks a function in the current context
-    pub fn type_check_function(&mut self, func:&FunctionComponent, code:&Exp) -> Result<()>{
+    pub fn type_check_function(&mut self, func:&FunctionComponent, code:&Exp) {
         //Capture transactional declaration
         self.transactional = func.shared.transactional;
         //Push the input parameters onto the stack
         for p in &func.shared.params {
-            let typ =  p.typ.fetch(&self.context)?;
+            let typ =  p.typ.fetch(&self.context);
             //distinguish between owned and borrowed (read-only) parameters
             if p.consumes {
-                self.stack.provide(typ)?;
+                self.stack.provide(typ);
             } else {
-                self.stack.borrow(typ)?;
+                self.stack.borrow(typ);
             }
         }
 
         //Start a new block for th body of the function
         let block = self.stack.start_block();
         //Type check the function body
-        let rets = self.type_check_exp(code)?;
+        let rets = self.type_check_exp(code);
         //Type check the Result
         //Ensure the amount is correct
-        if rets as usize != func.shared.returns.len() {
-            return error(||"Number of returned values mismatches number of returned values in the function declaration")
-        }
+        assert!(rets as usize == func.shared.returns.len());
         //iterate over each return (deepest first)
         for (idx,t) in func.shared.returns.iter().rev().enumerate() {
             //Check if the returned value has the expected type
-            let ret_typ = t.fetch(&self.context)?;
+            let ret_typ = t.fetch(&self.context);
             assert!(idx <= u8::MAX as usize);
-            if self.stack.value_of(ValueRef(idx as u16))? != ret_typ {
-                return error(||"Returned value has different type from return type declaration of function")
-            }
+            assert!(self.stack.value_of(ValueRef(idx as u16)) == ret_typ);
         }
 
         //discard unneeded items
-        self.clean_frame(rets, func.shared.params.len())?;
+        self.clean_frame(rets, func.shared.params.len());
         //Close the function body block (leaves just params & results on the Stack)
-        self.stack.end_block(block, rets)?;
+        self.stack.end_block(block, rets);
 
         //Check that the function signature matches the resulting stack layout
         assert!(func.shared.returns.len() <= u8::MAX as usize);
-        self.stack.check_function_return_signature(func.shared.returns.len() as u8)?;
+        self.stack.check_function_return_signature(func.shared.returns.len() as u8);
         assert!(func.shared.params.len() <= u8::MAX as usize);
 
         for (v, p) in func.shared.params.iter().rev().enumerate() {
@@ -208,8 +189,8 @@ impl<'b, S:StateManager +'b> TypeCheckerContext<'b,S> {
                 let target = ValueRef(v as u16);
                 //discard it if allowed
                 //returns the status of a stack elem without modifying anything
-                if !self.stack.get_elem(target)?.can_be_freed() {
-                    self.discard(target)?;
+                if !self.stack.get_elem(target).can_be_freed() {
+                    self.discard(target);
                 }
             }
         }
@@ -218,22 +199,20 @@ impl<'b, S:StateManager +'b> TypeCheckerContext<'b,S> {
     }
 
     //Type checks an expression in the current context
-    fn type_check_exp<'c>(&mut self, exp: &'c Exp) -> Result<u8> {
+    fn type_check_exp<'c>(&mut self, exp: &'c Exp) -> u8 {
         //This is done to prevent a stack overflow
         // Basically it expresses that functions with more than self.limit levels are invalid
         //increase the nesting size
         self.depth+=1;
         //check that we are not to deep
-        if self.depth > self.limit {
-            return error(||"Limit for block nesting reached")
-        }
+        assert!(self.depth <= self.limit);
         //catch the last size
         let mut rets = 0;
         //prepare the lock_holder
         let mut lock_holder:Vec<LockInfo> = Vec::new();
         //Type check the opcodes leading up to this Return
         for op in exp.0.iter() {
-            rets = self.type_check_op_code(op, &mut lock_holder)?
+            rets = self.type_check_op_code(op, &mut lock_holder)
         }
 
         for lock in lock_holder {
@@ -242,21 +221,19 @@ impl<'b, S:StateManager +'b> TypeCheckerContext<'b,S> {
 
         for v in (0..(rets as u16)).rev() {
             //Get the Resolved Type of the source
-            let r_typ = self.stack.value_of(ValueRef(v))?;
+            let r_typ = self.stack.value_of(ValueRef(v));
             //Return is only allowed for types with the Copy capability
-            if !r_typ.get_caps().contains(Capability::Unbound) {
-                return error(||"Returning a value requires the unbound capability")
-            }
+            assert!(r_typ.get_caps().contains(Capability::Unbound));
         }
 
         //decrease the nesting size
         self.depth-=1;
         //return the selected elements from the block
-        Ok(rets)
+        rets
     }
 
     //The heavy lifter that type checks op sys
-    fn type_check_op_code(&mut self, code: &OpCode, lock_holder:&mut Vec<LockInfo>) -> Result<u8> {
+    fn type_check_op_code(&mut self, code: &OpCode, lock_holder:&mut Vec<LockInfo>) -> u8 {
         //Branch on the opcode type and check it
         match *code {
             OpCode::Lit(ref data, perm) => self.lit(data, perm),
@@ -288,131 +265,114 @@ impl<'b, S:StateManager +'b> TypeCheckerContext<'b,S> {
         }
     }
 
-    fn lit(&mut self, data:&LargeVec<u8>, perm:PermRef) -> Result<u8> {
+    fn lit(&mut self, data:&LargeVec<u8>, perm:PermRef) -> u8 {
         //fetch the permission
-        let r_perm = perm.fetch(&self.context)?;
+        let r_perm = perm.fetch(&self.context);
         //check that it is of the right type
-        if !r_perm.check_permission(Permission::Create) {
-            //expected type does not much provided type
-            return error(||"Wrong Permission supplied")
-        }
+        assert!(r_perm.check_permission(Permission::Create));
         //get the literals size
-        let size = r_perm.get_lit_size()?;
+        let size = r_perm.get_lit_size();
         //Check that tis type can be generated from the provided Byte stream
-        if size as usize != data.0.len() {
-            return error(||"Supplied byte stream has wrong size for literal construction")
-        }
+        assert!(size as usize == data.0.len());
         //Tell the Stack that an element has appeared out of nowhere
-        self.stack.provide(r_perm.get_type()?)?;
-        Ok(1)
+        self.stack.provide(r_perm.get_type());
+        1
     }
 
     //_ as let is keyword
-    fn let_(&mut self, bind:&Exp) -> Result<u8> {
+    fn let_(&mut self, bind:&Exp) -> u8 {
         //capture frame start for clean up
         let start_height = self.stack.stack_depth();
         //Tell the stack that a new scope has started
         let block = self.stack.start_block();
         //Type check the content of the Let
-        let results = self.type_check_exp(bind)?;
+        let results = self.type_check_exp(bind);
         //discard unneeded items
-        self.clean_frame(results,start_height)?;
+        self.clean_frame(results,start_height);
         //Close the scope leaving only the results on the Stack
-        self.stack.end_block(block,results)?;
-        Ok(results)
+        self.stack.end_block(block,results);
+        results
     }
 
-    fn fetch(&mut self, value:ValueRef, mode:FetchMode) -> Result<u8> {
+    fn fetch(&mut self, value:ValueRef, mode:FetchMode) -> u8 {
         if mode == FetchMode::Copy {
             //Get the Resolved Type of the source
-            let v_typ = self.stack.value_of(value)?;
+            let v_typ = self.stack.value_of(value);
             //Copy is only allowed for types with the Copy capability
-            if !v_typ.get_caps().contains(Capability::Copy) {
-                return error(||"Copy requires copy capability for input")
-            }
+            assert!(v_typ.get_caps().contains(Capability::Copy))
         }
 
         //Move or borrow the value to the top of the stack
-        self.stack.fetch(value,mode)?;
-        Ok(1)
+        self.stack.fetch(value,mode);
+        1
     }
 
-    fn project(&mut self, typ:TypeRef, value:ValueRef) -> Result<u8> {
+    fn project(&mut self, typ:TypeRef, value:ValueRef) -> u8 {
         //get the input type
-        let v_typ = self.stack.value_of(value)?;
+        let v_typ = self.stack.value_of(value);
         //the wrapped type
-        let n_typ = typ.fetch(&self.context)?;
+        let n_typ = typ.fetch(&self.context);
 
         if let ResolvedType::Projection{ depth, un_projected } = *v_typ {
             //check that it is of the right type
-            if get_target(n_typ) != un_projected || n_typ.get_projection_depth() != depth+1 {
-                return error(||"Specified type mismatches input type")
-            }
+            assert!(get_target(n_typ) == un_projected && n_typ.get_projection_depth() == depth+1)
         } else if let ResolvedType::Projection{ depth, un_projected } = *n_typ {
             //check that it is of the right type
-            if un_projected != v_typ || depth != 1{
-                return error(||"Specified type mismatches input type")
-            }
+            assert!(un_projected == v_typ && depth == 1);
         } else {
-            return error(||"Specified type is not the projection")
+            panic!("Specified type is not the projection");
         }
 
         //Copy the value on top with another type
-        self.stack.transform(value, n_typ,FetchMode::Copy)?;
-        Ok(1)
+        self.stack.transform(value, n_typ,FetchMode::Copy);
+        1
     }
 
-    fn un_project(&mut self, typ:TypeRef, value:ValueRef) -> Result<u8> {
+    fn un_project(&mut self, typ:TypeRef, value:ValueRef) -> u8 {
         //get the input type
-        let v_typ = self.stack.value_of(value)?;
+        let v_typ = self.stack.value_of(value);
         //the wrapped type
-        let n_typ = typ.fetch(&self.context)?;
+        let n_typ = typ.fetch(&self.context);
         //check that it is a nested image
         match *v_typ  {
             ResolvedType::Projection {depth, un_projected, ..} => {
                 assert!(if let ResolvedType::Projection{..} = *un_projected {false} else {true});
                 //check that it is of the right type
-                if get_target(n_typ) != un_projected || n_typ.get_projection_depth() != depth-1 {
-                    return error(||"Specified type mismatches input type")
-                }
-                if !un_projected.get_caps().contains(Capability::Primitive) {
-                    error(||"Un-project requires primitive capability for output")
-                } else {
-                    //Copy the value on top with another type
-                    self.stack.transform(value, n_typ,FetchMode::Copy)?;
-                    Ok(1)
-                }
+                assert!(get_target(n_typ) == un_projected && n_typ.get_projection_depth() == depth-1);
+                assert!(un_projected.get_caps().contains(Capability::Primitive));
+                //Copy the value on top with another type
+                self.stack.transform(value, n_typ,FetchMode::Copy);
+                1
+
             }
-            _ => error(||"Only projections can be un-projected")
+            _ => panic!("Only projections can be un-projected")
         }
 
     }
 
 
-    fn discard(&mut self, value:ValueRef) -> Result<u8> {
+    fn discard(&mut self, value:ValueRef) -> u8 {
         //Get the Resolved Type of the target
-        let v_typ = self.stack.value_of(value)?;
+        let v_typ = self.stack.value_of(value);
         //Drop is only allowed for types with the Drop capability
-        if !v_typ.get_caps().contains(Capability::Drop) {
-            return error(||"Discard requires drop capability for input")
-        }
+        assert!(v_typ.get_caps().contains(Capability::Drop));
         //Tell the stack that the value is discarded so he can check the linearity constraints
-        self.stack.drop(value)?;
-        Ok(0)
+        self.stack.drop(value);
+        0
     }
 
-    fn discard_many(&mut self, value:&[ValueRef]) -> Result<u8> {
+    fn discard_many(&mut self, value:&[ValueRef]) -> u8 {
         for v in value {
-            self.discard(*v)?;
+            self.discard(*v);
         }
-        Ok(0)
+        0
     }
 
-    fn unpack(&mut self, value:ValueRef, perm:PermRef, mode:Option<FetchMode>, lock_holder:&mut Vec<LockInfo>) -> Result<u8> {
+    fn unpack(&mut self, value:ValueRef, perm:PermRef, mode:Option<FetchMode>, lock_holder:&mut Vec<LockInfo>) -> u8 {
         //Get the Resolved Type of the value
-        let r_typ = self.stack.value_of(value)?;
+        let r_typ = self.stack.value_of(value);
         //get the perm
-        let r_perm = perm.fetch(&self.context)?;
+        let r_perm = perm.fetch(&self.context);
         //Calc the required permission
         let perm_type = match mode {
             Some(FetchMode::Consume) => Permission::Consume,
@@ -420,42 +380,35 @@ impl<'b, S:StateManager +'b> TypeCheckerContext<'b,S> {
         };
 
         //check that it is of the right type
-        if !r_perm.check_value_permission(r_typ, perm_type) {
-            //expected type does not much provided type
-            return error(||"Wrong Permission supplied")
-        }
+        assert!(r_perm.check_value_permission(r_typ, perm_type));
         //fetch the ctr
-        let r_ctr = r_perm.get_ctrs()?;
+        let r_ctr = r_perm.get_ctrs();
         //check that it is a valid unpack target
-        if r_ctr.len() != 1 {
-            return error(||"Unpack must target a data type with a single constructor")
-        };
+        assert!(r_ctr.len() == 1);
 
         //Get the resolved constructors
         if Some(FetchMode::Copy) == mode {
             //Copied values need the copy capability
-            if !r_typ.get_caps().contains(Capability::Copy) {
-                return error(||"Copy unpack requires copy capability for input")
-            }
+            assert!(r_typ.get_caps().contains(Capability::Copy));
         }
         //Tell the stack to execute the operation (will take care of borrow vs consume)
         match mode {
-            Some(m) => self.stack.unpack(value, &r_ctr[0],m)?,
+            Some(m) => self.stack.unpack(value, &r_ctr[0],m),
             None => {
-                lock_holder.push(self.stack.lock(value)?);
-                self.stack.inspect(value, &r_ctr[0])?;
+                lock_holder.push(self.stack.lock(value));
+                self.stack.inspect(value, &r_ctr[0]);
             }
         }
 
         assert!(r_ctr[0].len() <= u8::MAX as usize);
-        Ok(r_ctr[0].len() as u8)
+        r_ctr[0].len() as u8
     }
 
-    fn field(&mut self, value:ValueRef, perm:PermRef, field:u8, mode:FetchMode) -> Result<u8> {
+    fn field(&mut self, value:ValueRef, perm:PermRef, field:u8, mode:FetchMode) -> u8 {
         //Get the Resolved Type of the value
-        let r_typ = self.stack.value_of(value)?;
+        let r_typ = self.stack.value_of(value);
         //get the perm
-        let r_perm = perm.fetch(&self.context)?;
+        let r_perm = perm.fetch(&self.context);
         //Calc the required permission
         let perm_type = match mode {
             FetchMode::Consume => Permission::Consume,
@@ -463,47 +416,37 @@ impl<'b, S:StateManager +'b> TypeCheckerContext<'b,S> {
         };
 
         //check that it is of the right type
-        if !r_perm.check_value_permission(r_typ, perm_type) {
-            //expected type does not much provided type
-            return error(||"Wrong Permission supplied")
-        }
+        assert!(r_perm.check_value_permission(r_typ, perm_type));
 
         //Get the resolved constructors
-        let r_ctr = r_perm.get_ctrs()?;
+        let r_ctr = r_perm.get_ctrs();
 
         //Field get is not defined for types with less then one field in a single ctr
-        if r_ctr.len() != 1{
-            return error(||"Field must target a data type with a single constructor")
-        };
-
+        assert!(r_ctr.len() == 1);
         //get the value typ
         let typ = r_ctr[0usize][field as usize];
 
         if mode == FetchMode::Consume {
             //Non-fetched values need the drop capability
             for (idx,field_type) in r_ctr[0usize].iter().enumerate() {
-                if idx != field as usize && !field_type.get_caps().contains(Capability::Drop) {
-                    return error(||"Consume field requires drop capability for not accessed fields")
-                }
+                assert!(idx == field as usize || field_type.get_caps().contains(Capability::Drop));
             }
         } else {
             //fetched value needs the copy capability
-            if !typ.get_caps().contains(Capability::Copy) {
-                return error(||"Copy field requires copy capability for accessed field")
-            }
+            assert!(typ.get_caps().contains(Capability::Copy));
         }
         //Tell the stack to execute the operation (will take care of borrow vs consume)
-        self.stack.field(value, typ, mode)?;
-        Ok(1)
+        self.stack.field(value, typ, mode);
+        1
     }
 
 
     //None is inspect
-    fn switch(&mut self, value:ValueRef, perm:PermRef, cases:&[Exp], mode:Option<FetchMode>) -> Result<u8> {
+    fn switch(&mut self, value:ValueRef, perm:PermRef, cases:&[Exp], mode:Option<FetchMode>) -> u8 {
         //Get the Resolved Type of the value
-        let r_typ = self.stack.value_of(value)?;
+        let r_typ = self.stack.value_of(value);
         //get the perm
-        let r_perm = perm.fetch(&self.context)?;
+        let r_perm = perm.fetch(&self.context);
 
         //Calc the required permission
         let perm_type = match mode {
@@ -512,25 +455,18 @@ impl<'b, S:StateManager +'b> TypeCheckerContext<'b,S> {
         };
 
         //check that it is of the right type
-        if !r_perm.check_value_permission(r_typ,perm_type) {
-            //expected type does not mach provided type
-            return error(||"Wrong Permission supplied")
-        }
+        assert!(r_perm.check_value_permission(r_typ,perm_type));
 
         //Get the resolved constructors
-        let r_ctr = r_perm.get_ctrs()?;
+        let r_ctr = r_perm.get_ctrs();
 
         //Check that their is exactly one case per potential constructor
-        if r_ctr.len() != cases.len() {
-            return error(||"Requested constructor does not exist")
-        };
+        assert!(r_ctr.len() == cases.len());
 
         //check that we can copy if it is required
         if Some(FetchMode::Copy) == mode {
             //Copied values need the copy capability
-            if !r_typ.get_caps().contains(Capability::Copy) {
-                return error(||"Copy switch requires copy capability for input")
-            }
+            assert!(r_typ.get_caps().contains(Capability::Copy))
         }
 
         //capture frame start for clean up
@@ -539,7 +475,7 @@ impl<'b, S:StateManager +'b> TypeCheckerContext<'b,S> {
         let mut loop_res:Option<u8> = None;
         //lock value in case of inspect
         let lock = match mode {
-            None => Some(self.stack.lock(value)?),
+            None => Some(self.stack.lock(value)),
             Some(_) => None
         };
         //Tell the stack that a the control flow branches
@@ -550,179 +486,143 @@ impl<'b, S:StateManager +'b> TypeCheckerContext<'b,S> {
             //if this is not the first iter then tell the stack that the next branch will be processed (will restore stack)
             if let Some(res) = loop_res {
                 //discard unneeded items
-                self.clean_frame( res,start_height)?;
+                self.clean_frame( res,start_height);
                 //go to next branch
-                self.stack.next_branch( &mut branching, res)?;
+                self.stack.next_branch( &mut branching, res);
             }
             //Tell the stack to execute the operation
             match mode {
-                Some(f_mode) => self.stack.unpack(value, &r_ctr[i],f_mode)?,
-                None => self.stack.inspect(value, &r_ctr[i])?,
+                Some(f_mode) => self.stack.unpack(value, &r_ctr[i],f_mode),
+                None => self.stack.inspect(value, &r_ctr[i]),
             };
 
             //remaining operations are specified by branch sys and now type checked
-            let res = self.type_check_exp(case)?;
+            let res = self.type_check_exp(case);
             //pass intermediary result to next iter
             loop_res = Some(res);
         }
         //extract res
         let res = loop_res.unwrap();
         //discard unneeded items
-        self.clean_frame( res,start_height)?;
+        self.clean_frame( res,start_height);
         //unlock value in case of inspect
         match lock {
             Some(lock_info) => self.stack.unlock(lock_info),
             None => {}
         };
         //finish the branching, leaves the stack with the common elements
-        self.stack.end_branching(branching, res)?;
-        Ok(res)
+        self.stack.end_branching(branching, res);
+        res
     }
 
-    fn pack(&mut self, perm:PermRef, Tag(t):Tag, values:&[ValueRef], mode:FetchMode) -> Result<u8> {
+    fn pack(&mut self, perm:PermRef, Tag(t):Tag, values:&[ValueRef], mode:FetchMode) -> u8 {
         //fetch the permission
-        let r_perm = perm.fetch(&self.context)?;
+        let r_perm = perm.fetch(&self.context);
         //check that it is of the right type
-        if !r_perm.check_permission(Permission::Create) {
-            //expected type does not much provided type
-            return error(||"Wrong Permission supplied")
-        }
+        assert!(r_perm.check_permission(Permission::Create));
 
         //Get the Resolved Constructors
-        let r_ctr = r_perm.get_ctrs()?;
+        let r_ctr = r_perm.get_ctrs();
 
         //check if applicable
-        if r_ctr.len() == 0 {
-            return error(||"Requested constructor does not exist")
-        }
+        assert!(r_ctr.len() != 0);
 
         //check that the case exists and has the right number of fields
-        if (t as usize) >= r_ctr.len() || r_ctr[t as usize].len() != values.len() {
-            return error(||"Requested constructor does not exist")
-        }
+        assert!((t as usize) < r_ctr.len() && r_ctr[t as usize].len() == values.len());
 
         //check that each param is ok
         for (i,v) in values.iter().enumerate() {
             //fetch the type of the param
-            let r_v = self.stack.value_of(*v)?;
+            let r_v = self.stack.value_of(*v);
 
             //check that the value has the copy if required
-            if mode == FetchMode::Copy && !r_v.get_caps().contains(Capability::Copy){
-                return error(||"Copy pack requires copy capability for each constructor parameter")
-            }
+            assert!(mode != FetchMode::Copy || r_v.get_caps().contains(Capability::Copy));
 
             //Check that the type of the param matches
-            if r_ctr[t as usize][i] != r_v {
-                return error(||"Parameter for data constructor has wrong type")
-            }
+            assert!(r_ctr[t as usize][i] == r_v);
         }
         //Tell the stack to pack the value and place the result onto the stack
-        self.stack.pack(&values, r_perm.get_type()?, mode)?;
-        Ok(1)
+        self.stack.pack(&values, r_perm.get_type(), mode);
+        1
     }
 
-    fn rollback(&mut self, consumes:&[ValueRef], produces:&[TypeRef]) -> Result<u8> {
+    fn rollback(&mut self, consumes:&[ValueRef], produces:&[TypeRef]) -> u8 {
         //Consume all inputs
         for c in consumes {
-            self.stack.drop(*c)?;
+            self.stack.drop(*c);
         }
         //Push all the produces
         for p in produces {
-            self.stack.provide(p.fetch(&self.context)?)?;
+            self.stack.provide(p.fetch(&self.context));
         }
         assert!(produces.len() <= u8::MAX as usize);
-        Ok(produces.len() as u8)
+        produces.len() as u8
     }
 
-    fn invoke_sig(&mut self, value:ValueRef, perm:PermRef, vals:&[ValueRef]) -> Result<u8> {
+    fn invoke_sig(&mut self, value:ValueRef, perm:PermRef, vals:&[ValueRef]) -> u8 {
         //Get the Resolved Type of the value
-        let r_typ = self.stack.value_of(value)?;
+        let r_typ = self.stack.value_of(value);
         //fetch the permission
-        let r_perm = perm.fetch(&self.context)?;
+        let r_perm = perm.fetch(&self.context);
         //check that it is of the right type
-        if !r_perm.check_value_permission(r_typ, Permission::Call) {
-            //expected type does not much provided type
-            return error(||"Wrong Permission supplied")
-        }
-
+        assert!(r_perm.check_value_permission(r_typ, Permission::Call));
         //Get the Resolved Signature of the call target
-        let sig = r_perm.get_sig()?;
-
+        let sig = r_perm.get_sig();
         //consume it
-        self.stack.consume(value)?;
+        self.stack.consume(value);
         //check the call
         self.invoke_direct( &sig, vals)
     }
 
-    fn try_invoke_sig(&mut self, value:ValueRef, perm:PermRef, vals:&[(bool,ValueRef)], suc:&Exp, fail:&Exp) -> Result<u8> {
+    fn try_invoke_sig(&mut self, value:ValueRef, perm:PermRef, vals:&[(bool,ValueRef)], suc:&Exp, fail:&Exp) -> u8 {
         //Get the Resolved Type of the value
-        let r_typ = self.stack.value_of(value)?;
+        let r_typ = self.stack.value_of(value);
         //fetch the permission
-        let r_perm = perm.fetch(&self.context)?;
+        let r_perm = perm.fetch(&self.context);
         //check that it is of the right type
-        if !r_perm.check_value_permission(r_typ, Permission::Call) {
-            //expected type does not much provided type
-            return error(||"Wrong Permission supplied")
-        }
+        assert!(r_perm.check_value_permission(r_typ, Permission::Call));
 
         //Get the Resolved Signature of the call target
-        let sig = r_perm.get_sig()?;
+        let sig = r_perm.get_sig();
         //consume it
-        self.stack.consume(value)?;
+        self.stack.consume(value);
         //check the call
         self.invoke_try(&sig, vals, suc, fail)
     }
 
-    fn check_repetition_condition(sig:&ResolvedSignature, cond_arg:u8) -> Result<()> {
-        if sig.params.len() != sig.returns.len() {
-            //num params mismatch num rets
-            return error(||"Number of params miss match number of returns in repeated call")
-        }
+    fn check_repetition_condition(sig:&ResolvedSignature, cond_arg:u8) {
+        assert!(sig.params.len() == sig.returns.len());
 
         for (p,r) in sig.params.iter().zip(sig.returns.iter()) {
-            if p.typ != *r {
-                return error(||"Parameters must have same type as returns in repeated call")
-            }
+            assert!(p.typ == *r);
         }
 
-        if cond_arg as usize >= sig.returns.len() {
-            return error(||"Condition value must be parts of the returns")
-        }
-
-        if !sig.returns[cond_arg as usize].is_data() {
-            return error(||"Condition value must have a data type")
-        }
+        assert!((cond_arg as usize) < sig.returns.len());
+        assert!(sig.returns[cond_arg as usize].is_data());
 
         //Note we do not check tag is in range of ctr
         // 1: This is easier and is more efficient as we do not need constructor cache
         // 2: It allows to provide an ot of range if their is no abort condition
-
-        Ok(())
     }
 
-    fn invoke(&mut self, perm:PermRef, vals:&[ValueRef], rep_cond:Option<u8>) -> Result<u8> {
+    fn invoke(&mut self, perm:PermRef, vals:&[ValueRef], rep_cond:Option<u8>) -> u8 {
         //fetch the permission
-        let r_perm = perm.fetch(&self.context)?;
+        let r_perm = perm.fetch(&self.context);
         //check that it is of the right type
-        if !r_perm.check_permission(Permission::Call) {
-            //expected type does not much provided type
-            return error(||"Wrong Permission supplied")
-        }
+        assert!(r_perm.check_permission(Permission::Call));
         //Get the fun sig
-        let sig = r_perm.get_sig()?;
+        let sig = r_perm.get_sig();
 
         //is this a repeated invoke?
         match rep_cond {
             //check the repetition condition
             Some(cond_arg) => {
-                //check that it is not an implement (the are not  callaberepeatedl)
-                if let ResolvedCallable::Implement { .. }  = *r_perm.get_fun()? {
-                    return error(||"Signature generation can not be used over repeated Call")
+                //check that it is not an implement (the are not repeated callable)
+                if let ResolvedCallable::Implement { .. }  = *r_perm.get_fun() {
+                    panic!("Signature generation can not be used over repeated Call");
                 }
-                Self::check_repetition_condition(&sig,cond_arg)?;
-                if !self.transactional {
-                    return error(||"Repeated function calls can only be made in a transactional function")
-                }
+                Self::check_repetition_condition(&sig,cond_arg);
+                assert!(self.transactional);
             },
             None => {}
         }
@@ -731,26 +631,23 @@ impl<'b, S:StateManager +'b> TypeCheckerContext<'b,S> {
         self.invoke_direct( &sig, vals)
     }
 
-    fn try_invoke(&mut self, perm:PermRef, vals:&[(bool,ValueRef)], suc:&Exp, fail:&Exp, rep_cond:Option<u8>) -> Result<u8> {
+    fn try_invoke(&mut self, perm:PermRef, vals:&[(bool,ValueRef)], suc:&Exp, fail:&Exp, rep_cond:Option<u8>) -> u8 {
         //fetch the permission
-        let r_perm = perm.fetch(&self.context)?;
+        let r_perm = perm.fetch(&self.context);
         //check that it is of the right type
-        if !r_perm.check_permission(Permission::Call) {
-            //expected type does not much provided type
-            return error(||"Wrong Permission supplied")
-        }
+        assert!(r_perm.check_permission(Permission::Call));
         //check that it is not an implement (the are not try callabel)
-        if let ResolvedCallable::Implement { .. }  = *r_perm.get_fun()? {
-            return error(||"Signature generation can not be used over Try Call")
+        if let ResolvedCallable::Implement { .. }  = *r_perm.get_fun() {
+            panic!("Signature generation can not be used over Try Call");
         }
 
         //Get the fun sig
-        let sig = r_perm.get_sig()?;
+        let sig = r_perm.get_sig();
 
         //is this a repeated invoke?
         match rep_cond {
             //check the repetition condition
-            Some(cond_arg) => Self::check_repetition_condition(&sig,cond_arg)?,
+            Some(cond_arg) => Self::check_repetition_condition(&sig,cond_arg),
             None => {}
         }
 
@@ -758,69 +655,49 @@ impl<'b, S:StateManager +'b> TypeCheckerContext<'b,S> {
         self.invoke_try(&sig, vals, suc, fail)
     }
 
-    fn invoke_direct(&mut self, signature:&ResolvedSignature, vals:&[ValueRef]) -> Result<u8> {
+    fn invoke_direct(&mut self, signature:&ResolvedSignature, vals:&[ValueRef]) -> u8 {
         //Check that the right amount of arguments are supplied for the call
-        if signature.params.len() != vals.len() {
-            return error(||"Wrong number of parameter for function call")
-        }
+        assert!(signature.params.len() == vals.len());
 
-        if signature.transactional && !self.transactional {
-            return error(||"Transactional functions must be called with a try invoke or inside another transactional function")
-        }
-
+        assert!(!signature.transactional || self.transactional);
         //Prepare the Inputs
         let inputs:Vec<(ValueRef,bool)> = vals.iter().zip(signature.params.iter()).map(|(v,p)| {
             //Ensure tat the argument has the expected type
-            if self.stack.value_of(*v)? != p.typ {
-                error(||"Parameter for function call has wrong type")
-            } else {
-                Ok((*v, p.consumes))
-            }
-        }).collect::<Result<_>>()?;
+            assert!(self.stack.value_of(*v) == p.typ);
+            (*v, p.consumes)
+        }).collect();
 
         //consume the params for the call
-        self.stack.consume_params(&inputs)?;
+        self.stack.consume_params(&inputs);
         //Advice the stack to produce the returns
         for ret in &signature.returns {
-            self.stack.provide(*ret)?;
+            self.stack.provide(*ret);
         }
         assert!(vals.len() <= u8::MAX as usize);
-        Ok(signature.returns.len() as u8)
+        signature.returns.len() as u8
     }
 
-    fn invoke_try(&mut self, signature:&ResolvedSignature, vals:&[(bool, ValueRef)], succ:&Exp, fail:&Exp) -> Result<u8> {
+    fn invoke_try(&mut self, signature:&ResolvedSignature, vals:&[(bool, ValueRef)], succ:&Exp, fail:&Exp) -> u8 {
         //Check that the right amount of arguments are supplied for the call
-        if signature.params.len() != vals.len() {
-            return error(||"Wrong number of parameter for function call")
-        }
-
-        if !signature.transactional{
-            return error(||"Only transactional functions can be used with try invoke")
-        }
+        assert!(signature.params.len() == vals.len());
+        assert!(signature.transactional);
 
         //Prepare the Inputs
         let inputs:Vec<(ValueRef,bool)> = vals.iter().zip(signature.params.iter()).map(|((essential,v),p)| {
             //Ensure that the argument has the expected type
-            if self.stack.value_of(*v)? != p.typ {
-                return error(||"Parameter for function call has wrong type")
-            }
+            assert!(self.stack.value_of(*v) == p.typ);
             if *essential {
-                if !p.consumes {
-                    return error(||"Only consumed params can be returned on a failure")
-                }
-
-                if !p.typ.get_caps().contains(Capability::Value) {
-                    return error(||"Only Value params can be returned on a failure")
-                }
-            } else if p.consumes && !p.typ.get_caps().contains(Capability::Drop){
-                return error(||"Consumed params must be returned on a failure or be dropped")
+                assert!(p.consumes);
+                assert!(p.typ.get_caps().contains(Capability::Value));
+            } else {
+                assert!(p.consumes || p.typ.get_caps().contains(Capability::Drop));
             }
 
-            Ok((*v, p.consumes))
-        }).collect::<Result<_>>()?;
+            (*v, p.consumes)
+        }).collect();
 
         //consume the params for the call
-        self.stack.consume_params(&inputs)?;
+        self.stack.consume_params(&inputs);
         //capture frame start for clean up
         let start_height = self.stack.stack_depth();
         //start the branching for the success case
@@ -828,37 +705,35 @@ impl<'b, S:StateManager +'b> TypeCheckerContext<'b,S> {
             //Produce the returns
             //Advice the stack to produce the returns
             for ret in &signature.returns {
-                self.stack.provide(*ret)?;
+                self.stack.provide(*ret);
             }
             //on success operations are specified by branch sys and now type checked
-            let suc_res = self.type_check_exp(succ)?;
+            let suc_res = self.type_check_exp(succ);
             //discard unneeded items
-            self.clean_frame( suc_res,start_height)?;
+            self.clean_frame( suc_res,start_height);
         //go to the failure case branch
-        self.stack.next_branch( &mut branching, suc_res)?;
+        self.stack.next_branch( &mut branching, suc_res);
             //Advice the stack to recover the essential params (the non essentials are implicitly dropped or where not consumed in the first place)
             for (_, param) in vals.iter().zip(signature.params.iter()).filter(|((e,_),_)|*e) {
-                self.stack.provide(param.typ)?;
+                self.stack.provide(param.typ);
             }
             //on failure operations are specified by branch sys and now type checked
-            let fail_res = self.type_check_exp(fail)?;
+            let fail_res = self.type_check_exp(fail);
             //discard unneeded items
-            self.clean_frame( fail_res,start_height)?;
+            self.clean_frame( fail_res,start_height);
         //end the branch
-        self.stack.end_branching(branching, fail_res)?;
-        Ok(fail_res)
+        self.stack.end_branching(branching, fail_res);
+        fail_res
     }
 
-    fn _return(&mut self, vals:&[ValueRef]) -> Result<u8> {
+    fn _return(&mut self, vals:&[ValueRef]) -> u8 {
         //Consume the Inputs
         for (i,ValueRef(idx)) in vals.iter().enumerate() {
             //push it on top (the +i counteracts the already pushed ones)
-            if *idx as usize + i > u16::MAX as usize {
-                return error(||"Size limit reached")
-            }
-            self.stack.fetch(ValueRef(idx+i as u16), FetchMode::Consume)?;
+            assert!(*idx as usize + i <= u16::MAX as usize);
+            self.stack.fetch(ValueRef(idx+i as u16), FetchMode::Consume);
         }
         assert!(vals.len() <= u8::MAX as usize);
-        Ok(vals.len() as u8)
+        vals.len() as u8
     }
 }

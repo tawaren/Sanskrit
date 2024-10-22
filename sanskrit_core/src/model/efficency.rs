@@ -1,14 +1,13 @@
 use crate::model::resolved::{ResolvedType, ResolvedPermission};
 use core::cmp::Ordering;
-use sanskrit_common::errors::*;
 use sanskrit_common::encoding::{Serializable, Serializer, Parsable, Parser};
 use crate::model::BitSerializedVec;
 use alloc::vec::Vec;
 use core::hash::{Hash, Hasher};
 
 impl Serializable for BitSerializedVec {
-    fn serialize(&self, s: &mut Serializer) -> Result<()> {
-        (self.0.len() as u16).serialize(s)?;
+    fn serialize(&self, s: &mut Serializer) {
+        (self.0.len() as u16).serialize(s);
         let mut cur:u8 = 0;
         for (i,b) in self.0.iter().enumerate() {
             let bit = (i % 8) as u8;
@@ -21,21 +20,20 @@ impl Serializable for BitSerializedVec {
         if self.0.len() % 8 != 0 {
             s.produce_byte(cur);
         }
-        Ok(())
     }
 }
 
 impl Parsable for BitSerializedVec {
-    fn parse(p: &mut Parser) -> Result<BitSerializedVec> {
-        let len = u16::parse(p)?;
+    fn parse(p: &mut Parser) -> BitSerializedVec {
+        let len = u16::parse(p);
         let mut vec = Vec::with_capacity(len as usize);
         let mut cur = 0;
         for i in 0..len {
             let bit = i % 8;
-            if bit == 0 { cur = p.consume_byte()?; }
+            if bit == 0 { cur = p.consume_byte(); }
             vec.push( (cur & 1 << bit) != 0);
         }
-        Ok(BitSerializedVec(vec))
+        BitSerializedVec(vec)
     }
 }
 

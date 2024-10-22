@@ -1,6 +1,5 @@
 use alloc::vec::Vec;
 use sanskrit_common::model::*;
-use sanskrit_common::errors::*;
 use sp1_zkvm_col::arena::URef;
 use crate::loader::ResolvedCtrs;
 use crate::model::linking::FastModuleLink;
@@ -89,42 +88,42 @@ impl ResolvedPermission {
         }
     }
 
-    pub fn get_type(&self) -> Result<URef<'static,ResolvedType>> {
+    pub fn get_type(&self) -> URef<'static,ResolvedType> {
         match *self {
             ResolvedPermission::TypeLit { typ, ..}
             | ResolvedPermission::TypeData { typ, .. }
-            | ResolvedPermission::TypeSig { typ, .. } => Ok(typ),
-            _ => error(||"Only sig, data & lit permissions have types"),
+            | ResolvedPermission::TypeSig { typ, .. } => typ,
+            _ => panic!("Only sig, data & lit permissions have types"),
         }
     }
 
-    pub fn get_fun(&self) -> Result<URef<'static,ResolvedCallable>> {
+    pub fn get_fun(&self) -> URef<'static,ResolvedCallable> {
         match *self {
-            ResolvedPermission::FunSig { fun, .. } => Ok(fun),
-            _ => error(||"Only fun permissions have funs"),
+            ResolvedPermission::FunSig { fun, .. } => fun,
+            _ => panic!("Only fun permissions have funs"),
         }
     }
 
 
-    pub fn get_sig(&self) -> Result<URef<'static,ResolvedSignature>> {
+    pub fn get_sig(&self) -> URef<'static,ResolvedSignature> {
         match *self {
             ResolvedPermission::TypeSig { signature, .. }
-            | ResolvedPermission::FunSig { signature, .. } => Ok(signature),
-            _ => error(||"Only call & implement permissions have signatures"),
+            | ResolvedPermission::FunSig { signature, .. } => signature,
+            _ => panic!("Only call & implement permissions have signatures"),
         }
     }
 
-    pub fn get_ctrs(&self) -> Result<URef<'static,ResolvedCtrs>> {
+    pub fn get_ctrs(&self) -> URef<'static,ResolvedCtrs> {
         match *self {
-            ResolvedPermission::TypeData { ctrs, .. } => Ok(ctrs),
-            _ => error(||"Only create, consume & inspect permissions have constructors"),
+            ResolvedPermission::TypeData { ctrs, .. } => ctrs,
+            _ => panic!("Only create, consume & inspect permissions have constructors"),
         }
     }
 
-    pub fn get_lit_size(&self) -> Result<u16> {
+    pub fn get_lit_size(&self) -> u16 {
         match *self {
-            ResolvedPermission::TypeLit { size, .. } => Ok(size),
-            _ => error(||"Only lit create permissions have a size"),
+            ResolvedPermission::TypeLit { size, .. } => size,
+            _ => panic!("Only lit create permissions have a size"),
         }
     }
 

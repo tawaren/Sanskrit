@@ -5,8 +5,6 @@ extern crate sp1_zkvm;
 extern crate alloc;
 
 use alloc::vec::Vec;
-use core::char::MAX;
-use core::ops::Deref;
 use core::slice::from_raw_parts;
 use sp1_zkvm::io::{hint, hint_slice, read, read_vec};
 use sp1_zkvm::lib::unconstrained;
@@ -91,9 +89,7 @@ impl<T> Select<T,T> for IdSelect {
 
 pub(crate) trait Seekable<T> {
     type I;
-    #[inline]
     fn deref(inner:&Self::I) -> &T;
-    #[inline]
     fn with_store<F:FnOnce(&[Self::I])->()>(&self, f:F);
 
     fn unconstrained_seek<V:Eq,S:Select<T, V>>(&self, value:&V) -> usize {

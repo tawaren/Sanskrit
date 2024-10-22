@@ -16,7 +16,6 @@ use sanskrit_core::model::linking::Ref;
 use sanskrit_chain_code::model::{OpCode as ROpCode};
 use sanskrit_chain_code::model::Exp as RExp;
 use sanskrit_core::model::resolved::*;
-use sanskrit_common::errors::*;
 use sanskrit_common::model::*;
 use core::mem;
 use sanskrit_common::utils::Crc;

@@ -49,7 +49,7 @@ enum Mode {
 }
 
 //Returns true if it should be prooven false if it schould be executed
-fn setup_input(mut stdin: &mut SP1Stdin) -> Result<Mode,()> {
+fn setup_input(mut stdin: &mut SP1Stdin) -> Mode {
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
         println!("Not enough arguments");
@@ -63,12 +63,12 @@ fn setup_input(mut stdin: &mut SP1Stdin) -> Result<Mode,()> {
 
     match mode {
         None => {
-            execute_with_args(&args[1..],|m,t,d,b|Ok(process_validation(&mut stdin,m,t,d,b))).expect("setup failed");
-            Ok(Mode::Execute)
+            execute_with_args(&args[1..],|m,t,d,b|process_validation(&mut stdin,m,t,d,b));
+            Mode::Execute
         }
         Some(p) => {
-            execute_with_args(&args[2..],|m,t,d,b|Ok(process_validation(&mut stdin,m,t,d,b))).expect("setup failed");
-            Ok(p)
+            execute_with_args(&args[2..],|m,t,d,b|process_validation(&mut stdin,m,t,d,b));
+            p
         }
     }
 }
@@ -79,14 +79,7 @@ fn main() {
 
     // Setup the inputs.
     let mut stdin = SP1Stdin::new();
-    let mode = match setup_input(&mut stdin){
-        Ok(mode) => mode,
-        Err(e) => {
-            println!("{:?}",e);
-            assert!(false);
-            return;
-        }
-    };
+    let mode = setup_input(&mut stdin);
 
     // Setup the prover client.
     let client = ProverClient::new();

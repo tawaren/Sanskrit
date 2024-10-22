@@ -1,4 +1,3 @@
-use sanskrit_common::errors::*;
 use crate::model::resolved::*;
 use core::cell::Cell;
 use alloc::vec::Vec;
@@ -12,7 +11,7 @@ use sp1_zkvm_col::arena::URef;
 pub type ResolvedCtrs = Vec<Vec<URef<'static,ResolvedType>>>;
 
 pub trait StateManager {
-    fn get_unique_module(&self, hash: URef<'static, ModuleLink>) -> Result<URef<'static,Module>>;
+    fn get_unique_module(&self, hash: URef<'static, ModuleLink>) -> URef<'static,Module>;
     fn create_generic_type(&self, gen:ResolvedType) -> URef<'static,ResolvedType>;
     fn sig_type_dedup(&self, sig:ResolvedType) -> URef<'static,ResolvedType>;
     fn virtual_type_dedup(&self, virt:ResolvedType) -> URef<'static,ResolvedType>;
@@ -82,28 +81,25 @@ impl<S:StateManager> Loader<S> {
     }
 
     //Gets a component
-    pub fn get_component<C:Component>(&self, link:&FastModuleLink, offset:u8) -> Result<FetchCache<C>> {
+    pub fn get_component<C:Component>(&self, link:&FastModuleLink, offset:u8) -> FetchCache<C> {
         //Get the Module
-        let module = link.load(self)?;
+        let module = link.load(self);
         //Check if really their
 
-        if offset as usize >= C::num_elems(&module) {
-            return error(||"Linked component is not available")
-        }
-        if self.is_this_module(link) && offset as usize >= C::get_local_limit(self) {
-            return error(||"Linked component is not available")
-        }
+        assert!((offset as usize) < C::num_elems(&module));
+        assert!(!self.is_this_module(link) || (offset as usize) < C::get_local_limit(self));
+
         //Extract the Adt Cache
-        Ok(FetchCache {
+        FetchCache {
             module,
-            link: link.clone(),
+            link: *link,
             offset,
             phantom: PhantomData,
-        })
+        }
     }
 
     //Get the module
-    pub fn get_module(&self, link:URef<'static, ModuleLink>) -> Result<URef<'static, Module>>{
+    pub fn get_module(&self, link:URef<'static, ModuleLink>) -> URef<'static, Module>{
         self.store.get_unique_module(link)
     }
 
@@ -158,7 +154,7 @@ impl<T:Component> FetchCache<T> {
         self.offset
     }
     //Create a local context for it (but from the importers view -- meaning they are from a remote Module and the imported functions are ignored and the applies are substituted)
-    pub fn substituted_context<'a, S:StateManager>(&'a self, subs:&[URef<'static,ResolvedType>], store:&'a Loader<S>) -> Result<Context<S>> {
+    pub fn substituted_context<'a, S:StateManager>(&'a self, subs:&[URef<'static,ResolvedType>], store:&'a Loader<S>) -> Context<'a,S> {
         //Generate a local context
         Context::create_and_resolve(&[
             Imports::Module(&self.link),

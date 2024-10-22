@@ -54,9 +54,9 @@ fn impl_serialize_macro(ast:&DeriveInput) -> TokenStream {
                 body.push(match &f.ident {
                     None => {
                         let idx = syn::Index::from(idx);
-                        quote!{self.#idx.serialize(s)?}
+                        quote!{self.#idx.serialize(s)}
                     },
-                    Some(id) => quote!{self.#id.serialize(s)?},
+                    Some(id) => quote!{self.#id.serialize(s)},
                 })
             }
             quote!{#(#body;)*}
@@ -116,9 +116,8 @@ fn impl_serialize_macro(ast:&DeriveInput) -> TokenStream {
 
     quote!{
         impl<#(#argumented),*> Serializable for #prefix<#(#plain),*> {
-             fn serialize(&self, s:&mut Serializer) -> Result<()> {
+             fn serialize(&self, s:&mut Serializer) {
                 #body
-                Ok(())
              }
         }
     }
@@ -145,10 +144,10 @@ fn impl_parsable_macro(ast:&DeriveInput) -> TokenStream {
                         && (start_field.is_none() || f.ident != start_field)
                 ).map(|f|{
                     match &f.ident {
-                        None => quote!{Parsable::parse(p)?},
+                        None => quote!{Parsable::parse(p)},
                         Some(id) => {
                             named = true;
-                            quote!{#id:Parsable::parse(p)?}
+                            quote!{#id:Parsable::parse(p)}
                         },
                     }
                 }).collect();
@@ -172,9 +171,9 @@ fn impl_parsable_macro(ast:&DeriveInput) -> TokenStream {
             };
 
             let build = if named {
-                quote!{ Ok(#prefix{#(#body),*}) }
+                quote!{ #prefix{#(#body),*} }
             } else {
-                quote!{ Ok(#prefix(#(#body),*)) }
+                quote!{ #prefix(#(#body),*) }
             };
 
             quote!{
@@ -208,10 +207,10 @@ fn impl_parsable_macro(ast:&DeriveInput) -> TokenStream {
                 }
             }
             quote!{
-                Ok(match p.consume_byte()? {
+                match p.consume_byte() {
                     #(#cases,)*
-                    x => return error(||"Can not parse unknown enum variant") //panic!("{:?} in {:?}",x, stringify!(#prefix))
-                })
+                    x => panic!("{:?} in {:?}",x, stringify!(#prefix))
+                }
             }
         },
         Data::Union(_) => unimplemented!()
@@ -220,7 +219,7 @@ fn impl_parsable_macro(ast:&DeriveInput) -> TokenStream {
     let argumented = extract_agumented_generics(&ast.generics, quote!{Parsable});
     quote!{
         impl<#(#argumented),*> Parsable for #prefix<#(#plain),*> {
-             fn parse(p: &mut Parser) -> Result<Self> {
+             fn parse(p: &mut Parser) -> Self {
                 #body
              }
         }
@@ -237,9 +236,9 @@ fn pattern_body_serialize<'a>(fs: impl Iterator<Item=&'a Field>, size_field:Opti
         body.push(match &f.ident {
             None => {
                 let id = Ident::new(&format!("_{}",idx), Span::call_site());
-                quote!{#id.serialize(s)?}
+                quote!{#id.serialize(s)}
             },
-            Some(id) => quote!{#id.serialize(s)?},
+            Some(id) => quote!{#id.serialize(s)},
         });
     }
     quote!{#(#body;)*}
@@ -254,10 +253,10 @@ fn pattern_body_parse<'a>(fs: impl Iterator<Item=&'a Field>, size_field:Option<I
             && (start_field.is_none() || f.ident != start_field)
     ) {
         body.push(match &f.ident {
-            None => quote!{Parsable::parse(p)?},
+            None => quote!{Parsable::parse(p)},
             Some(id) => {
                 named = true;
-                quote!{#id:Parsable::parse(p)?}
+                quote!{#id:Parsable::parse(p)}
             },
         })
     }

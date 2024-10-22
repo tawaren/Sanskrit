@@ -14,7 +14,6 @@ use alloc::vec::Vec;
 use core::cell::Cell;
 use spin::Mutex;
 
-use sanskrit_common::errors::*;
 use sanskrit_common::model::{ValueRef, Hash, ModuleLink};
 use crypto::{ecdsa_verify, join_hash, plain_hash};
 use sanskrit_chain_code::model::{Kind, ValueSchema};
@@ -72,23 +71,23 @@ lazy_static! {
 
 pub struct ServerExternals;
 impl CompilationExternals for ServerExternals {
-    fn compile_call(module: &ModuleLink, fun_idx: u8, params: Vec<ValueRef>, caller: &Hash) -> Result<CompilationResult> {
+    fn compile_call(module: &ModuleLink, fun_idx: u8, params: Vec<ValueRef>, caller: &Hash) -> CompilationResult {
         match EXT_MAP.lock().get(module.module_hash()) {
-            None => error(||"Implementation for external module is missing"),
+            None => panic!("Implementation for external module is missing"),
             Some(ref imp) => imp.compile_call(fun_idx, params, caller)
         }
     }
 
-    fn compile_lit(module: &ModuleLink, data_idx: u8, data: &[u8], caller: &Hash) -> Result<CompilationResult> {
+    fn compile_lit(module: &ModuleLink, data_idx: u8, data: &[u8], caller: &Hash) -> CompilationResult {
         match EXT_MAP.lock().get(module.module_hash()) {
-            None => error(||"Implementation for external module is missing"),
+            None => panic!("Implementation for external module is missing"),
             Some(ref imp) => imp.compile_lit(data_idx, data, caller)
         }
     }
 
-    fn get_literal_checker(module: &ModuleLink, data_idx: u8, len: u16) -> Result<ValueSchema> {
+    fn get_literal_checker(module: &ModuleLink, data_idx: u8, len: u16) -> ValueSchema {
         match EXT_MAP.lock().get(module.module_hash()) {
-            None => error(||"Implementation for external module is missing"),
+            None => panic!("Implementation for external module is missing"),
             Some(ref imp) => imp.get_literal_checker(data_idx, len)
         }
     }
@@ -96,7 +95,7 @@ impl CompilationExternals for ServerExternals {
 
 impl RuntimeExternals for ServerExternals {
 
-    fn typed_system_call<I:ExecutionInterface>(interface:&mut I, id:u8, kind:Kind, values: &[ValueRef], tail:bool) -> Result<()>{
+    fn typed_system_call<I:ExecutionInterface>(interface:&mut I, id:u8, kind:Kind, values: &[ValueRef], tail:bool){
         match id {
             //Hash
             0 => plain_hash(interface, kind, values[0], tail),
@@ -104,7 +103,7 @@ impl RuntimeExternals for ServerExternals {
         }
     }
 
-    fn system_call<I:ExecutionInterface>(interface:&mut I, id:u8, values: &[ValueRef], tail:bool) -> Result<()>{
+    fn system_call<I:ExecutionInterface>(interface:&mut I, id:u8, values: &[ValueRef], tail:bool) {
         match id {
             //Derive
             0 => join_hash(interface, values[0], values[1], HashingDomain::Derive, tail),

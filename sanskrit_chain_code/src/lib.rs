@@ -38,7 +38,7 @@ pub trait Value<I:ExecutionInterface>:Sized {
 pub trait ExecutionInterface:Sized {
     type Entry:Value<Self>;
 
-    fn get(&self, index: ValueRef) -> sanskrit_common::errors::Result<Self::Entry>;
+    fn get(&self, index: ValueRef) -> Self::Entry;
     fn push_entry(&self, tail:bool, entry:Self::Entry);
     fn data_entry(&self, data:Vec<u8>) -> Self::Entry;
     fn adt_entry(&self, tag:u8, fields:Vec<Self::Entry>) -> Self::Entry;
@@ -60,6 +60,6 @@ pub trait ExecutionInterface:Sized {
 }
 
 pub trait RuntimeExternals {
-    fn typed_system_call<I:ExecutionInterface>(interface:&mut I, id:u8, kind:Kind, values: &[ValueRef], tail:bool) -> sanskrit_common::errors::Result<()>;
-    fn system_call<I:ExecutionInterface>(interface:&mut I, id:u8, values: &[ValueRef], tail:bool) -> sanskrit_common::errors::Result<()>;
+    fn typed_system_call<I:ExecutionInterface>(interface:&mut I, id:u8, kind:Kind, values: &[ValueRef], tail:bool);
+    fn system_call<I:ExecutionInterface>(interface:&mut I, id:u8, values: &[ValueRef], tail:bool);
 }

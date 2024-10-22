@@ -6,10 +6,8 @@ extern crate core;
 extern crate alloc;
 extern crate sp1_zkvm_col;
 
-use alloc::collections::BTreeSet;
 use alloc::vec::Vec;
 use sanskrit_deploy::{validate_stored_module, validate_unparsed_function};
-use sanskrit_common::errors::*;
 use sanskrit_common::model::Hash;
 use sanskrit_common::encoding::*;
 use sanskrit_core::model::linking::FastModuleLink;
@@ -41,7 +39,7 @@ pub struct Validation {
     pub open_dependencies:Vec<FastModuleLink>
 }
 
-pub fn process_preloaded_deploy(modules:Vec<Vec<u8>>, transactions:Vec<Vec<u8>>, deps:Vec<Vec<u8>>, system_mode_allowed:bool) -> Result<Validation>{
+pub fn process_preloaded_deploy(modules:Vec<Vec<u8>>, transactions:Vec<Vec<u8>>, deps:Vec<Vec<u8>>, system_mode_allowed:bool) -> Validation{
     let mut provider = StaticProvider::new();
 
     let mut mod_compiles = Vec::with_capacity(modules.len());
@@ -51,30 +49,30 @@ pub fn process_preloaded_deploy(modules:Vec<Vec<u8>>, transactions:Vec<Vec<u8>>,
     for m in modules {
         mod_compiles.push(ValidatedModule{
             system_module: m[0] != 0,
-            module_hash: provider.add(&m)?
+            module_hash: provider.add(&m)
         });
     }
 
     for d in deps {
-        let hash = provider.add(&d)?;
+        let hash = provider.add(&d);
         open_deps.add(hash);
     }
 
     for h in &mod_compiles {
-        validate_stored_module(provider, h.module_hash.clone(), system_mode_allowed)?;
+        validate_stored_module(provider, h.module_hash.clone(), system_mode_allowed);
     }
 
     for h in transactions {
-        let transaction_hash = validate_unparsed_function(provider,&h)?;
+        let transaction_hash = validate_unparsed_function(provider,&h);
         txt_compiles.push(ValidatedTransaction{transaction_hash})
     }
 
     provider.validate();
 
-    Ok(Validation{
+    Validation{
         system_mode: system_mode_allowed,
         modules: mod_compiles,
         transactions: txt_compiles,
         open_dependencies: open_deps.finalize(),
-    })
+    }
 }

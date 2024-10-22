@@ -17,10 +17,8 @@
 //!   2. pack -- which simulates the construction of an adt by consuming parameters and producing a new value on top of the stack
 //!   3. unpack -- which simulates the consummation of an adt by consuming the element and producing the contained values on top of the stack
 //!
-use sanskrit_common::errors::*;
 use sanskrit_common::model::ValueRef;
 use alloc::vec::Vec;
-use alloc::rc::Rc;
 use core::cell::Cell;
 use sp1_zkvm_col::no_free::SRef;
 
@@ -80,15 +78,12 @@ impl<T:Clone> Elem<T> {
     }
 
     //Consumes the Elem (which then is no longer usable)
-    fn consume(&mut self, active_consume_cell:SRef<Cell<Status>>) -> Result<()>{
+    fn consume(&mut self, active_consume_cell:SRef<Cell<Status>>) {
         // Nothing can be consumed twice (linear types must be consumed exactly once)
-        if !self.is_owned() {
-            return error(||"Consumed, borrowed, or locked element can not be consumed")
-        }
+        assert!(self.is_owned());
         //Mark it consumed
         assert_eq!(active_consume_cell.get(), Status::Consumed);
         self.status = active_consume_cell;
-        Ok(())
     }
 
     //Checks if an element can be discarded
@@ -109,12 +104,9 @@ impl<T:Clone> Elem<T> {
         (self.status.get() != Status::Consumed) && !self.locked
     }
 
-    pub fn lock(&mut self) -> Result<()>{
-        if !self.is_active() {
-            return error(||"Consumed or locked element can not be locked")
-        }
+    pub fn lock(&mut self) {
+        assert!(self.is_active());
         self.locked = true;
-        Ok(())
     }
 
     pub fn unlock(&mut self) {
@@ -147,30 +139,24 @@ impl<T:Clone+Eq> LinearStack<T>  {
     }
 
     //gets the element ignoring consume tests
-    pub fn get_elem(&self, index:ValueRef) -> Result<&Elem<T>>{
+    pub fn get_elem(&self, index:ValueRef) -> &Elem<T>{
         // Get the index (as we not consuming it it is safe to access non-locals they are not consumed)
-        let res = self.absolute_index(index)?;
+        let res = self.absolute_index(index);
         // Get the element
-        let elem = &self.stack[res];
-        //Return it
-        Ok(elem)
+         &self.stack[res]
     }
 
-    fn get_elem_absolute(&mut self, index: usize) -> Result<&mut Elem<T>> {
-        if index >= self.stack.len() {
-            return error(||"Accesed value lies outside of the stack");
-        }
-        Ok(&mut self.stack[index])
+    fn get_elem_absolute(&mut self, index: usize) -> &mut Elem<T> {
+        assert!(index < self.stack.len());
+        &mut self.stack[index]
     }
 
-    fn push_elem(&mut self, elem: Elem<T>) -> Result<()> {
+    fn push_elem(&mut self, elem: Elem<T>) {
         self.stack.push(elem);
-        Ok(())
     }
 
-    fn push_elems(&mut self, elem: Vec<Elem<T>>) -> Result<()> {
+    fn push_elems(&mut self, elem: Vec<Elem<T>>){
         self.stack.extend(elem);
-        Ok(())
     }
 
     fn get_consume_cell(&self) -> SRef<Cell<Status>> {
@@ -178,10 +164,10 @@ impl<T:Clone+Eq> LinearStack<T>  {
     }
 
     //gets an element and consumes it
-    pub fn consume(&mut self, index:ValueRef) -> Result<()>{
+    pub fn consume(&mut self, index:ValueRef) {
         // Get the index (as we consume it is not safe to access non-locals as they are modified)
         //get the absolute index
-        let res = self.absolute_index(index)?;
+        let res = self.absolute_index(index);
         //as we consume the elem we have to record the acccess on each frame border
         //Start with first Frame
         let frame_index = self.frames.len() -1;
@@ -205,12 +191,12 @@ impl<T:Clone+Eq> LinearStack<T>  {
         self.stack[res].consume(consume_status)
     }
 
-    pub fn lock(&mut self, locked:ValueRef) -> Result<LockInfo> {
+    pub fn lock(&mut self, locked:ValueRef) -> LockInfo {
         //get the elem to lock
-        let index = self.absolute_index(locked)?;
+        let index = self.absolute_index(locked);
         //lock the elem
-        self.stack[index].lock()?;
-        Ok(LockInfo(index))
+        self.stack[index].lock();
+        LockInfo(index)
     }
 
     pub fn unlock(&mut self, info:LockInfo){
@@ -219,90 +205,81 @@ impl<T:Clone+Eq> LinearStack<T>  {
     }
 
     //calcs the absolute index from a relative one (relative to the end) -- bernouli index to vec index
-    fn absolute_index(&self, vref:ValueRef) -> Result<usize> {
+    fn absolute_index(&self, vref:ValueRef) -> usize {
         //extract index
         let index = vref.0;
         //ensure that the resulting index will be valid
-        if index as usize >= self.stack_depth() {
-            return error(||"Stack access out of bounds")
-        }
-        Ok(self.stack_depth() - (index as usize) -1)
+        assert!((index as usize) < self.stack_depth());
+        self.stack_depth() - (index as usize) -1
     }
 
 
     //gets an element without consuming it (returns it immutable)
-    fn non_consuming_fetch(&self, index:ValueRef) -> Result<&Elem<T>>{
+    fn non_consuming_fetch(&self, index:ValueRef) -> &Elem<T>{
         // Get the element
-        let elem = &self.get_elem(index)?;
+        let elem = &self.get_elem(index);
         // Check that it is still alive and available (neither locked nor consumed)
-        if !elem.is_active() {
-            return error(||"A consumed or locked element can not be fetched")
-        }
+        assert!(elem.is_active());
         //Return it
-        Ok(elem)
+        elem
     }
 
     //hides an element (by marking consuming it), the caller is responsible for calling show
     // a hidden element can not be consumed, locked, or hidden again
-    fn hide(&mut self, index:ValueRef) -> Result<()>{
+    fn hide(&mut self, index:ValueRef) {
         // Get the index (as we not consuming it it is safe to access non-locals they are not consumed)
-        let res = self.absolute_index(index)?;
+        let res = self.absolute_index(index);
         // Get the element
-        let elem = self.get_elem_absolute(res)?;
+        let elem = self.get_elem_absolute(res);
         // Check that it is still alive and available (neither locked nor consumed)
-        if !elem.is_active() {
-            return error(||"A consumed, locked or hidden element can not be hidden")
-        }
+        assert!(elem.is_active());
         //Mark it consumed
         elem.locked = true;
-        Ok(())
     }
 
     //shows an element (by ubconsuming it)
-    fn show(&mut self, index:ValueRef) -> Result<()>{
+    fn show(&mut self, index:ValueRef) {
         // Get the index (as we not consuming it it is safe to access non-locals they are not consumed)
-        let res = self.absolute_index(index)?;
+        let res = self.absolute_index(index);
         // Get the element
-        let elem =  self.get_elem_absolute(res)?;
+        let elem =  self.get_elem_absolute(res);
         // Ensure that it is still alive and available (neither locked nor consumed)
         assert_ne!(elem.status.get(), Status::Consumed);
         assert!(elem.locked);
 
         //Mark it consumed
         elem.locked = false;
-        Ok(())
     }
 
     //returns the type of a stack elem without modifying anything
-    pub fn value_of(&self, index:ValueRef) -> Result<T> {
-        let elem = self.get_elem(index)?;
-        Ok(elem.value.clone())
+    pub fn value_of(&self, index:ValueRef) -> T {
+        let elem = self.get_elem(index);
+        elem.value.clone()
     }
 
     //allows to put elems on the stack that appear out of nowhere (literals, empties, parameters, unpacks)
-    pub fn provide(&mut self, typ:T) -> Result<()> {
+    pub fn provide(&mut self, typ:T){
         self.push_elem(Elem::new(typ,self.status_owned))
     }
 
     //allows to put a read only param on the stack that appear out of nowhere (parameters, switch unpacks)
-    pub fn borrow(&mut self, value:T) -> Result<()> {
+    pub fn borrow(&mut self, value:T) {
         self.push_elem(Elem::new(value, self.status_borrowed))
     }
 
 
     //drops a not needed element (this simply consumes it, it then can be freed on frame drop)
-    pub fn drop(&mut self, index:ValueRef) -> Result<()>{
-        self.consume(index)?;
-        Ok(())
+    pub fn drop(&mut self, index:ValueRef) {
+        self.consume(index);
     }
 
     //lifts an element to the top and changes the type of the new one
     //  It does automatically re borrow if necessary
-    pub fn transform(&mut self, index:ValueRef, value:T, mode:FetchMode)-> Result<()> {
+    pub fn transform(&mut self, index:ValueRef, value:T, mode:FetchMode) {
         //if the element is borrowed we only lock it so we can still return it after the transformed is freed
         match mode {
-            FetchMode::Consume => self.consume(index)?,
-            FetchMode::Copy => {self.non_consuming_fetch(index)?;}
+            FetchMode::Consume => self.consume(index),
+            FetchMode::Copy => {self.non_consuming_fetch(index);}
         };
 
         // push the elem with same status but new typ
@@ -311,23 +288,23 @@ impl<T:Clone+Eq> LinearStack<T>  {
     }
 
     //Like a transform but keeps the same type
-    pub fn fetch(&mut self, index:ValueRef, mode:FetchMode)-> Result<()> {
+    pub fn fetch(&mut self, index:ValueRef, mode:FetchMode) {
         //get the type
-        let typ = self.value_of(index)?;
+        let typ = self.value_of(index);
         //do the transform
         self.transform(index,typ.clone(),mode)
     }
 
     //Takes some values on the stack and uses it to construct another value from it (Adt creation)
-    pub fn pack(&mut self, vals: &[ValueRef], res:T, mode:FetchMode) -> Result<()> {
+    pub fn pack(&mut self, vals: &[ValueRef], res:T, mode:FetchMode) {
         match mode {
             //Consume pack fields
             FetchMode::Consume => for index in vals {
-                self.consume(*index)?;
+                self.consume(*index);
             },
             //Copy pack fields
             FetchMode::Copy => for index in vals {
-                self.non_consuming_fetch(*index)?;
+                self.non_consuming_fetch(*index);
             }
         };
         self.push_elem(Elem::new(res, self.status_owned))
@@ -335,76 +312,70 @@ impl<T:Clone+Eq> LinearStack<T>  {
 
     //Takes a value and returns its content
     // it consumes the old value
-    pub fn unpack(&mut self, index:ValueRef, results: &[T],  mode:FetchMode) -> Result<()> {
+    pub fn unpack(&mut self, index:ValueRef, results: &[T],  mode:FetchMode) {
         assert!(results.len() <= u8::MAX as usize);
         //fetches the input
         match mode {
             //it is consumed
-            FetchMode::Consume => self.consume(index)?,
+            FetchMode::Consume => self.consume(index),
             //it is copied
-            FetchMode::Copy => {self.non_consuming_fetch(index)?;},
+            FetchMode::Copy => {self.non_consuming_fetch(index);},
         };
 
         // unpacked values
         for value in results {
             //put each unpacked value on the stack
-            self.push_elem( Elem::new(value.clone(),self.status_owned))?;
+            self.push_elem( Elem::new(value.clone(),self.status_owned));
         }
-        Ok(())
     }
 
     //Takes a value and returns its content
     // it consumes the old value
-    pub fn inspect(&mut self, index:ValueRef, results: &[T]) -> Result<()> {
+    pub fn inspect(&mut self, index:ValueRef, results: &[T]) {
         assert!(results.len() <= u8::MAX as usize);
         //check that the input was locked
-        if !self.get_elem(index)?.locked {
-            return error(||"A stack elem must be locked by the enclosing frame in order to be inspected")
-        };
-
+        assert!(self.get_elem(index).locked);
         // unpacked values
         for value in results {
             //put each unpacked value on the stack
-            self.push_elem(Elem::new(value.clone(),self.status_borrowed))?;
+            self.push_elem(Elem::new(value.clone(),self.status_borrowed));
         }
-        Ok(())
     }
 
-    pub fn field(&mut self, index:ValueRef, result: T, mode:FetchMode) -> Result<()>{
+    pub fn field(&mut self, index:ValueRef, result: T, mode:FetchMode) {
         self.transform(index,result,mode)
     }
 
 
     //this applies a Func transformation to the stack
-    pub fn consume_params<'a>(&mut self, inputs: &[(ValueRef,bool)]) -> Result<()> {
+    pub fn consume_params<'a>(&mut self, inputs: &[(ValueRef,bool)]) {
         //Hide all (ensuring that they are unconsumed and not used twice)
         for (index,_) in inputs {
             //Avoids consume cross frame checks
             //But still ensures that it is only used once as input
-            self.hide(*index)?;
+            self.hide(*index);
         }
 
         //Process the inputs
         for (index, consume) in inputs {
             //make the element visible again (it is sure that each is used only once)
-            self.show(*index)?;
+            self.show(*index);
             //The Function consumes the Element
             if *consume  {
-                self.consume(*index)?;
+                self.consume(*index);
             }
         }
-        Ok(())
     }
 
     //Cleans up a frame by freeing or returning each parameter
-    fn ret(&mut self, start_index:usize, rets:u8) -> Result<usize> {
+    fn ret(&mut self, start_index:usize, rets:u8) -> usize {
         //to capture the returns temporary in correct order
         //todo: we could get more efficient if we free first & than directly copy down and thus eliminate the extra return vector
         let mut returns = Vec::with_capacity(rets as usize);
         //check each return
         for val in (0..(rets as u16)).rev() {
             // find the absolute index of the returned element
-            let index = self.absolute_index(ValueRef(val))?;
+            let index = self.absolute_index(ValueRef(val));
             //an element can only be returned if it is contained in the current frame (This should always be true in the new return model)
             assert!(index >= start_index);
 
@@ -412,9 +383,7 @@ impl<T:Clone+Eq> LinearStack<T>  {
             // save the element for later re pushing it
             returns.push(Elem::new(elem.value.clone(), self.status_owned));
             //ensure its owned
-            if !self.stack[index].is_owned() {
-                return error(||"Only owned values can be the result of an expression")
-            }
+            assert!(self.stack[index].is_owned())
         }
 
         //count marks
@@ -423,9 +392,7 @@ impl<T:Clone+Eq> LinearStack<T>  {
         for index in start_index..(self.stack_depth() - rets as usize) {
             //start at the newest in the frame
             //check it is freed
-            if !self.stack[index].can_be_freed() {
-                return error(||"Can only discard Consumed or Borrowed values on return");
-            }
+            assert!(self.stack[index].can_be_freed());
             //check if it is marked
             if self.stack[index].mark {
                 lost_marks += 1;
@@ -435,11 +402,11 @@ impl<T:Clone+Eq> LinearStack<T>  {
         //Clean up the stack by removing all entries in the current frame
         self.stack.truncate(start_index);
         //push the returns back onto the stack
-        self.push_elems(returns)?;
+        self.push_elems(returns);
 
         assert!(self.stack.len() <= u16::MAX as usize);
 
-        Ok(lost_marks)
+        lost_marks
     }
 
     //open a new basic frame which does not branch and thus allowing it to consume outside elements
@@ -474,9 +441,9 @@ impl<T:Clone+Eq> LinearStack<T>  {
     }
 
     //Helper to exit/ret a branch and check the returns (must be the same)
-    fn ret_branch(&mut self, br:&mut BranchInfo<T>, res: u8, frame:&mut Frame) -> Result<()> {
+    fn ret_branch(&mut self, br:&mut BranchInfo<T>, res: u8, frame:&mut Frame) {
         //do the return
-        let lost_marks = self.ret(frame.start_index, res)?;
+        let lost_marks = self.ret(frame.start_index, res);
         frame.new_marks -= lost_marks;
         //check that the return is in bound
         match br {
@@ -488,37 +455,32 @@ impl<T:Clone+Eq> LinearStack<T>  {
 
                 *inner = Some((
                     //Calculate the returned elements
-                    (0..res).rev().map(|new| Ok(self.get_elem(ValueRef(new as u16))?.value.clone())).collect::<Result<Vec<T>>>()?,
+                    (0..res).rev().map(|new| self.get_elem(ValueRef(new as u16)).value.clone()).collect::<Vec<T>>(),
                     frame.new_marks + frame.remarked
                 ))
             }
             BranchInfo{results:Some((old_res, expected_remarks)), ..} => {
                 //Compare the old elems with the new one
                 for (old, new) in old_res.iter().zip((0..res).rev()) {
-                    if old != &self.get_elem(ValueRef(new as u16))?.value {
-                        return error(||"Branches must produce same returns");
-                    }
+                    assert!(old == &self.get_elem(ValueRef(new as u16)).value);
                 }
 
                 //Compare the old captures with the new one
-                if frame.new_marks != 0 || frame.remarked != *expected_remarks {
-                    return error(||"Branches must consume same stack slots");
-                }
+                assert!(frame.new_marks == 0 && frame.remarked == *expected_remarks);
             },
             _ => unreachable!() //To please compiler as it can not se that the if inner.is_none() guard covers None
         };
-        Ok(())
     }
 
     //Switch to the next Branch in the current Branching frame
     // It needs to know which elements the current branch results in (or if it even throws)
-    pub fn next_branch(&mut self, br:&mut BranchInfo<T>, rets: u8) -> Result<()> {
+    pub fn next_branch(&mut self, br:&mut BranchInfo<T>, rets: u8) {
         //get the current frame (pop it so we can modify and repush it)
         let mut frame = self.frames.pop().unwrap();
         //Do the return or the exit
         let frame_start = frame.start_index;
         //capture the returns into the br and clean the frame
-        self.ret_branch(br, rets, &mut frame)?;
+        self.ret_branch(br, rets, &mut frame);
         //Remove the results (they are already freed)
         self.stack.truncate(frame_start);
         //Undo the Captures for next frame
@@ -542,12 +504,11 @@ impl<T:Clone+Eq> LinearStack<T>  {
             new_marks: 0,
             remarked: 0
         });
-        Ok(())
     }
 
     //Ends the current frame for good if it is a branching one this indicates that their is no more branch
     //  The rets parameter is the result from the last branch, where as the recovery is the the expected result in case the block/last branch threw an exception.
-    pub fn end_branching(&mut self, mut br: BranchInfo<T>, rets: u8) -> Result<()>{
+    pub fn end_branching(&mut self, mut br: BranchInfo<T>, rets: u8) {
         assert_eq!(br.remaining_branches, 1);
         //pop the frame
         let mut frame = self.frames.pop().unwrap();
@@ -556,54 +517,42 @@ impl<T:Clone+Eq> LinearStack<T>  {
     }
 
     //Ends the current Block
-    pub fn end_block(&mut self, bi: BlockInfo, rets: u8) -> Result<()>{
+    pub fn end_block(&mut self, bi: BlockInfo, rets: u8) {
         //do the return
-        let lost_marks = self.ret(bi.0, rets)?;
+        let lost_marks = self.ret(bi.0, rets);
         self.frames.last_mut().unwrap().new_marks -= lost_marks;
-        Ok(())
     }
 
     // Correlates the stack to the Function retrn signature, consuming the returns in the process
-    pub fn check_function_return_signature(&mut self, returns:u8) -> Result<()>  {
+    pub fn check_function_return_signature(&mut self, returns:u8) {
         //Check that the stack is big enough
-        if self.stack_depth() < returns as usize{
-            return error(||"Not enough elements on the stack to cover returns")
-        }
+        assert!(self.stack_depth() >= returns as usize);
 
         //First check the returns, starting at the end
         for _ in 0..returns {
             //We pop and free them while we process them
             let elem = self.stack.pop().unwrap();
             // if it is not-owned or locked it can not be return
-            if !elem.is_owned() {
-                return error(||"Returns must be owned at the end of a function body")
-            }
+            assert!(elem.is_owned());
         }
-
         //everything is fine
-        Ok(())
     }
 
     // Correlates the stack to the Function signature, consuming the stack in the process and finishing the roundtrip
-    pub fn check_function_param_signature(&mut self, params:u16) -> Result<()>  {
+    pub fn check_function_param_signature(&mut self, params:u16) {
         //Check that the stack is big enough
-        if self.stack_depth() != params as usize {
-            return error(||"Number of elements on stack must match number of parameters")
-        }
+        assert!(self.stack_depth() == params as usize);
 
         //Second check the params, starting at the end
         for _ in 0..params {
             //We pop and free them while we process them
             let elem = self.stack.pop().unwrap();
             //if a regular return check that signature hold
-            if !elem.can_be_freed() {
-                return error(||"Parameters must be borrowed or consumed at the end of a function body")
-            }
+            assert!(elem.can_be_freed());
         }
 
-        //just a check that everiting is back to beginning
+        //just a check that everything is back to beginning
         assert_eq!(self.frames.len(), 1);
         assert_eq!(self.frames[0].start_index, 0);
-        Ok(())
     }
 }

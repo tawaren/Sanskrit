@@ -1,6 +1,5 @@
 use alloc::vec::Vec;
 use sanskrit_common::model::{Hash, LargeVec, ValueRef};
-use sanskrit_common::errors::*;
 use sanskrit_compile::externals::CompilationResult;
 use sanskrit_chain_code::model::{ValueSchema, OpCode, Kind};
 use crate::External;
@@ -13,21 +12,21 @@ impl External for Ecdsa{
     global external(32) primitive data Pk
     global external(64) primitive data Sig
     */
-    fn compile_lit(&self, _data_idx: u8, data: &[u8], _caller: &Hash) -> Result<CompilationResult> {
-            Ok(CompilationResult::OpCodeResult(OpCode::Data(LargeVec(data.to_vec()))))
+    fn compile_lit(&self, _data_idx: u8, data: &[u8], _caller: &Hash) -> CompilationResult {
+            CompilationResult::OpCodeResult(OpCode::Data(LargeVec(data.to_vec())))
     }
 
-    fn get_literal_checker(&self, data_idx: u8, _len: u16) -> Result<ValueSchema> {
+    fn get_literal_checker(&self, data_idx: u8, _len: u16) -> ValueSchema {
         match data_idx {
-            0 => Ok(ValueSchema::Data(32)),
-            _ => Ok(ValueSchema::Data(64)),
+            0 => ValueSchema::Data(32),
+            _ => ValueSchema::Data(64),
         }
     }
 
-    fn compile_call(&self, fun_idx: u8, params: Vec<ValueRef>, _caller: &Hash) -> Result<CompilationResult> {
+    fn compile_call(&self, fun_idx: u8, params: Vec<ValueRef>, _caller: &Hash) -> CompilationResult {
         match fun_idx {
             //global external function derivePublicId(pk:Pk):Id
-            0 => Ok(CompilationResult::OpCodeResult(OpCode::TypedSysInvoke(0, Kind::Data, params))),
+            0 => CompilationResult::OpCodeResult(OpCode::TypedSysInvoke(0, Kind::Data, params)),
             /*
             global external function verify1(msg:Data1, pk:Pk, sig:Sig):(res:Bool)
             global external function verify2(msg:Data2, pk:Pk, sig:Sig):(res:Bool)
@@ -40,7 +39,7 @@ impl External for Ecdsa{
             global external function verify28(msg:Data28, pk:Pk, sig:Sig):(res:Bool)
             global external function verify32(msg:Data32, pk:Pk, sig:Sig):(res:Bool)
             */
-            _ => Ok(CompilationResult::OpCodeResult(OpCode::SysInvoke(1, params))),
+            _ => CompilationResult::OpCodeResult(OpCode::SysInvoke(1, params)),
         }
     }
 }

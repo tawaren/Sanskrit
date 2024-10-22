@@ -1,6 +1,5 @@
 use alloc::vec::Vec;
 use sanskrit_common::model::{Hash, LargeVec, ValueRef};
-use sanskrit_common::errors::*;
 use sanskrit_compile::externals::CompilationResult;
 use sanskrit_chain_code::model::{ValueSchema, OpCode, Kind, LitDesc};
 use crate::External;
@@ -19,16 +18,16 @@ pub const EXT_I128:&'static dyn External = &IX{size:16,kind:Kind::I128,desc:LitD
 
 impl External for IX {
     //global external(?) data I?;
-    fn compile_lit(&self, _data_idx: u8, data: &[u8], _caller: &Hash) -> Result<CompilationResult> {
-        Ok(CompilationResult::OpCodeResult(OpCode::SpecialLit(LargeVec(data.to_vec()), self.desc)))
+    fn compile_lit(&self, _data_idx: u8, data: &[u8], _caller: &Hash) -> CompilationResult {
+        CompilationResult::OpCodeResult(OpCode::SpecialLit(LargeVec(data.to_vec()), self.desc))
     }
 
-    fn get_literal_checker(&self, _data_idx: u8, _len: u16) -> Result<ValueSchema> {
-        Ok(ValueSchema::Signed(self.size))
+    fn get_literal_checker(&self, _data_idx: u8, _len: u16) -> ValueSchema {
+        ValueSchema::Signed(self.size)
     }
 
-    fn compile_call(&self, fun_idx: u8, params: Vec<ValueRef>, _caller: &Hash) -> Result<CompilationResult> {
-        Ok(match fun_idx {
+    fn compile_call(&self, fun_idx: u8, params: Vec<ValueRef>, _caller: &Hash) -> CompilationResult {
+        match fun_idx {
             //this is the identity funcntion (used for conversions where bit pattern does not change)
             //global external function eq(num1:.I?, num2:.I?):(res:Bool.Bool);
             0 => CompilationResult::OpCodeResult(OpCode::Eq(self.kind, params[0], params[1])),
@@ -62,7 +61,7 @@ impl External for IX {
             14 => CompilationResult::OpCodeResult(OpCode::FromData(self.kind, params[0])),
             //global external function hash(num:.I?):(res:Data.Data20);
             15 => CompilationResult::OpCodeResult(OpCode::TypedSysInvoke(0, self.kind, params)),
-            _ => return error(||"External call is not defined")
-        })
+            _ => panic!("External call is not defined")
+        }
     }
 }

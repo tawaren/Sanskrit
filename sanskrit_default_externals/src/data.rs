@@ -1,6 +1,5 @@
 use alloc::vec::Vec;
 use sanskrit_common::model::{Hash, LargeVec, ValueRef};
-use sanskrit_common::errors::*;
 use sanskrit_compile::externals::CompilationResult;
 use sanskrit_chain_code::model::{ValueSchema, OpCode, Kind};
 use crate::External;
@@ -22,15 +21,15 @@ impl External for Data {
     global external(28) primitive data Data28
     global external(32) primitive data Data32
     */
-    fn compile_lit(&self, _data_idx: u8, data: &[u8], _caller: &Hash) -> Result<CompilationResult> {
-        Ok(CompilationResult::OpCodeResult(OpCode::Data(LargeVec(data.to_vec()))))
+    fn compile_lit(&self, _data_idx: u8, data: &[u8], _caller: &Hash) -> CompilationResult {
+        CompilationResult::OpCodeResult(OpCode::Data(LargeVec(data.to_vec())))
     }
 
-    fn get_literal_checker(&self, _data_idx: u8, len: u16) -> Result<ValueSchema> {
-        Ok(ValueSchema::Data(len))
+    fn get_literal_checker(&self, _data_idx: u8, len: u16) -> ValueSchema {
+        ValueSchema::Data(len)
     }
 
-    fn compile_call(&self, fun_idx: u8, params: Vec<ValueRef>, _caller: &Hash) -> Result<CompilationResult> {
+    fn compile_call(&self, fun_idx: u8, params: Vec<ValueRef>, _caller: &Hash) -> CompilationResult {
         match fun_idx {
             /*
             global external function eq1(data1:Data1, data2:Data1):(res:Bool)
@@ -45,9 +44,9 @@ impl External for Data {
             global external function eq32(data1:Data32, data2:Data32):(res:Bool)
             */
             //currently we have max 32 Byte:
-            x if x < 10 => Ok(CompilationResult::OpCodeResult(OpCode::Eq(Kind::Data, params[0], params[1]))),
+            x if x < 10 => CompilationResult::OpCodeResult(OpCode::Eq(Kind::Data, params[0], params[1])),
             // extFun joinHash(data1:.Data20, data2:.Data20):(res:.Data20);
-            10 => Ok(CompilationResult::OpCodeResult(OpCode::SysInvoke(0, params))),
+            10 => CompilationResult::OpCodeResult(OpCode::SysInvoke(0, params)),
             /*
             global external function hash1(data1:Data1):Hash
             global external function hash2(data1:Data2):Hash
@@ -61,7 +60,7 @@ impl External for Data {
             global external function hash32(data1:Data32):Hash
             */
             //currently we have max 32 Byte:
-            _ =>  Ok(CompilationResult::OpCodeResult(OpCode::TypedSysInvoke(0, Kind::Data, params))),
+            _ =>  CompilationResult::OpCodeResult(OpCode::TypedSysInvoke(0, Kind::Data, params)),
         }
 
     }

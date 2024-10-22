@@ -1,6 +1,5 @@
 use alloc::vec::Vec;
 use sanskrit_common::model::{Hash, LargeVec, ValueRef};
-use sanskrit_common::errors::*;
 use sanskrit_compile::externals::CompilationResult;
 use sanskrit_chain_code::model::{ValueSchema, OpCode, Kind};
 use crate::External;
@@ -12,30 +11,30 @@ impl External for Ids{
     /*
     local external(20) standard data PrivateId
     */
-    fn compile_lit(&self, _data_idx: u8, data: &[u8], _caller: &Hash) -> Result<CompilationResult> {
-        Ok(CompilationResult::OpCodeResult(OpCode::Data(LargeVec(data.to_vec()))))
+    fn compile_lit(&self, _data_idx: u8, data: &[u8], _caller: &Hash) -> CompilationResult {
+        CompilationResult::OpCodeResult(OpCode::Data(LargeVec(data.to_vec())))
     }
 
-    fn get_literal_checker(&self, _data_idx: u8, _len: u16) -> Result<ValueSchema> {
-        Ok(ValueSchema::Data(20))
+    fn get_literal_checker(&self, _data_idx: u8, _len: u16) -> ValueSchema {
+        ValueSchema::Data(20)
     }
 
-    fn compile_call(&self, fun_idx: u8, params: Vec<ValueRef>, caller: &Hash) -> Result<CompilationResult> {
+    fn compile_call(&self, fun_idx: u8, params: Vec<ValueRef>, caller: &Hash) -> CompilationResult {
         match fun_idx {
             //global external function moduleId():(priv:PrivateModuleId)
-            0 =>  Ok(CompilationResult::OpCodeResult(OpCode::Data(LargeVec(caller.to_vec())))),
+            0 =>  CompilationResult::OpCodeResult(OpCode::Data(LargeVec(caller.to_vec()))),
             /*
             global external function idFromData(dat:Data20):Id
             global external function idToData(id:Id):Data20
             global external function moduleIdFromData(dat:Data20):ModuleId
             global external function moduleIdToData(id:ModuleId):Data20
             */
-            x if x >= 1 && x < 5 => Ok(CompilationResult::ReorderResult((&[0]).to_vec())),
+            x if x >= 1 && x < 5 => CompilationResult::ReorderResult((&[0]).to_vec()),
             /*
             global external function eqId(id1:Id, id2:Id):Bool
             global external function eqModuleId(id1:ModuleId, id2:ModuleId):Bool
             */
-            x if x >= 5 && x < 7 => Ok(CompilationResult::OpCodeResult(OpCode::Eq(Kind::Data, params[0], params[1]))),
+            x if x >= 5 && x < 7 => CompilationResult::OpCodeResult(OpCode::Eq(Kind::Data, params[0], params[1])),
 
             /*
             global external function privateIdderive(priv:PrivateId, hash:Hash):PrivateId
@@ -43,7 +42,7 @@ impl External for Ids{
             global external function privateModuleIdDerive(priv:PrivateModuleId, hash:Hash):PrivateId
             global external function moduleIdDerive(id:ModuleId, hash:Hash):Id
             */
-            _ =>  Ok(CompilationResult::OpCodeResult(OpCode::SysInvoke(0, params))),
+            _ =>  CompilationResult::OpCodeResult(OpCode::SysInvoke(0, params)),
 
         }
     }
