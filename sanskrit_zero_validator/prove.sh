@@ -1,0 +1,1 @@
+cargo run --release -- prove ../code/std/core/sys ../code/std/core ../code/std
