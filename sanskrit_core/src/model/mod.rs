@@ -4,13 +4,15 @@ pub mod bitsets;
 pub mod efficency;
 pub mod provider;
 
-use alloc::vec::Vec;
+use alloc::vec::{from_elem, Vec};
+use core::cell::{Cell, RefCell};
 use sanskrit_common::model::*;
 use sanskrit_common::encoding::*;
 use crate::model::resolved::ResolvedType;
 use sp1_zkvm_col::arena::URef;
 use crate::model::bitsets::{CapSet, PermSet};
 use crate::model::linking::FastModuleLink;
+use crate::model::Permission::Call;
 
 //Represents a Module
 #[derive(Debug, Parsable, Serializable)]

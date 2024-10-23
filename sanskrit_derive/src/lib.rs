@@ -158,9 +158,8 @@ fn impl_parsable_macro(ast:&DeriveInput) -> TokenStream {
                     body.push(quote!{#id:Option::Some(p.index-start)})
                 },
             };
-
             for id in transient_fields {
-                body.push(quote!{#id:Option::None})
+                body.push(quote!{#id:Default::default()})
             };
 
             match start_field {
@@ -268,7 +267,7 @@ fn pattern_body_parse<'a>(fs: impl Iterator<Item=&'a Field>, size_field:Option<I
     };
 
     for id in transient_fields {
-        body.push(quote!{#id:Option::None})
+        body.push(quote!{#id:Default::default()})
     };
 
     match start_field {

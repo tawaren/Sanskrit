@@ -13,7 +13,7 @@
 use std::env;
 use std::time::Instant;
 use sanskrit_validator::execute_with_args;
-use sp1_sdk::{ProverClient, SP1Stdin};
+use sp1_sdk::{CostEstimator, ProverClient, SP1Stdin};
 
 /// The ELF (executable and linkable format) file for the Succinct RISC-V zkVM.
 pub const SANSKRIT_ZERO_VALIDATOR_ELF: &[u8] = include_bytes!("../elf/validator-sp1-elf");
@@ -96,12 +96,10 @@ fn main() {
 
             println!("Number of cycles: {}", report.total_instruction_count());
             println!("Number of syscalls: {}", report.total_syscall_count());
-            println!("Number of Memory Addresses: {:#?}", report.touched_memory_addresses);
-
+            println!("Touched Memory: {}", report.touched_memory_addresses);
+            println!("Estimated Area: {}", report.estimate_area());
+            println!("Estimated Gas: {}", report.estimate_gas());
             println!("Cycle Tracker: {:#?}", report.cycle_tracker);
-
-            //println!("Full Report: {}", report);
-
             None
         }
         Mode::Proove => Some(client.prove(&pk, stdin)),

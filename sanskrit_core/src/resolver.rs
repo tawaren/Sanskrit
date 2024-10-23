@@ -225,10 +225,10 @@ impl<'a, S:StateManager> Context<'a,S> {
 
     fn resolve_types(&mut self, imps: &[TypeImport]) {
         for imp in imps {
-            let res = match imp {
+            let res= match imp {
                 TypeImport::Data { link: DataLink { module, offset }, applies } => self.resolve_data_type(*module, *offset, applies),
                 //Its a general
-                TypeImport::Sig { link: SigLink { module, offset }, applies } => self.resolve_sig_type(*module, *offset, applies),
+                TypeImport::Sig { link: SigLink { module, offset },  applies } => self.resolve_sig_type(*module, *offset, applies),
                 //its an image type
                 TypeImport::Projection { typ } => self.resolve_projection_type(*typ),
                 //A special virtual type

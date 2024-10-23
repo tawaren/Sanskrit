@@ -46,7 +46,7 @@ impl<S:StateManager> Ref<URef<'static,ResolvedCallable>,S> for CallRef {
     }
 }
 
-pub trait Component {
+pub trait Component  {
     fn get(module:&Module, offset:u8) -> &Self;
     fn num_elems(module:&Module) -> usize;
     fn get_local_limit<S:StateManager>(cache:&Loader<S>) -> usize;

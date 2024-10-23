@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 alloy-sol-types = { workspace = true }
-sp1-zkvm = { version = "2.0.0", features = ["verify"]  }
+sp1-zkvm = { version = "3.0.0", features = ["verify"]  }
 
 [dependencies.sanskrit_preloaded_validation]
 path = "../sanskrit_preloaded_validation"
