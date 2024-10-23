@@ -1,0 +1,13 @@
+NAME: IntU128$EqForU128
+LANGUAGE: mandala
+VERSION: 0
+CLASSIFIER: Set(mandala, instance, definitions)
+IMPLEMENTS
+	CLASS: Equal
+	PARAMS
+		PARAM: sys.IntU128.U128[]
+IMPLEMENTS
+	IMPLEMENT: eq
+		GENERICS
+		FUN_TARGET: sys.IntU128.eq[]
+		IMPL_TARGET: core.IntU128.EqForU128$eq[]

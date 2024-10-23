@@ -1,0 +1,25 @@
+NAME: IntU128$BitOpsForU128
+LANGUAGE: mandala
+VERSION: 0
+CLASSIFIER: Set(mandala, instance, definitions)
+IMPLEMENTS
+	CLASS: BitOps
+	PARAMS
+		PARAM: sys.IntU128.U128[]
+IMPLEMENTS
+	IMPLEMENT: and
+		GENERICS
+		FUN_TARGET: sys.IntU128.and[]
+		IMPL_TARGET: core.IntU128.BitOpsForU128$and[]
+	IMPLEMENT: or
+		GENERICS
+		FUN_TARGET: sys.IntU128.or[]
+		IMPL_TARGET: core.IntU128.BitOpsForU128$or[]
+	IMPLEMENT: xor
+		GENERICS
+		FUN_TARGET: sys.IntU128.xor[]
+		IMPL_TARGET: core.IntU128.BitOpsForU128$xor[]
+	IMPLEMENT: not
+		GENERICS
+		FUN_TARGET: sys.IntU128.not[]
+		IMPL_TARGET: core.IntU128.BitOpsForU128$not[]
