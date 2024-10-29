@@ -75,12 +75,24 @@ pub fn top_level_subs<S:StateManager>(store: &Loader<S>, generics:&[Generic]) ->
     //         2: unique (each is its own and should not be deduplicated)
     //            meaning 2 generics with the same offset are different
     //              unless they are the exact same generic (used in the same body)
-    generics.iter().enumerate().map(|(i,c)| match *c {
+    let mut res = Vec::with_capacity(generics.len());
+    for i in 0..generics.len() {
+        res.push(match generics[i] {
+            Generic::Phantom => {
+                store.create_generic_type(ResolvedType::Generic {caps: CapSet::empty(), offset:i as u8, is_phantom:true})
+            },
+            Generic::Physical(caps) => {
+                store.create_generic_type(ResolvedType::Generic { caps, offset:i as u8, is_phantom:false})
+            },
+        })
+    }
+    /*generics.iter().enumerate().map(|(i,c)| match *c {
         Generic::Phantom => store.create_generic_type(ResolvedType::Generic {caps: CapSet::empty(), offset:i as u8, is_phantom:true}),
         Generic::Physical(caps) => {
             store.create_generic_type(ResolvedType::Generic { caps, offset:i as u8, is_phantom:false})
         },
-    }).collect()
+    }).collect()*/
+    res
 }
 
 impl<'a, S:StateManager> Context<'a,S> {
@@ -129,44 +141,52 @@ impl<'a, S:StateManager> Context<'a,S> {
     }
 
     //Gets and resolves a Module from the local context
+    #[inline(always)]
     pub fn get_mod(&self, mref: ModRef) -> FastModuleLink {
         self.cache.mref_cache[mref.0 as usize]
     }
 
+    #[inline(always)]
     pub fn get_type(&self, tref: TypeRef) -> URef<'static,ResolvedType> {
         self.cache.tref_cache[tref.0 as usize]
     }
 
+    #[inline(always)]
     pub fn get_callable(&self, cref: CallRef) -> URef<'static,ResolvedCallable> {
         self.cache.cref_cache[cref.0 as usize]
     }
 
     //Gets and resolves a type from the local context
+    #[inline(always)]
     pub fn get_perm(&self, pref: PermRef) -> URef<'static,ResolvedPermission> {
         self.cache.pref_cache[pref.0 as usize]
     }
 
     //Gets and resolves a Module from the local context
+    #[inline(always)]
     pub fn list_mods(&self) -> &[FastModuleLink] {
         &self.cache.mref_cache
     }
 
+    #[inline(always)]
     pub fn list_types(&self) -> &[URef<'static,ResolvedType>] {
         &self.cache.tref_cache
     }
 
+    #[inline(always)]
     pub fn list_callables(&self) -> &[URef<'static,ResolvedCallable>] {
         &self.cache.cref_cache
     }
 
     //Gets and resolves a type from the local context
+    #[inline(always)]
     pub fn list_perms(&self) -> &[URef<'static,ResolvedPermission>] {
         &self.cache.pref_cache
     }
 
     pub fn create_and_resolve(imports: &[Imports], store: &'a Loader<S>) -> Self {
         let mut context = Context {
-            cache: CachedImports::new(/*&imports*/),
+            cache: CachedImports::new(),
             store,
         };
         context.resolve_all(imports);
@@ -197,16 +217,18 @@ impl<'a, S:StateManager> Context<'a,S> {
         }
     }
 
+    #[inline(always)]
     pub fn is_this_module(&self, target: &FastModuleLink) -> bool {
         self.store.is_this_module(target)
     }
 
+    #[inline(always)]
     pub fn is_local_type(&self, target: URef<'static,ResolvedType>) -> bool {
         self.store.is_local_type(target)
     }
 
     fn resolve_module(&mut self, res: &FastModuleLink) {
-        //Make sure the module is loaded and accounted even if not used
+        //Make sure the module is loaded and accounted even if not used (needed??)
         if !self.is_this_module(res) { res.resolve(self); };
         self.cache.mref_cache.push(*res);
     }
@@ -292,11 +314,7 @@ impl Embedding<ResolvedType> for ResolvedComponent {
         //Resolve the type
         // calc the caps after application & check constraints
         //prepare the applies vector
-        let are_phantom = adt.generics.iter().map(|generic|match *generic {
-            Generic::Phantom => true,
-            Generic::Physical(_) => false,
-        });
-        let (generic_caps,caps) = apply_types(adt.provided_caps,are_phantom,&self.applies);
+        let (generic_caps,caps) = apply_types(adt.provided_caps,&adt.generics,&self.applies);
 
         //Construct the Type
         match adt.body {
@@ -334,11 +352,9 @@ impl<'a, S:StateManager> Context<'a, S> {
         //Fetch the link
         let module_link =  self.get_mod(module);
         //Load the Adt
-        let adt_cache = self.store.get_component::<DataComponent>(&module_link, offset);
-        // get the adt
-        let adt = adt_cache.retrieve();
+        let adt = self.store.borrow_component::<DataComponent>(&module_link, offset);
         //prepare the applies vector
-        let result:Vec<URef<'static,ResolvedType>> = applies.iter().map(|appl|self.get_type(*appl)).collect();
+        let result:Vec<URef<'static,ResolvedType>> = applies.iter().map(|appl|self.get_type(*appl)).collect();//self.resolve_applies(applies);
         //check that the number of generics match
         //Note we do this here so nobody can cause extra iterations in are_phantom & apply_types
         assert!(adt.generics.len() == applies.len());
@@ -355,11 +371,9 @@ impl<'a, S:StateManager> Context<'a, S> {
         //Fetch the link
         let module_link = self.get_mod(module);
         //Load the Sig
-        let sig_cache = self.store.get_component::<SigComponent>(&module_link,offset);
-        // get the function
-        let sig = sig_cache.retrieve();
+        let sig = self.store.borrow_component::<SigComponent>(&module_link, offset);
         //prepare the applies vector
-        let result:Vec<URef<'static,ResolvedType>> = applies.iter().map(|appl|self.get_type(*appl)).collect();
+        let result:Vec<URef<'static,ResolvedType>> = applies.iter().map(|appl|self.get_type(*appl)).collect();//self.resolve_applies(applies);
         //check that the number of generics match
         //Note we do this here so nobody can cause extra iterations in are_phantom & apply_types
         assert!(sig.shared.generics.len() == applies.len());
@@ -381,12 +395,18 @@ impl<'a, S:StateManager> Context<'a, S> {
 
     fn project(&self, inner:URef<'static,ResolvedType>, nesting:u8) -> URef<'static,ResolvedType>{
         //Resolve the type
-        let depth = match *inner {
-            ResolvedType::Projection { depth, .. } => depth+nesting,
-            _ => nesting
+        let projected = match *inner {
+            ResolvedType::Projection { depth, un_projected } => ResolvedType::Projection {
+                depth: depth + nesting,
+                un_projected,
+            },
+            _ => ResolvedType::Projection {
+                depth: nesting,
+                un_projected:inner,
+            }
         };
-        let inner = get_target(inner);
-        self.store.projection_type_dedup(ResolvedType::Projection { depth, un_projected:inner})
+        //let inner = get_target(inner);
+        self.store.projection_type_dedup(projected)
     }
 
     fn resolve_projection_type(&self, inner:TypeRef) -> URef<'static,ResolvedType>{
@@ -398,7 +418,7 @@ impl<'a, S:StateManager> Context<'a, S> {
         //Fetch the link
         let module_link =  self.get_mod(module);
         // prepare the applies vector
-        let result:Vec<URef<'static,ResolvedType>> = applies.iter().map(|appl|self.get_type(*appl)).collect();
+        let result:Vec<URef<'static,ResolvedType>> = applies.iter().map(|appl|self.get_type(*appl)).collect();//self.resolve_applies(applies);
 
         self.store.dedup_callable(ResolvedCallable::Function { base:ResolvedComponent{
             offset,
@@ -409,14 +429,12 @@ impl<'a, S:StateManager> Context<'a, S> {
     }
 
     fn resolve_implement_callable(&self, module:ModRef, offset:u8,  applies:&[TypeRef]) -> URef<'static,ResolvedCallable>{
-        //Fetch the link
-        let module_link =  self.get_mod(module);
         // prepare the applies vector
-        let result:Vec<URef<'static,ResolvedType>> = applies.iter().map(|appl|self.get_type(*appl)).collect();
+        let result:Vec<URef<'static,ResolvedType>> = applies.iter().map(|appl|self.get_type(*appl)).collect();//self.resolve_applies(applies);
 
         self.store.dedup_callable(ResolvedCallable::Implement { base:ResolvedComponent{
             offset,
-            module: module_link, //Get the Module
+            module: self.get_mod(module), //Get the Module
             //Resolve the applied types
             applies:result
         }})
@@ -424,12 +442,12 @@ impl<'a, S:StateManager> Context<'a, S> {
 
 
     fn resolve_signature_from_component<C:CallableComponent>(&self, base:&ResolvedComponent) -> URef<'static,ResolvedSignature> {
+        //Get the module
+        let module_link = base.module;
         //Load the Comp
-        let comp_cache = self.store.get_component::<C>(&base.module, base.offset);
-        // get the Comp
-        let comp = comp_cache.retrieve();
+        let comp = self.store.borrow_component::<C>(&module_link, base.offset);
         //get its context with the applies as substitutions
-        let context = comp_cache.substituted_context(&base.applies,&self.store);
+        let context = self.store.substituted_context(&module_link, comp.get_public_import(),&base.applies);
         //Create the sig
         self.store.dedup_signature(ResolvedSignature {
             //Map the params to the resolved type
@@ -489,11 +507,9 @@ impl<'a, S:StateManager> Context<'a, S> {
         match *typ {
             ResolvedType::Data { ref base, .. }  => {
                 //Load the Adt
-                let adt_cache = self.store.get_component::<DataComponent>(&base.module, base.offset);
-                // get the adt
-                let adt = adt_cache.retrieve();
+                let adt = self.store.borrow_component::<DataComponent>(&base.module, base.offset);
                 //get its context with the applies as substitutions
-                let context = adt_cache.substituted_context(&base.applies,&self.store);
+                let context = self.store.substituted_context(&base.module, adt.get_public_import(), &base.applies);
                 //Create the Ctr
                 match adt.body {
                     DataImpl::Internal { ref constructors, .. } => {
@@ -501,7 +517,7 @@ impl<'a, S:StateManager> Context<'a, S> {
                             c.fields.iter().map(|t|context.get_type(t.typ)).collect()
                         }).collect())
                     }
-                    DataImpl::External(_) => panic!("Extrnal data does not have ctrs")
+                    DataImpl::External(_) => panic!("External data does not have ctrs")
                 }
             },
             ResolvedType::Projection { depth, un_projected, .. } => {
@@ -522,17 +538,22 @@ impl<'a, S:StateManager> Context<'a, S> {
 }
 
 
-pub fn apply_types(base_caps:CapSet, are_phantom:impl Iterator<Item=bool>, applies:&[URef<'static,ResolvedType>]) -> (CapSet,CapSet) {
+pub fn apply_types(base_caps:CapSet, generics:&[Generic] , applies:&[URef<'static,ResolvedType>]) -> (CapSet,CapSet) {
     //initial caps
     let mut generic_caps = base_caps;
     let mut caps = base_caps;
-    for (is_phantom,typ) in  are_phantom.zip(applies.iter()) {
-        //update caps
-        if !is_phantom{
-            //combine caps
-            generic_caps = generic_caps.intersect(typ.get_generic_caps());
-            caps = caps.intersect(typ.get_caps());
-        }
+    assert!(generics.len() == applies.len());
+
+    for i in 0..applies.len() {
+        match generics[i] {
+            Generic::Phantom => {},
+            Generic::Physical(_) => {
+                let typ = applies[i];
+                //combine caps
+                generic_caps = generic_caps.intersect(typ.get_generic_caps());
+                caps = caps.intersect(typ.get_caps());
+            },
+        };
     }
     (generic_caps,caps)
 }

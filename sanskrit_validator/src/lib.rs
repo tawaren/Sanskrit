@@ -27,7 +27,11 @@ fn load_dep_from_file(cols:&mut [(&str, Vec<Vec<u8>>)], exts:usize, file:PathBuf
             Some(ext) => {
                 for col in cols {
                     if ext.eq(col.0) {
-                        return col.1.push(fs::read(file).unwrap());
+                        let p = file.as_path();
+                        let content = fs::read(p).unwrap();
+                        //let h = store_hash(&[&content]);
+                        //println!("loaded: {:?} with hash {:?}", p, h);
+                        return col.1.push(content);
                     }
                 }
             }

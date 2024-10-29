@@ -1,13 +1,4 @@
-use alloc::borrow::ToOwned;
-use alloc::rc::Rc;
-use core::ops::Deref;
-use core::borrow::Borrow;
-use core::cell::RefCell;
-use core::clone::Clone;
-use core::cmp::Ordering;
-use core::hash::{Hash, Hasher};
-use sp1_zkvm_col::map::HintMap;
-
+/*
 //A complexity counting Rc to prevent complexity based attacks
 //it tracks the Elems and depth and produces an error if the Limits are reached
 #[derive(Debug)]
@@ -107,7 +98,7 @@ impl<E:Ord+Eq> CrcDeDup<E> {
         }
     }
 
-    pub fn dedup(&mut self, elem:E) -> Crc<E> {
+    pub fn dedup<M:SeekMode<E>>(&mut self, elem:E) -> Crc<E> {
         //unsafe {dedup_count+=1};
         let rc = Rc::new(elem);
         let res = self.elems.insert_if_missing(rc,|rc|{
@@ -158,7 +149,7 @@ impl<K:Ord+Eq,V> Default for CtrDedup<K,V> {
         CtrDedup::new()
     }
 }
-
+*/
 
 //Helper to calc the key for a storage slot
 pub fn store_hash(data:&[&[u8]]) -> crate::model::Hash {

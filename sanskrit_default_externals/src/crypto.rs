@@ -1,4 +1,3 @@
-use alloc::format;
 use sanskrit_common::hashing::{Hasher, HashingDomain};
 use ed25519_consensus::*;
 use sanskrit_common::model::{Hash, ValueRef};

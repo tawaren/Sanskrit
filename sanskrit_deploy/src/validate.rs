@@ -10,19 +10,19 @@ use crate::code_type_checker::TypeCheckerContext;
 use sanskrit_core::model::bitsets::{CapSet, BitSet, PermSet};
 use sp1_zkvm_col::arena::URef;
 
-pub fn validate_top_function<S:StateManager>(fun:FunctionComponent, supplier:S) {
+pub fn validate_top_function<S:StateManager>(fun:&FunctionComponent, supplier:S) {
     //Prepare the loader for this iteration
     let resolver = Loader::new_for_transaction(supplier);
     //Prepare the context
-    let context = Context::from_top_component(&fun, &resolver);
+    let context = Context::from_top_component(fun, &resolver);
 
     //let context = match Context::from_top_component(&fun, &resolver)
     //Ensure Transaction specific parts are correct
-    validate_transaction(&fun, &context);
+    validate_transaction(fun, &context);
     //Do the type checking of the sys in the function body
     if let CallableImpl::Internal {ref code, ..} = fun.body {
         let mut checker = TypeCheckerContext::<S>::new(context);
-        checker.type_check_function(&fun, code);
+        checker.type_check_function(fun, code);
     }
 }
 
@@ -299,10 +299,8 @@ fn check_save_self_referencing<S:StateManager>(context:&Context<S>, cur_adt_offs
             // This is needed as the applies can appear in the constructor
             // leading to infinitely large data structures
             ResolvedType::Data { ref base, .. } => {
-                //Fetch the Cache Entry
-                let data_cache = context.store.get_component::<DataComponent>(&base.module, base.offset);
-                //Retrieve the data component from the cache
-                let data_comp = data_cache.retrieve();
+                //Fetch the Component
+                let data_comp = context.store.borrow_component::<DataComponent>(&base.module,base.offset);
 
                 for (g,apply) in data_comp.generics.iter().zip(base.applies.iter()) {
                    match g {
@@ -334,27 +332,22 @@ fn check_type_import_integrity<S:StateManager>(context:&Context<S>) {
             }
             //we need to check implement and call visibility
             ResolvedType::Sig { ref base, .. } => {
-                //Fetch the Cache Entry
-                let imp_sig_cache = context.store.get_component::<SigComponent>(&base.module, base.offset);
-                //Retrieve the function from the cache
-                let imp_sig_comp = imp_sig_cache.retrieve();
+                //Fetch the Component
+                let imp_sig_comp = context.store.borrow_component::<SigComponent>(&base.module, base.offset);
+
                 //check it
                 check_generic_constraints(&imp_sig_comp.shared.generics, &base.applies);
             },
             ResolvedType::Data { ref base, .. } => {
-                //Fetch the Cache Entry
-                let imp_data_cache = context.store.get_component::<DataComponent>(&base.module, base.offset);
-                //Retrieve the function from the cache
-                let imp_data_comp = imp_data_cache.retrieve();
+                //Fetch the Component
+                let imp_data_comp = context.store.borrow_component::<DataComponent>(&base.module, base.offset);
                 //check it
                 check_generic_constraints(&imp_data_comp.generics, &base.applies);
             }
             //An imported type (can be from same module if Module == This)
             ResolvedType::Lit { ref base, .. } => {
-                //Fetch the Cache Entry
-                let imp_data_cache = context.store.get_component::<DataComponent>(&base.module, base.offset);
-                //Retrieve the function from the cache
-                let imp_data_comp = imp_data_cache.retrieve();
+                //Fetch the Component
+                let imp_data_comp = context.store.borrow_component::<DataComponent>(&base.module, base.offset);
                 //check it
                 check_generic_constraints(&imp_data_comp.generics, &base.applies);
             }
@@ -369,18 +362,14 @@ fn check_function_import_integrity<S:StateManager>(context:&Context<S>) {
         match **c {
             //we need to check implement consraints
             ResolvedCallable::Implement { ref base, .. } => {
-                //Fetch the Cache Entry
-                let imp_cache = context.store.get_component::<ImplementComponent>(&base.module, base.offset);
-                //Retrieve the function from the cache
-                let imp_comp = imp_cache.retrieve();
+                //Fetch the Component
+                let imp_comp = context.store.borrow_component::<ImplementComponent>(&base.module, base.offset);
                 //check it
                 check_generic_constraints(&imp_comp.generics, &base.applies);
             },
             ResolvedCallable::Function { ref base, .. } => {
-                //Fetch the Cache Entry
-                let imp_fun_cache = context.store.get_component::<FunctionComponent>(&base.module, base.offset);
-                //Retrieve the function from the cache
-                let imp_fun_comp = imp_fun_cache.retrieve();
+                //Fetch the Component
+                let imp_fun_comp = context.store.borrow_component::<FunctionComponent>(&base.module, base.offset);
                 //check it
                 check_generic_constraints(&imp_fun_comp.shared.generics, &base.applies);
             }
@@ -470,19 +459,15 @@ fn check_callable_import_accessibility<S:StateManager>(context:&Context<S>, syst
         //fetch the function
         match **c {
             ResolvedCallable::Function { ref base, ..} => {
-                //Fetch the Cache Entry
-                let imp_fun_cache = context.store.get_component::<FunctionComponent>(&base.module, base.offset);
-                //Retrieve the function from the cache
-                let imp_fun_comp = imp_fun_cache.retrieve();
+                //Fetch the Component
+                let imp_fun_comp = context.store.borrow_component::<FunctionComponent>(&base.module,base.offset);
                 //check it
                 check_access(&imp_fun_comp.scope, &base.module, &base.applies, context, system_mode_on);
             },
 
             ResolvedCallable::Implement  { ref base, ..} => {
-                //Fetch the Cache Entry
-                let imp_cache = context.store.get_component::<ImplementComponent>(&base.module, base.offset);
-                //Retrieve the function from the cache
-                let imp_comp = imp_cache.retrieve();
+                //Fetch the Component
+                let imp_comp = context.store.borrow_component::<ImplementComponent>(&base.module, base.offset);
                 //check it
                 check_access(&imp_comp.scope, &base.module, &base.applies, context, system_mode_on);
             }
@@ -501,20 +486,16 @@ fn check_permission_accessibility<S:StateManager>(context:&Context<S>, system_mo
                 match **fun {
                     ResolvedCallable::Function {ref base,..} => {
                         if perm.contains(Permission::Call) {
-                            //Fetch the Cache Entry
-                            let fun_cache = context.store.get_component::<FunctionComponent>(&base.module, base.offset);
-                            //Retrieve the function from the cache
-                            let fun = fun_cache.retrieve();
+                            //Fetch the Component
+                            let fun = context.store.borrow_component::<FunctionComponent>(&base.module, base.offset);
                             //check it
                             check_access(&fun.scope, &base.module, &base.applies, context, system_mode_on);
                         }
                     },
                     ResolvedCallable::Implement {ref base,..} => {
                         if perm.contains(Permission::Call) {
-                            //Fetch the Cache Entry
-                            let imp_cache = context.store.get_component::<ImplementComponent>(&base.module, base.offset);
-                            //Retrieve the function from the cache
-                            let imp = imp_cache.retrieve();
+                            //Fetch the Component
+                            let imp = context.store.borrow_component::<ImplementComponent>(&base.module, base.offset);
                             //check it
                             check_access(&imp.scope, &base.module, &base.applies, context, system_mode_on);
                         }
@@ -528,10 +509,9 @@ fn check_permission_accessibility<S:StateManager>(context:&Context<S>, system_mo
                     ResolvedType::Projection { .. } => {}
                     ResolvedType::Lit {ref base, ..} => {
                         if perm.contains(Permission::Create) {
-                            //Fetch the Cache Entry
-                            let imp_data_cache = context.store.get_component::<DataComponent>(&base.module, base.offset);
-                            //Retrieve the function from the cache
-                            let imp_data_comp = imp_data_cache.retrieve();
+                            //Fetch the Component
+                            let imp_data_comp = context.store.borrow_component::<DataComponent>(&base.module, base.offset);
+
                             //check it -- //TODO: Note: had &[] as applies but I think this is wrong
                             //            // I understand why: guarded[T] some lit[T](..) makes no sense as lits do not have bodies
                             //            //                   however you can still write it before we would had an indexing error
@@ -547,10 +527,8 @@ fn check_permission_accessibility<S:StateManager>(context:&Context<S>, system_mo
                     //We have all permissions on a projection
                     ResolvedType::Projection { .. } => {}
                     ResolvedType::Data { ref base, .. } => {
-                        //Fetch the Cache Entry
-                        let imp_data_cache = context.store.get_component::<DataComponent>(&base.module, base.offset);
-                        //Retrieve the function from the cache
-                        let imp_data_comp = imp_data_cache.retrieve();
+                        //Fetch the Component
+                        let imp_data_comp = context.store.borrow_component::<DataComponent>(&base.module, base.offset);
                         //check it
                         if perm.contains(Permission::Create) {
                             check_access(&imp_data_comp.create_scope, &base.module, &base.applies, context, system_mode_on);
@@ -570,10 +548,8 @@ fn check_permission_accessibility<S:StateManager>(context:&Context<S>, system_mo
                 assert!(perm.is_subset_of(PermSet::sig_perms()));
                 match **typ {
                     ResolvedType::Sig {ref base,..} => {
-                        //Fetch the Cache Entry
-                        let imp_sig_cache = context.store.get_component::<SigComponent>(&base.module, base.offset);
-                        //Retrieve the function from the cache
-                        let imp_sig_comp = imp_sig_cache.retrieve();
+                        //Fetch the Component
+                        let imp_sig_comp = context.store.borrow_component::<SigComponent>(&base.module, base.offset);
                         //check it
                         if perm.contains(Permission::Call) {
                             check_access(&imp_sig_comp.call_scope, &base.module, &base.applies, context, system_mode_on);

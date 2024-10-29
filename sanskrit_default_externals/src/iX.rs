@@ -1,5 +1,5 @@
 use alloc::vec::Vec;
-use sanskrit_common::model::{Hash, LargeVec, ValueRef};
+use sanskrit_common::model::{LargeVec, ModuleLink, ValueRef};
 use sanskrit_compile::externals::CompilationResult;
 use sanskrit_chain_code::model::{ValueSchema, OpCode, Kind, LitDesc};
 use crate::External;
@@ -18,7 +18,7 @@ pub const EXT_I128:&'static dyn External = &IX{size:16,kind:Kind::I128,desc:LitD
 
 impl External for IX {
     //global external(?) data I?;
-    fn compile_lit(&self, _data_idx: u8, data: &[u8], _caller: &Hash) -> CompilationResult {
+    fn compile_lit(&self, _data_idx: u8, data: &[u8], _caller: &ModuleLink) -> CompilationResult {
         CompilationResult::OpCodeResult(OpCode::SpecialLit(LargeVec(data.to_vec()), self.desc))
     }
 
@@ -26,7 +26,7 @@ impl External for IX {
         ValueSchema::Signed(self.size)
     }
 
-    fn compile_call(&self, fun_idx: u8, params: Vec<ValueRef>, _caller: &Hash) -> CompilationResult {
+    fn compile_call(&self, fun_idx: u8, params: Vec<ValueRef>, _caller: &ModuleLink) -> CompilationResult {
         match fun_idx {
             //this is the identity funcntion (used for conversions where bit pattern does not change)
             //global external function eq(num1:.I?, num2:.I?):(res:Bool.Bool);

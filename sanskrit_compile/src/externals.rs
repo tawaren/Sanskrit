@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 use sanskrit_chain_code::model::{OpCode, ValueSchema};
-use sanskrit_common::model::{ModuleLink, ValueRef, Hash};
+use sanskrit_common::model::{ModuleLink, ValueRef};
 
 pub enum CompilationResult {
     OpCodeResult(OpCode),
@@ -8,7 +8,7 @@ pub enum CompilationResult {
 }
 
 pub trait CompilationExternals {
-    fn compile_call(module:&ModuleLink, fun_idx: u8, params:Vec<ValueRef>, caller: &Hash) -> Result<CompilationResult>;
-    fn compile_lit(module:&ModuleLink, data_idx: u8, data:&[u8], caller: &Hash) -> Result<CompilationResult>;
-    fn get_literal_checker(module:&ModuleLink, data_idx: u8, len:u16) -> Result<ValueSchema>;
+    fn compile_call(module:&ModuleLink, fun_idx: u8, params:Vec<ValueRef>, caller:&ModuleLink) -> CompilationResult;
+    fn compile_lit(module:&ModuleLink, data_idx: u8, data:&[u8], caller: &ModuleLink) -> CompilationResult;
+    fn get_literal_checker(module:&ModuleLink, data_idx: u8, len:u16) -> ValueSchema;
 }

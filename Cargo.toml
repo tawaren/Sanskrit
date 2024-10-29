@@ -13,8 +13,8 @@ members = [
         "sanskrit_zero_validator",
         "sanskrit_zero_validator_guest",
         "sanskrit_chain_code",
-        "sp1_zkvm_col"
-        #"sanskrit_compile",
+        "sp1_zkvm_col",
+        "sanskrit_compile",
         #"sanskrit_interpreter",
         #"sanskrit_runtime",
         #"sanskrit_local_server",

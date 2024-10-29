@@ -1,5 +1,5 @@
 use alloc::vec::Vec;
-use sanskrit_common::model::{Hash, ValueRef};
+use sanskrit_common::model::{ModuleLink, ValueRef};
 use sanskrit_compile::externals::CompilationResult;
 use sanskrit_chain_code::model::ValueSchema;
 use crate::External;
@@ -9,7 +9,7 @@ pub const EXT_UNSAFE:&'static dyn External = &Unsafe;
 pub struct Unsafe;
 impl External for Unsafe{
     //local external(0) standard temporary data Unsafe[phantom T]
-    fn compile_lit(&self, _data_idx: u8, _data:&[u8], _caller: &Hash) -> CompilationResult {
+    fn compile_lit(&self, _data_idx: u8, _data:&[u8], _caller: &ModuleLink) -> CompilationResult {
         panic!("Unsafe can not be used in literal creation")
     }
 
@@ -17,7 +17,7 @@ impl External for Unsafe{
         panic!("Unsafe can not be used in transaction parameters")
     }
 
-    fn compile_call<'b, 'h>(&self, fun_idx: u8, _params: Vec<ValueRef>, _caller: &Hash) -> CompilationResult {
+    fn compile_call<'b, 'h>(&self, fun_idx: u8, _params: Vec<ValueRef>, _caller: &ModuleLink) -> CompilationResult {
         match fun_idx {
             //local external function _unProject[T](t:project(T)):(res:T)
             //local external function _packUnsafe[T](t:T):(res:Unsafe[T])

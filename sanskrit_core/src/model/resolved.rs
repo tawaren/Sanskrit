@@ -70,6 +70,7 @@ pub struct ResolvedParam {
 
 impl ResolvedPermission {
 
+    #[inline(always)]
     pub fn check_value_permission(&self, expected_typ:URef<'static,ResolvedType>, expected_perm:Permission) -> bool {
         match *self {
             ResolvedPermission::TypeLit { perm, typ, ..}
@@ -79,6 +80,7 @@ impl ResolvedPermission {
         }
     }
 
+    #[inline(always)]
     pub fn check_permission(&self, expected_perm:Permission) -> bool {
         match *self {
             ResolvedPermission::TypeSig { perm, .. }
@@ -88,6 +90,7 @@ impl ResolvedPermission {
         }
     }
 
+    #[inline(always)]
     pub fn get_type(&self) -> URef<'static,ResolvedType> {
         match *self {
             ResolvedPermission::TypeLit { typ, ..}
@@ -97,6 +100,7 @@ impl ResolvedPermission {
         }
     }
 
+    #[inline(always)]
     pub fn get_fun(&self) -> URef<'static,ResolvedCallable> {
         match *self {
             ResolvedPermission::FunSig { fun, .. } => fun,
@@ -104,7 +108,7 @@ impl ResolvedPermission {
         }
     }
 
-
+    #[inline(always)]
     pub fn get_sig(&self) -> URef<'static,ResolvedSignature> {
         match *self {
             ResolvedPermission::TypeSig { signature, .. }
@@ -113,6 +117,7 @@ impl ResolvedPermission {
         }
     }
 
+    #[inline(always)]
     pub fn get_ctrs(&self) -> URef<'static,ResolvedCtrs> {
         match *self {
             ResolvedPermission::TypeData { ctrs, .. } => ctrs,
@@ -120,6 +125,7 @@ impl ResolvedPermission {
         }
     }
 
+    #[inline(always)]
     pub fn get_lit_size(&self) -> u16 {
         match *self {
             ResolvedPermission::TypeLit { size, .. } => size,
@@ -137,6 +143,7 @@ impl ResolvedType {
     //   Without this: we would need: a CopyOption, DropOption, PersistOption, CopyDropOption, ..... , CopyDropPersistOption
     //  This must be used when checking adt fields against the adt base caps
     // Note: this only influences generics and applied types with generic inputs
+    #[inline(always)]
     pub fn get_generic_caps(&self) -> CapSet {
         match *self {
             ResolvedType::Sig { caps:generic_caps, .. } //For Sigs: generic_caps == caps (all sigs ignore generics)
@@ -154,6 +161,7 @@ impl ResolvedType {
     //  This must be used when checking that a type applied to a generic full fills its constraint
     //  This must be used when checking if the correct caps are available to execute a operation
     // Note: this only influences generics and applied types with generic inputs
+    #[inline(always)]
     pub fn get_caps(&self) -> CapSet {
         match *self {
             ResolvedType::Generic { caps, .. }
@@ -165,9 +173,10 @@ impl ResolvedType {
         }
     }
 
+    #[inline(always)]
     pub fn get_target(&self) -> &ResolvedType {
-        match *self {
-            ResolvedType::Projection { ref un_projected, .. } => {
+        match self {
+            ResolvedType::Projection { un_projected, .. } => {
                 assert!(if let ResolvedType::Projection{..} = **un_projected {false} else {true});
                 &un_projected
             },
@@ -175,6 +184,7 @@ impl ResolvedType {
         }
     }
 
+    #[inline(always)]
     pub fn get_projection_depth(&self) -> u8 {
         match *self {
             ResolvedType::Projection { depth, .. } => depth,
@@ -183,6 +193,7 @@ impl ResolvedType {
     }
 
     //checks if this type is a literal
+    #[inline(always)]
     pub fn is_literal(&self) -> bool {
         match *self {
             ResolvedType::Lit {  .. }  => true,
@@ -191,6 +202,7 @@ impl ResolvedType {
     }
 
     //checks if this type is a literal
+    #[inline(always)]
     pub fn is_data(&self) -> bool {
         match *self {
             ResolvedType::Data {  .. }  => true,
@@ -198,6 +210,7 @@ impl ResolvedType {
         }
     }
 
+    #[inline(always)]
     pub fn is_defining_module(&self, target:&FastModuleLink) -> bool {
         match *self {
             ResolvedType::Sig { ref base, .. }
@@ -210,6 +223,7 @@ impl ResolvedType {
     }
 }
 
+#[inline(always)]
 pub fn get_target(typ:URef<'static,ResolvedType>) -> URef<'static,ResolvedType> {
     match *typ {
         ResolvedType::Projection { un_projected, .. } => {

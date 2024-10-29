@@ -3,8 +3,9 @@ use sanskrit_common::encoding::{Parsable, Parser, Serializable, Serializer};
 use sanskrit_common::model::{Hash, ModuleLink};
 use sanskrit_common::utils::store_hash;
 use sp1_zkvm_col::arena::{UniqueArena, UniqueEmbeddableArena, URef};
+use sp1_zkvm_col::{DefaultIndexType, Regular, Unconstrained};
 use sp1_zkvm_col::map::HintMap;
-use crate::loader::{StateManager, ResolvedCtrs};
+use crate::loader::{StateManager, ResolvedCtrs, NoUnconstraine};
 use crate::model::linking::FastModuleLink;
 use crate::model::{DataComponent, Module};
 use crate::model::resolved::{ResolvedCallable, ResolvedComponent, ResolvedPermission, ResolvedSignature, ResolvedType};
@@ -58,14 +59,15 @@ static mut DEDUP: DeDupHolder = DeDupHolder::new();
 static mut EAGER_FAST_LINKS: HintMap<URef<'static, ModuleLink>, FastModuleLink> = HintMap::new_unvalidated();
 
 //Todo: can we take in module link some or all time
+#[inline(always)]
 pub fn parse_link(link:Hash) -> FastModuleLink {
-    let mod_link = unsafe { DEDUP.link_dedup.alloc_unique(ModuleLink::new(link)) };
+    let mod_link = unsafe { DEDUP.link_dedup.alloc_unique::<Unconstrained<_>>(ModuleLink::new(link)) };
     return fast_link(mod_link)
 }
 
 pub fn fast_link(mod_link:URef<'static, ModuleLink>) -> FastModuleLink {
     //unsafe{dedup_count+=1}
-    let res = unsafe {EAGER_FAST_LINKS.insert_if_missing(mod_link,|link|{
+    let res = unsafe {EAGER_FAST_LINKS.insert_if_missing::<Unconstrained<_>,_>(mod_link,|_link|{
         //unsafe {dedup_miss_count+=1};
         FastModuleLink::identity_leak(mod_link,None)
     })}.to_owned();
@@ -114,6 +116,14 @@ impl StaticProvider {
 
 
 impl StateManager for StaticProvider {
+    fn get_link_index(&self, hash:&FastModuleLink) -> DefaultIndexType {
+       unsafe {DEDUP.link_dedup.create_transfer::<Unconstrained<_>>(hash.get_module_link())}
+    }
+
+    fn link_from_index(&self, index: DefaultIndexType) ->  URef<'static, ModuleLink> {
+        unsafe {DEDUP.link_dedup.consume_transfer(index)}
+    }
+
     fn get_unique_module(&self, key: URef<'static, ModuleLink>) -> URef<'static, Module> {
         //println!("cycle-tracker-report-start: fetch module");
         let fast_link = fast_link(key);
@@ -127,39 +137,127 @@ impl StateManager for StaticProvider {
     }
 
 
+    #[inline(always)]
     fn create_generic_type(&self, gen:ResolvedType) -> URef<'static,ResolvedType> {
         unsafe {URef::identity_leak(gen)}
     }
 
+    #[inline(always)]
     fn sig_type_dedup(&self, sig:ResolvedType) -> URef<'static,ResolvedType> {
-        unsafe {DEDUP.dedup_type.alloc_unique(sig)}
+        unsafe {DEDUP.dedup_type.alloc_unique::<Unconstrained<_>>(sig)}
     }
 
+    #[inline(always)]
     fn virtual_type_dedup(&self, virt:ResolvedType) -> URef<'static,ResolvedType> {
-        unsafe {DEDUP.dedup_type.alloc_unique(virt)}
+        unsafe {DEDUP.dedup_type.alloc_unique::<Unconstrained<_>>(virt)}
     }
 
+    #[inline(always)]
     fn projection_type_dedup(&self, proj:ResolvedType) -> URef<'static,ResolvedType> {
-        unsafe {DEDUP.dedup_type.alloc_unique(proj)}
+        unsafe {DEDUP.dedup_type.alloc_unique::<Unconstrained<_>>(proj)}
     }
 
+    #[inline(always)]
     fn data_type_dedup(&self, param:ResolvedComponent, extra:&DataComponent) -> URef<'static,ResolvedType> {
-        unsafe {DEDUP.dedup_data_type.alloc_unique(param, extra)}
+        unsafe {DEDUP.dedup_data_type.alloc_unique::<Unconstrained<_>>(param, extra)}
     }
 
+    #[inline(always)]
     fn dedup_callable(&self, call:ResolvedCallable) -> URef<'static,ResolvedCallable> {
-        unsafe {DEDUP.dedup_call.alloc_unique(call)}
+        unsafe {DEDUP.dedup_call.alloc_unique::<Unconstrained<_>>(call)}
     }
 
+    #[inline(always)]
     fn dedup_permission(&self, perm:ResolvedPermission) -> URef<'static,ResolvedPermission> {
-        unsafe {DEDUP.dedup_perm.alloc_unique(perm)}
+        unsafe {DEDUP.dedup_perm.alloc_unique::<Unconstrained<_>>(perm)}
     }
 
+    #[inline(always)]
     fn dedup_signature(&self, sig:ResolvedSignature) -> URef<'static,ResolvedSignature> {
-        unsafe {DEDUP.dedup_sig.alloc_unique(sig)}
+        unsafe {DEDUP.dedup_sig.alloc_unique::<Unconstrained<_>>(sig)}
     }
 
+    #[inline(always)]
     fn dedup_ctr(&self, ctr:ResolvedCtrs) -> URef<'static,ResolvedCtrs> {
-        unsafe {DEDUP.dedup_ctr.alloc_unique(ctr)}
+        unsafe {DEDUP.dedup_ctr.alloc_unique::<Unconstrained<_>>(ctr)}
+    }
+}
+
+
+#[derive(Copy, Clone)]
+pub struct StaticNoUnconstrainedProvider;
+
+impl NoUnconstraine for StaticProvider {
+    type U = StaticNoUnconstrainedProvider;
+
+    fn no_unconstrained(&self) -> Self::U {
+        StaticNoUnconstrainedProvider
+    }
+}
+
+impl StateManager for StaticNoUnconstrainedProvider {
+    fn get_link_index(&self, hash:&FastModuleLink) -> DefaultIndexType {
+        unsafe {DEDUP.link_dedup.create_transfer::<Regular<_>>(hash.get_module_link())}
+    }
+
+    fn link_from_index(&self, index: DefaultIndexType) ->  URef<'static, ModuleLink> {
+        unsafe {DEDUP.link_dedup.consume_transfer(index)}
+    }
+
+    fn get_unique_module(&self, key: URef<'static, ModuleLink>) -> URef<'static, Module> {
+        let fast_link = unsafe {EAGER_FAST_LINKS.insert_if_missing::<Regular<_>,_>(key,|_link|{
+            FastModuleLink::identity_leak(key,None)
+        })}.to_owned();
+        if fast_link.get_cache().borrow().is_some() {
+            fast_link.get_cache().borrow().to_owned().unwrap()
+        } else {
+            panic!("Required module is missing")
+        }
+    }
+
+
+    #[inline(always)]
+    fn create_generic_type(&self, gen:ResolvedType) -> URef<'static,ResolvedType> {
+        unsafe {URef::identity_leak(gen)}
+    }
+
+    #[inline(always)]
+    fn sig_type_dedup(&self, sig:ResolvedType) -> URef<'static,ResolvedType> {
+        unsafe {DEDUP.dedup_type.alloc_unique::<Regular<_>>(sig)}
+    }
+
+    #[inline(always)]
+    fn virtual_type_dedup(&self, virt:ResolvedType) -> URef<'static,ResolvedType> {
+        unsafe {DEDUP.dedup_type.alloc_unique::<Regular<_>>(virt)}
+    }
+
+    #[inline(always)]
+    fn projection_type_dedup(&self, proj:ResolvedType) -> URef<'static,ResolvedType> {
+        unsafe {DEDUP.dedup_type.alloc_unique::<Regular<_>>(proj)}
+    }
+
+    #[inline(always)]
+    fn data_type_dedup(&self, param:ResolvedComponent, extra:&DataComponent) -> URef<'static,ResolvedType> {
+        unsafe {DEDUP.dedup_data_type.alloc_unique::<Regular<_>>(param, extra)}
+    }
+
+    #[inline(always)]
+    fn dedup_callable(&self, call:ResolvedCallable) -> URef<'static,ResolvedCallable> {
+        unsafe {DEDUP.dedup_call.alloc_unique::<Regular<_>>(call)}
+    }
+
+    #[inline(always)]
+    fn dedup_permission(&self, perm:ResolvedPermission) -> URef<'static,ResolvedPermission> {
+        unsafe {DEDUP.dedup_perm.alloc_unique::<Regular<_>>(perm)}
+    }
+
+    #[inline(always)]
+    fn dedup_signature(&self, sig:ResolvedSignature) -> URef<'static,ResolvedSignature> {
+        unsafe {DEDUP.dedup_sig.alloc_unique::<Regular<_>>(sig)}
+    }
+
+    #[inline(always)]
+    fn dedup_ctr(&self, ctr:ResolvedCtrs) -> URef<'static,ResolvedCtrs> {
+        unsafe {DEDUP.dedup_ctr.alloc_unique::<Regular<_>>(ctr)}
     }
 }

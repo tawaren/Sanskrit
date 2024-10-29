@@ -5,7 +5,7 @@
 //
 // Under the hood, we wrap your main function with some extra sys so that it behaves properly
 // inside the zkVM.
-//#![no_std]
+#![no_std]
 #![no_main]
 extern crate alloc;
 sp1_zkvm::entrypoint!(main);

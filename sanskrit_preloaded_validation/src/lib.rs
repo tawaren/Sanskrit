@@ -1,18 +1,29 @@
 #![no_std]
+
+mod static_externals;
+
 extern crate sanskrit_deploy;
 extern crate sanskrit_common;
 extern crate sanskrit_core;
+extern crate sanskrit_compile;
+extern crate sanskrit_default_externals;
+extern crate sanskrit_chain_code;
 extern crate core;
 extern crate alloc;
 extern crate sp1_zkvm_col;
 
+
 use alloc::vec::Vec;
+use sanskrit_chain_code::model::TransactionDescriptor;
 use sanskrit_deploy::{validate_stored_module, validate_unparsed_function};
-use sanskrit_common::model::Hash;
 use sanskrit_common::encoding::*;
+use sanskrit_compile::compiler::compile_transaction;
 use sanskrit_core::model::linking::FastModuleLink;
 use sanskrit_core::model::provider::StaticProvider;
+use sanskrit_default_externals::StaticExternals;
+use sp1_zkvm_col::Unconstrained;
 use sp1_zkvm_col::vec::UniqueVecBuilder;
+use crate::static_externals::ExternalsV1;
 
 #[macro_use]
 extern crate sanskrit_derive;
@@ -24,17 +35,12 @@ pub struct ValidatedModule {
     pub module_hash:FastModuleLink
 }
 
-#[derive(Serializable, Parsable)]
-pub struct ValidatedTransaction {
-    pub transaction_hash:Hash
-    //Todo: add code wants we do compile?
-}
 
 #[derive(Serializable, Parsable)]
 pub struct Validation {
     pub system_mode:bool,
     pub modules:Vec<ValidatedModule>,
-    pub transactions:Vec<ValidatedTransaction>,
+    pub transactions:Vec<TransactionDescriptor>,
     //Will be Serialized as Vec<ModuleLink> which serializes as Vec<Hash>
     pub open_dependencies:Vec<FastModuleLink>
 }
@@ -55,7 +61,7 @@ pub fn process_preloaded_deploy(modules:Vec<Vec<u8>>, transactions:Vec<Vec<u8>>,
 
     for d in deps {
         let hash = provider.add(&d);
-        open_deps.add(hash);
+        open_deps.add::<Unconstrained<_>>(hash);
     }
 
     for h in &mod_compiles {
@@ -63,8 +69,10 @@ pub fn process_preloaded_deploy(modules:Vec<Vec<u8>>, transactions:Vec<Vec<u8>>,
     }
 
     for h in transactions {
-        let transaction_hash = validate_unparsed_function(provider,&h);
-        txt_compiles.push(ValidatedTransaction{transaction_hash})
+        let fun = validate_unparsed_function(provider,&h);
+        //Todo: Later just the Hash and then provide the rest on a different path?
+        let trans_desc = compile_transaction::<_, StaticExternals<ExternalsV1>>(provider, fun);
+        txt_compiles.push(trans_desc)
     }
 
     provider.validate();

@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 use core::mem::{replace, zeroed};
-use core::ops::{Deref, DerefMut, Index, IndexMut};
-use crate::{Seekable, Select};
+use core::ops::{Deref, DerefMut};
+use crate::{Seekable, SeekMode, Select};
 
 pub enum Entry<K,V> {
     Occupied(K,V),
@@ -94,9 +94,9 @@ enum SeekRes<T> {
 }
 
 impl<K:Eq,V, const IC:usize> WeakHintMap<K,V,IC> {
-    pub fn insert(&mut self, key:K, value:V) -> Option<V>{
-       let index = self.unconstrained_seek::<K,KeySelect>(&key);
-       if index < self.store.len() {
+    pub fn insert<M:SeekMode<Entry<K,V>>>(&mut self, key:K, value:V) -> Option<V>{
+        let index = M::seek::<K,KeySelect>(self,&key);
+        if index < self.store.len() {
            assert!(*self.store[index].key() == key);
            match replace(&mut self.store[index], Entry::Occupied(key,value)) {
                Entry::Occupied(_, v) => Some(v),
@@ -113,8 +113,8 @@ impl<K:Eq,V, const IC:usize> WeakHintMap<K,V,IC> {
        }
     }
 
-    fn base_remove(&mut self, key:&K) -> SeekRes<Option<V>>{
-        let index = self.unconstrained_seek::<K,KeySelect>(key);
+    fn base_remove<M:SeekMode<Entry<K,V>>>(&mut self, key:&K) -> SeekRes<Option<V>>{
+        let index = M::seek::<K,KeySelect>(self,key);
         if index >= self.store.len() { return SeekRes::Miss }
         let entry = &self.store[index];
         assert!(entry.key() == key);
@@ -128,16 +128,16 @@ impl<K:Eq,V, const IC:usize> WeakHintMap<K,V,IC> {
         }
     }
 
-    pub fn weak_remove(&mut self, key:&K) -> Option<V>{
-       match self.base_remove(key) {
+    pub fn weak_remove<M:SeekMode<Entry<K,V>>>(&mut self, key:&K) -> Option<V>{
+       match self.base_remove::<M>(key) {
            SeekRes::Hit(v) => v,
            SeekRes::Miss => None
        }
     }
 
     //Todo: consider a K version for when we have it owned
-    pub fn remove(&mut self, key:&K) -> Option<V> where K:Clone{
-        match self.base_remove(&key) {
+    pub fn remove<M:SeekMode<Entry<K,V>>>(&mut self, key:&K) -> Option<V> where K:Clone{
+        match self.base_remove::<M>(&key) {
             SeekRes::Hit(v) => v,
             SeekRes::Miss => {
                 self.store.push(Entry::Vacant(key.clone()));
@@ -146,8 +146,8 @@ impl<K:Eq,V, const IC:usize> WeakHintMap<K,V,IC> {
         }
     }
 
-    fn base_get(&self, key:&K) -> SeekRes<Option<&V>>{
-        let index = self.unconstrained_seek::<K,KeySelect>(key);
+    fn base_get<M:SeekMode<Entry<K,V>>>(&self, key:&K) -> SeekRes<Option<&V>>{
+        let index = M::seek::<K,KeySelect>(self,key);
         if index >= self.store.len() { return SeekRes::Miss }
         let entry = &self.store[index];
         assert!(entry.key() == key);
@@ -157,19 +157,19 @@ impl<K:Eq,V, const IC:usize> WeakHintMap<K,V,IC> {
         }
     }
 
-    pub fn weak_get(&self, key:&K) -> Option<&V> {
-        match self.base_get(key) {
+    pub fn weak_get<M:SeekMode<Entry<K,V>>>(&self, key:&K) -> Option<&V> {
+        match self.base_get::<M>(key) {
             SeekRes::Hit(v) => v,
             SeekRes::Miss => None
         }
     }
 
     //Todo: consider a K version for when we have it owned
-    pub fn get(&mut self, key:&K) -> Option<&V> where K:Clone{
+    pub fn get<M:SeekMode<Entry<K,V>>>(&mut self, key:&K) -> Option<&V> where K:Clone{
         //For later, sadly we need to trick borrow checker here
         //    as he does not know that None does not capture a &V
         let self_ptr = self as *mut Self;
-        if let SeekRes::Hit(v) = self.base_get(&key) {
+        if let SeekRes::Hit(v) = self.base_get::<M>(&key) {
             v
         } else {
             // At this point, we know it was a miss and a None will be returned
@@ -180,8 +180,8 @@ impl<K:Eq,V, const IC:usize> WeakHintMap<K,V,IC> {
         }
     }
 
-    fn base_mut_get(&mut self, key:&K) -> SeekRes<Option<&mut V>>{
-        let index = self.unconstrained_seek::<K,KeySelect>(key);
+    fn base_mut_get<M:SeekMode<Entry<K,V>>>(&mut self, key:&K) -> SeekRes<Option<&mut V>>{
+        let index = M::seek::<K,KeySelect>(self,key);
         if index >= self.store.len() { return SeekRes::Miss }
         let entry = &mut self.store[index];
         assert!(entry.key() == key);
@@ -191,19 +191,19 @@ impl<K:Eq,V, const IC:usize> WeakHintMap<K,V,IC> {
         }
     }
 
-    pub fn weak_get_mut(&mut self, key:&K) -> Option<&mut V> {
-        match self.base_mut_get(key) {
+    pub fn weak_get_mut<M:SeekMode<Entry<K,V>>>(&mut self, key:&K) -> Option<&mut V> {
+        match self.base_mut_get::<M>(key) {
             SeekRes::Hit(v) => v,
             SeekRes::Miss => None
         }
     }
 
     //Todo: consider a K version for when we have it owned
-    pub fn get_mut(&mut self, key:&K) -> Option<&mut V> where K:Clone {
+    pub fn get_mut<M:SeekMode<Entry<K,V>>>(&mut self, key:&K) -> Option<&mut V> where K:Clone {
         //For later, sadly we need to trick borrow checker here
         //    as he does not know that None does not capture a &V
         let self_ptr = self as *mut Self;
-        if let SeekRes::Hit(v) = self.base_mut_get(&key) {
+        if let SeekRes::Hit(v) = self.base_mut_get::<M>(&key) {
             v
         } else {
             // At this point, we know it was a miss and a None will be returned
@@ -214,16 +214,16 @@ impl<K:Eq,V, const IC:usize> WeakHintMap<K,V,IC> {
         }
     }
 
-    pub fn contains_key_weak(&self, key:&K) -> bool {
-        match self.base_get(key) {
+    pub fn contains_key_weak<M:SeekMode<Entry<K,V>>>(&self, key:&K) -> bool {
+        match self.base_get::<M>(key) {
             SeekRes::Hit(_) => true,
             SeekRes::Miss => false
         }
     }
 
     //Todo: consider a K version for when we have it owned
-    pub fn contains_key(&mut self, key:&K) -> bool where K:Clone {
-        match self.base_get(&key) {
+    pub fn contains_key<M:SeekMode<Entry<K,V>>>(&mut self, key:&K) -> bool where K:Clone {
+        match self.base_get::<M>(&key) {
             SeekRes::Hit(_) => true,
             SeekRes::Miss => {
                 self.store.push(Entry::Vacant(key.clone()));
@@ -233,8 +233,8 @@ impl<K:Eq,V, const IC:usize> WeakHintMap<K,V,IC> {
     }
 
     //entry api is too complicated so we have this instead
-    pub fn insert_if_missing<F:FnOnce(&K) -> V>(&mut self, key:K, f:F) -> &V {
-        let index = self.unconstrained_seek::<K,KeySelect>(&key);
+    pub fn insert_if_missing<M:SeekMode<Entry<K,V>>,F:FnOnce(&K) -> V>(&mut self, key:K, f:F) -> &V {
+        let index = M::seek::<K,KeySelect>(self,&key);
         if index < self.store.len() {
             let entry = &self.store[index];
             assert!(*entry.key() == key);
@@ -259,11 +259,12 @@ impl<K:Eq,V, const IC:usize> Seekable<Entry<K,V>> for WeakHintMap<K,V,IC> {
     #[inline]
     fn deref(inner: &Self::I) -> &Entry<K,V> { inner }
     #[inline]
-    fn with_store<F: FnOnce(&[Self::I]) -> ()>(&self, f: F) {
+    fn with_store<R,F: FnOnce(&[Self::I]) -> R>(&self, f: F) -> R{
         f(&self.store)
     }
 }
 
+/*
 impl<K:Eq,V, const IC:usize> Index<&K> for WeakHintMap<K,V,IC> {
     type Output = V;
     fn index(&self, key: &K) -> &Self::Output {
@@ -275,7 +276,7 @@ impl<K:Eq,V, const IC:usize> IndexMut<&K> for WeakHintMap<K,V,IC> {
     fn index_mut(&mut self, key: &K) -> &mut Self::Output {
         self.weak_get_mut(key).expect("Key not found")
     }
-}
+}*/
 
 pub struct HintMap<K,V, const IC:usize = DEFAULT_INITIAL_CAPACITY>(WeakHintMap<K,V,IC>) where K:Eq+Ord;
 

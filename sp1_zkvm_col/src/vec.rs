@@ -1,5 +1,5 @@
 use alloc::vec::Vec;
-use crate::{IdSelect, Seekable};
+use crate::{IdSelect, Seekable, SeekMode};
 
 pub struct UniqueVecBuilder<T>(Vec<T>) where T:Eq+Ord;
 
@@ -12,8 +12,8 @@ impl<T:Eq+Ord> UniqueVecBuilder<T> {
         UniqueVecBuilder(Vec::with_capacity(cap))
     }
 
-    pub fn add(&mut self, elem:T){
-        let index = self.unconstrained_seek::<T,IdSelect>(&elem);
+    pub fn add<M:SeekMode<T>>(&mut self, elem:T){
+        let index = M::seek::<T,IdSelect>(self,&elem);
         if index < self.0.len() {
             assert!(self.0[index] == elem);
         } else {
@@ -38,7 +38,8 @@ impl<T:Eq+Ord> UniqueVecBuilder<T> {
 impl<T:Eq+Ord> Seekable<T> for UniqueVecBuilder<T> {
     type I = T;
     fn deref(inner: &Self::I) -> &T { inner }
-    fn with_store<F: FnOnce(&[Self::I]) -> ()>(&self, f: F) {
+    fn with_store<R, F: FnOnce(&[Self::I]) -> R>(&self, f: F) -> R {
         f(&self.0)
     }
 }
+

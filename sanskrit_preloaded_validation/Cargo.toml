@@ -23,9 +23,24 @@ path = "../sanskrit_core"
 version = "0.1.0"
 default-features = false
 
+[dependencies.sanskrit_compile]
+path = "../sanskrit_compile"
+version = "0.1.0"
+default-features = false
+
 [dependencies.sanskrit_derive]
 path = "../sanskrit_derive"
 version = "0.1.0"
+
+[dependencies.sanskrit_default_externals]
+path = "../sanskrit_default_externals"
+version = "0.1.0"
+
+
+[dependencies.sanskrit_chain_code]
+path = "../sanskrit_chain_code"
+version = "0.1.0"
+
 
 [dependencies.sp1_zkvm_col]
 path = "../sp1_zkvm_col"

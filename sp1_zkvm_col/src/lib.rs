@@ -5,6 +5,7 @@ extern crate sp1_zkvm;
 extern crate alloc;
 
 use alloc::vec::Vec;
+use core::marker::PhantomData;
 use core::slice::from_raw_parts;
 use sp1_zkvm::io::{hint, hint_slice, read, read_vec};
 use sp1_zkvm::lib::unconstrained;
@@ -14,8 +15,7 @@ pub mod arena;
 pub mod no_free;
 pub mod vec;
 
-
-type DEFAULT_INDEX_TYPE = u16; // Make overwritabel
+pub type DefaultIndexType = u16; // Make overwritabel
 
 trait SourceType {
     const EXP:usize;
@@ -53,6 +53,7 @@ unsafe fn from_u8<T:SourceType>(arr: &[u8]) -> &[T] {
     from_raw_parts(ptr, len)
 }
 
+/*
 fn read_index(len:usize) -> usize {
     if len <= u8::MAX as usize {
         read::<u8>() as usize
@@ -74,40 +75,63 @@ fn write_index(len:usize, index:usize) {
         hint::<u32>(&(index as u32));
     }
 }
-
+*/
 //Increases flexibility of the UniqueBaseArena to be reused for different things
-pub(crate) trait Select<V,T> {
+pub trait Select<V,T> {
     fn select(main:&V) -> &T;
 }
 
-struct IdSelect;
+pub struct IdSelect;
 //No Select
 impl<T> Select<T,T> for IdSelect {
     #[inline]
     fn select(main: &T) -> &T { main }
 }
 
-pub(crate) trait Seekable<T> {
+pub trait SeekMode<T> {
+    fn seek<V:Eq,S:Select<T, V>,>(c:&impl Seekable<T>, value:&V) -> usize;
+}
+
+pub struct Unconstrained<T>(PhantomData<T>);
+impl<T> SeekMode<T> for Unconstrained<T>  {
+    fn seek<V: Eq, S: Select<T, V>>(c: &impl Seekable<T>, value: &V) -> usize {
+        c.unconstrained_seek::<V,S>(value)
+    }
+}
+
+pub struct Regular<T>(PhantomData<T>);
+impl<T> SeekMode<T> for Regular<T>  {
+    fn seek<V: Eq, S: Select<T, V>>(c: &impl Seekable<T>, value: &V) -> usize {
+        c.regular_seek::<V,S>(value)
+    }
+}
+
+pub trait Seekable<T> {
     type I;
     fn deref(inner:&Self::I) -> &T;
-    fn with_store<F:FnOnce(&[Self::I])->()>(&self, f:F);
+    fn with_store<R,F:FnOnce(&[Self::I])->R>(&self, f:F) -> R;
+
+    fn regular_seek<V:Eq,S:Select<T, V>>(&self, value:&V) -> usize {
+        self.with_store(|store|{
+            let len = store.len();
+            let mut index = len;
+            for i in 0..len {
+                if S::select(Self::deref(&store[i])) == value {
+                    index = i;
+                    break;
+                }
+            }
+            assert!(index < DefaultIndexType::MAX as usize);
+            index
+        })
+    }
 
     fn unconstrained_seek<V:Eq,S:Select<T, V>>(&self, value:&V) -> usize {
         unconstrained!{
-            self.with_store(|store|{
-                let len = store.len();
-                let mut index = len;
-                for i in 0..len {
-                   if S::select(Self::deref(&store[i])) == value {
-                       index = i;
-                       break;
-                   }
-                }
-                assert!(index < DEFAULT_INDEX_TYPE::MAX as usize);
-                hint::<DEFAULT_INDEX_TYPE>(&(index as DEFAULT_INDEX_TYPE));
-            });
+            let index = self.regular_seek::<V,S>(value);
+            hint::<DefaultIndexType>(&(index as DefaultIndexType));
         }
-        read::<DEFAULT_INDEX_TYPE>() as usize
+        read::<DefaultIndexType>() as usize
     }
 
     fn validate_unique_entries<V:Eq+Ord,S:Select<T,V>>(&self) {
@@ -117,14 +141,14 @@ pub(crate) trait Seekable<T> {
             unconstrained!{
                 let mut enumerated_vec:Vec<(usize,&T)> = store.iter().map(|b|Self::deref(b)).enumerate().collect();
                 enumerated_vec.sort_by(|a,b| S::select(a.1).cmp(S::select(b.1)));
-                let idxs:Vec<DEFAULT_INDEX_TYPE> = enumerated_vec.iter().map(|e|{
-                    assert!(e.0 < DEFAULT_INDEX_TYPE::MAX as usize);
-                    e.0 as DEFAULT_INDEX_TYPE
+                let idxs:Vec<DefaultIndexType> = enumerated_vec.iter().map(|e|{
+                    assert!(e.0 < DefaultIndexType::MAX as usize);
+                    e.0 as DefaultIndexType
                 }).collect();
-                hint_slice(unsafe{to_u8::<DEFAULT_INDEX_TYPE>(&idxs)});
+                hint_slice(unsafe{to_u8::<DefaultIndexType>(&idxs)});
             }
             let input = read_vec();
-            let idxs = unsafe{from_u8::<DEFAULT_INDEX_TYPE>(&input)};
+            let idxs = unsafe{from_u8::<DefaultIndexType>(&input)};
             let index = idxs[0] as usize;
             assert!(index < len);
             let mut cur = &store[index];
@@ -139,4 +163,3 @@ pub(crate) trait Seekable<T> {
         });
     }
 }
-

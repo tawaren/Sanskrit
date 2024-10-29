@@ -8,6 +8,12 @@ edition = "2021"
 default = ["std"]
 std = []
 
+[dependencies]
+sp1-zkvm = { version = "3.0.0" }
+serde = { version = "1.0.210", features = ["derive"] }
+clap = { version = "4.5.20", features = ["derive"] }
+
+
 [dependencies.sanskrit_chain_code]
 path = "../sanskrit_chain_code"
 version = "0.1.0"
@@ -22,3 +28,6 @@ default-features = false
 path = "../sanskrit_core"
 version = "0.1.0"
 
+[dependencies.sp1_zkvm_col]
+path = "../sp1_zkvm_col"
+version = "0.1.0"

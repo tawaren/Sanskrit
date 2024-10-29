@@ -6,7 +6,7 @@ use core::cmp::Ordering;
 use core::hash::{Hash, Hasher};
 use core::marker::PhantomData;
 use core::ops::Deref;
-use crate::{Seekable, Select, IdSelect};
+use crate::{Seekable, Select, IdSelect, DefaultIndexType, SeekMode};
 
 const BASE_RESERVE:usize = 128;
 
@@ -26,8 +26,6 @@ impl<'a, T> Clone for URef<'a, T> {
     }
 }
 
-
-
 //Checks if two pointers point to the same memory address
 #[inline]
 fn same_ref_internal<T>(a: *const T, b: *const T) -> bool {
@@ -43,6 +41,12 @@ fn compare_ref_internal<T>(a: *const T, b: *const T) -> Ordering {
 #[inline]
 fn hash_ref<H: Hasher,T>(a: *const T, state: &mut H) {
     state.write_usize(a as usize);
+}
+
+impl<'a, T> URef<'a, T> {
+    pub fn to_ref(self) -> &'a T {
+        unsafe{&*self.0}
+    }
 }
 
 //Allows to call functions on URef's by dereferencing to their element
@@ -90,6 +94,8 @@ impl<'a, T> Hash for URef<'a, T> {
     }
 }
 
+
+
 //Just to share some core functionality
 pub struct UniqueBaseArena<T>{store:RefCell<Vec<Box<T>>>}
 
@@ -127,6 +133,14 @@ impl<T> UniqueBaseArena<T> {
         self.store.borrow_mut().push(Box::new(elem))
     }
 
+    fn create_transfer<V:Eq,S:Select<T,V>,M:SeekMode<T>>(&self, unique:URef<V>) -> DefaultIndexType {
+        M::seek::<V,S>(self,&*unique) as DefaultIndexType
+    }
+
+    unsafe fn consume_transfer<V:Eq,S:Select<T,V>>(&self, trans: DefaultIndexType) -> URef<V>{
+        self.get_unique::<V,S>(trans as usize)
+    }
+
     pub fn reserve_capacity(&self, cap:usize){
         self.store.borrow_mut().reserve(cap);
     }
@@ -149,7 +163,7 @@ impl<T> Seekable<T> for UniqueBaseArena<T>  {
     #[inline]
     fn deref(inner: &Self::I) -> &T { &*inner }
     #[inline]
-    fn with_store<F: FnOnce(&[Box<T>]) -> ()>(&self, f: F) {
+    fn with_store<R,F: FnOnce(&[Box<T>]) -> R>(&self, f: F) -> R {
         let store = self.store.borrow();
         f(&store[..])
     }
@@ -190,8 +204,8 @@ impl<T:Eq> WeakUniqueArena<T> {
         WeakUniqueArena(UniqueBaseArena::new_const())
     }
 
-    pub fn alloc_unique(&self, elem:T) -> URef<T> {
-        let index = self.unconstrained_seek::<T,IdSelect>(&elem);
+    pub fn alloc_unique<M:SeekMode<T>>(&self, elem:T) -> URef<T> {
+        let index = M::seek::<T,IdSelect>(&self.0,&elem);
         if index < self.len() {
             assert!(*self.get::<T,IdSelect>(index) == elem);
         } else {
@@ -200,6 +214,14 @@ impl<T:Eq> WeakUniqueArena<T> {
             self.append(elem);
         }
         unsafe {self.get_unique::<T,IdSelect>(index)}
+    }
+
+    pub fn create_transfer<M:SeekMode<T>>(&self, unique:URef<T>) -> DefaultIndexType {
+        self.0.create_transfer::<T,IdSelect,M>(unique)
+    }
+
+    pub fn consume_transfer(&self, trans: DefaultIndexType) -> URef<T>{
+        unsafe{self.0.consume_transfer::<T,IdSelect>(trans)}
     }
 
     pub unsafe fn unvalidated_leak(self) {
@@ -277,8 +299,8 @@ impl<T,E:Embedding<T>+Eq+Ord> UniqueEmbeddableArena<E,T> {
         UniqueEmbeddableArena(UniqueBaseArena::new_const(), PhantomData)
     }
 
-    pub fn alloc_unique(&self, param:E, extra:&E::Auxiliary) -> URef<T> {
-        let index = self.unconstrained_seek::<E,EmbedSelect>(&param);
+    pub fn alloc_unique<M:SeekMode<T>>(&self, param:E, extra:&E::Auxiliary) -> URef<T> {
+        let index = M::seek::<E,EmbedSelect>(&self.0,&param);
         if index < self.len() {
             assert!(*self.get::<E,EmbedSelect>(index) == param);
         } else {

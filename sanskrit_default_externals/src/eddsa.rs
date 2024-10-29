@@ -1,5 +1,5 @@
 use alloc::vec::Vec;
-use sanskrit_common::model::{Hash, LargeVec, ValueRef};
+use sanskrit_common::model::{LargeVec, ModuleLink, ValueRef};
 use sanskrit_compile::externals::CompilationResult;
 use sanskrit_chain_code::model::{ValueSchema, OpCode, Kind};
 use crate::External;
@@ -12,7 +12,7 @@ impl External for Ecdsa{
     global external(32) primitive data Pk
     global external(64) primitive data Sig
     */
-    fn compile_lit(&self, _data_idx: u8, data: &[u8], _caller: &Hash) -> CompilationResult {
+    fn compile_lit(&self, _data_idx: u8, data: &[u8], _caller: &ModuleLink) -> CompilationResult {
             CompilationResult::OpCodeResult(OpCode::Data(LargeVec(data.to_vec())))
     }
 
@@ -23,7 +23,7 @@ impl External for Ecdsa{
         }
     }
 
-    fn compile_call(&self, fun_idx: u8, params: Vec<ValueRef>, _caller: &Hash) -> CompilationResult {
+    fn compile_call(&self, fun_idx: u8, params: Vec<ValueRef>, _caller: &ModuleLink) -> CompilationResult {
         match fun_idx {
             //global external function derivePublicId(pk:Pk):Id
             0 => CompilationResult::OpCodeResult(OpCode::TypedSysInvoke(0, Kind::Data, params)),

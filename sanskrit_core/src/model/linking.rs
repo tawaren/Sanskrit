@@ -20,6 +20,7 @@ pub trait Ref<T, S:StateManager> {
 
 //ModRef is a Ref to a ModuleLink
 impl<S:StateManager> Ref<FastModuleLink,S> for ModRef {
+    #[inline(always)]
     fn fetch(self, ctx:&Context<S>) ->  FastModuleLink {
         ctx.get_mod(self)
     }
@@ -27,6 +28,7 @@ impl<S:StateManager> Ref<FastModuleLink,S> for ModRef {
 
 //TypeRef is a Ref to a Type
 impl<S:StateManager> Ref<URef<'static,ResolvedType>,S> for TypeRef {
+    #[inline(always)]
     fn fetch(self, ctx: &Context<S>) ->  URef<'static,ResolvedType> {
         ctx.get_type(self)
     }
@@ -34,6 +36,7 @@ impl<S:StateManager> Ref<URef<'static,ResolvedType>,S> for TypeRef {
 
 //PermRef is a Ref to a Type
 impl<S:StateManager> Ref<URef<'static,ResolvedPermission>,S> for PermRef {
+    #[inline(always)]
     fn fetch(self, ctx: &Context<S>) -> URef<'static,ResolvedPermission> {
         ctx.get_perm(self)
     }
@@ -41,13 +44,14 @@ impl<S:StateManager> Ref<URef<'static,ResolvedPermission>,S> for PermRef {
 
 //FuncRef is a Ref to a FunctionImport
 impl<S:StateManager> Ref<URef<'static,ResolvedCallable>,S> for CallRef {
+    #[inline(always)]
     fn fetch(self, ctx: &Context<S>) -> URef<'static,ResolvedCallable> {
         ctx.get_callable(self)
     }
 }
 
 pub trait Component  {
-    fn get(module:&Module, offset:u8) -> &Self;
+    fn get(module: &Module, offset:u8) -> &Self;
     fn num_elems(module:&Module) -> usize;
     fn get_local_limit<S:StateManager>(cache:&Loader<S>) -> usize;
     fn get_signature_byte_size(&self) -> usize;
@@ -63,101 +67,129 @@ pub trait CallableComponent:Component {
     fn is_transactional(&self) -> bool;
 }
 
+pub trait ImplementedComponent:CallableComponent {
+    fn get_body(&self) -> &CallableImpl;
+}
+
+
 impl Component for DataComponent {
+    #[inline(always)]
     fn get(module: &Module, offset: u8) -> &Self {
         &module.data[offset as usize]
     }
 
+    #[inline(always)]
     fn num_elems(module: &Module) -> usize {
         module.data.len()
     }
 
+    #[inline(always)]
     fn get_local_limit<S:StateManager>(cache: &Loader<S>) -> usize {
         cache.this_deployed_data.get()
     }
 
+    #[inline(always)]
     fn get_signature_byte_size(&self) -> usize {
         self.byte_size.unwrap()
     }
 
+    #[inline(always)]
     fn get_full_byte_size(&self) -> usize {
         self.get_signature_byte_size()
     }
 
+    #[inline(always)]
     fn get_public_import(&self) -> &PublicImport {
         &self.import
     }
 
+    #[inline(always)]
     fn get_body_import(&self) -> Option<&BodyImport> {
         None
     }
 
+    #[inline(always)]
     fn get_generics(&self) -> &[Generic] {
         &self.generics
     }
 }
 
 impl Component for SigComponent {
+    #[inline(always)]
     fn get(module: &Module, offset: u8) -> &Self {
         &module.sigs[offset as usize]
     }
 
+    #[inline(always)]
     fn num_elems(module: &Module) -> usize {
         module.sigs.len()
     }
 
+    #[inline(always)]
     fn get_local_limit<S:StateManager>(cache: &Loader<S>) -> usize {
         cache.this_deployed_sigs.get()
     }
 
+    #[inline(always)]
     fn get_signature_byte_size(&self) -> usize {
         self.byte_size.unwrap()
     }
 
+    #[inline(always)]
     fn get_full_byte_size(&self) -> usize {
         self.get_signature_byte_size()
     }
 
+    #[inline(always)]
     fn get_public_import(&self) -> &PublicImport {
         &self.shared.import
     }
 
+    #[inline(always)]
     fn get_body_import(&self) -> Option<&BodyImport> {
         None
     }
 
+    #[inline(always)]
     fn get_generics(&self) -> &[Generic] {
         &self.shared.generics
     }
 }
 
 impl CallableComponent for SigComponent {
+    #[inline(always)]
     fn get_params(&self) -> &[Param] {
         &self.shared.params
     }
 
+    #[inline(always)]
     fn get_returns(&self) -> &[TypeRef] {
         &self.shared.returns
     }
 
+    #[inline(always)]
     fn is_transactional(&self) -> bool {
         self.shared.transactional
     }
 }
 
 impl Component for FunctionComponent {
+    #[inline(always)]
     fn get(module: &Module, offset: u8) -> &Self {
         &module.functions[offset as usize]
     }
 
+    #[inline(always)]
     fn num_elems(module: &Module) -> usize {
         module.functions.len()
     }
 
+    #[inline(always)]
     fn get_local_limit<S:StateManager>(cache: &Loader<S>) -> usize {
         cache.this_deployed_functions.get()
     }
 
+    #[inline(always)]
     fn get_signature_byte_size(&self) -> usize {
         let size = self.byte_size.unwrap();
         match self.body {
@@ -166,14 +198,17 @@ impl Component for FunctionComponent {
         }
     }
 
+    #[inline(always)]
     fn get_full_byte_size(&self) -> usize {
         self.byte_size.unwrap()
     }
 
+    #[inline(always)]
     fn get_public_import(&self) -> &PublicImport {
         &self.shared.import
     }
 
+    #[inline(always)]
     fn get_body_import(&self) -> Option<&BodyImport> {
         match self.body {
             CallableImpl::External => None,
@@ -181,38 +216,53 @@ impl Component for FunctionComponent {
         }
     }
 
+    #[inline(always)]
     fn get_generics(&self) -> &[Generic] {
         &self.shared.generics
     }
 }
 
 impl CallableComponent for FunctionComponent {
+    #[inline(always)]
     fn get_params(&self) -> &[Param] {
         &self.shared.params
     }
 
+    #[inline(always)]
     fn get_returns(&self) -> &[TypeRef] {
         &self.shared.returns
     }
 
+    #[inline(always)]
     fn is_transactional(&self) -> bool {
         self.shared.transactional
     }
 }
 
+impl ImplementedComponent for FunctionComponent {
+    #[inline(always)]
+    fn get_body(&self) -> &CallableImpl {
+        &self.body
+    }
+}
+
 impl Component for ImplementComponent {
+    #[inline(always)]
     fn get(module: &Module, offset: u8) -> &Self {
         &module.implements[offset as usize]
     }
 
+    #[inline(always)]
     fn num_elems(module: &Module) -> usize {
         module.implements.len()
     }
 
+    #[inline(always)]
     fn get_local_limit<S:StateManager>(cache: &Loader<S>) -> usize {
         cache.this_deployed_implements.get()
     }
 
+    #[inline(always)]
     fn get_signature_byte_size(&self) -> usize {
         let size = self.byte_size.unwrap();
         match self.body {
@@ -221,14 +271,17 @@ impl Component for ImplementComponent {
         }
     }
 
+    #[inline(always)]
     fn get_full_byte_size(&self) -> usize {
         self.byte_size.unwrap()
     }
 
+    #[inline(always)]
     fn get_public_import(&self) -> &PublicImport {
         &self.import
     }
 
+    #[inline(always)]
     fn get_body_import(&self) -> Option<&BodyImport> {
         match self.body {
             CallableImpl::External => None,
@@ -236,16 +289,19 @@ impl Component for ImplementComponent {
         }
     }
 
+    #[inline(always)]
     fn get_generics(&self) -> &[Generic] {
         &self.generics
     }
 }
 
 impl CallableComponent for ImplementComponent {
+    #[inline(always)]
     fn get_params(&self) -> &[Param] {
         &self.params
     }
 
+    #[inline(always)]
     fn get_returns(&self) -> &[TypeRef] {
         //sadly we do not have direct access to the return type without duplicating it in the input
         match &self.body {
@@ -259,7 +315,15 @@ impl CallableComponent for ImplementComponent {
         }
     }
 
+    #[inline(always)]
     fn is_transactional(&self) -> bool { false }
+}
+
+impl ImplementedComponent for ImplementComponent {
+    #[inline(always)]
+    fn get_body(&self) -> &CallableImpl {
+        &self.body
+    }
 }
 
 
@@ -284,14 +348,17 @@ impl FastModuleLink {
         }
     }
 
+    #[inline(always)]
     pub fn resolve<'b, S:StateManager>(&self, context:&Context<'b,S>) -> URef<'static,Module> {
         self.load(&context.store)
     }
 
-    pub fn get_module_link(&self) -> &ModuleLink{
-        &self.0
+    #[inline(always)]
+    pub fn get_module_link(&self) -> URef<'static,ModuleLink> {
+        self.0
     }
 
+    #[inline(always)]
     pub fn get_cache(&self) -> URef<'static, RefCell<Option<URef<'static, Module>>>>{
         self.1
     }

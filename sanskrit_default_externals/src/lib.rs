@@ -9,16 +9,10 @@ extern crate ed25519_consensus;
 extern crate lazy_static;
 extern crate alloc;
 
-use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
-use core::cell::Cell;
-use spin::Mutex;
-
+use core::marker::PhantomData;
 use sanskrit_common::model::{ValueRef, Hash, ModuleLink};
-use crypto::{ecdsa_verify, join_hash, plain_hash};
-use sanskrit_chain_code::model::{Kind, ValueSchema};
-use sanskrit_common::hashing::HashingDomain;
-use sanskrit_chain_code::{RuntimeExternals, ExecutionInterface};
+use sanskrit_chain_code::model::ValueSchema;
 use sanskrit_compile::externals::{CompilationResult, CompilationExternals};
 
 
@@ -31,63 +25,59 @@ pub mod _unsafe;
 pub mod crypto;
 
 pub trait External:Sync{
-    fn compile_lit(&self, data_idx: u8, data:&[u8], caller: &Hash) -> Result<CompilationResult>;
-    fn get_literal_checker(&self, data_idx: u8, len:u16) -> Result<ValueSchema>;
-    fn compile_call(&self, fun_idx: u8, params:Vec<ValueRef>, caller:&Hash) -> Result<CompilationResult>;
+    fn compile_lit(&self, data_idx: u8, data:&[u8], caller: &ModuleLink) -> CompilationResult;
+    fn get_literal_checker(&self, data_idx: u8, len:u16) -> ValueSchema;
+    fn compile_call(&self, fun_idx: u8, params:Vec<ValueRef>, caller:&ModuleLink) -> CompilationResult;
 }
 
-lazy_static! {
-    pub static ref EXT_MAP: Mutex<BTreeMap<Hash, &'static dyn External>> = Mutex::new(BTreeMap::new());
-}
+//pub static mut EXT_MAP: BTreeMap<Hash, &'static dyn External> = BTreeMap::new();
+//pub static mut SYS_HASH: Cell<Hash> = Cell::new([0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]);
+//pub static mut EDDSA_HASH: Cell<Hash> = Cell::new([0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]);
 
-lazy_static! {
-    pub static ref SYS_HASH: Mutex<Cell<Hash>> = Mutex::new(Cell::new([0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]));
-}
 
-lazy_static! {
-    pub static ref EDDSA_HASH: Mutex<Cell<Hash>> = Mutex::new(Cell::new([0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]));
-}
-
-lazy_static! {
+/*lazy_static! {
     pub static ref SYS_MODS: [fn(Hash)->();16] = [
-            |h|{EXT_MAP.lock().insert(h, iX::EXT_I8);},        //0
-            |h|{EXT_MAP.lock().insert(h, iX::EXT_I16);},      //1
-            |h|{EXT_MAP.lock().insert(h, iX::EXT_I32);},      //2
-            |h|{EXT_MAP.lock().insert(h, iX::EXT_I64);},      //3
-            |h|{EXT_MAP.lock().insert(h, iX::EXT_I128);},    //4
-            |h|{EXT_MAP.lock().insert(h, uX::EXT_U8);},        //5
-            |h|{EXT_MAP.lock().insert(h, uX::EXT_U16);},      //6
-            |h|{EXT_MAP.lock().insert(h, uX::EXT_U32);},      //7
-            |h|{EXT_MAP.lock().insert(h, uX::EXT_U64);},      //8
-            |h|{EXT_MAP.lock().insert(h, uX::EXT_U128);},    //9
-            |h|{EXT_MAP.lock().insert(h, data::EXT_DATA);},    //10
-            |h|{EXT_MAP.lock().insert(h, ids::EXT_IDS);},      //11
-            |h|{SYS_HASH.lock().set(h);},                      //12
-            |h|{EXT_MAP.lock().insert(h, eddsa::EXT_ECDSA);},  //13
-            |h|{EXT_MAP.lock().insert(h,_unsafe::EXT_UNSAFE);},//14
-            |h|{EDDSA_HASH.lock().set(h);},                    //15
+            |h|unsafe{EXT_MAP.insert(h, iX::EXT_I8);},        //0
+            |h|unsafe{EXT_MAP.insert(h, iX::EXT_I16);},       //1
+            |h|unsafe{EXT_MAP.insert(h, iX::EXT_I32);},       //2
+            |h|unsafe{EXT_MAP.insert(h, iX::EXT_I64);},       //3
+            |h|unsafe{EXT_MAP.insert(h, iX::EXT_I128);},      //4
+            |h|unsafe{EXT_MAP.insert(h, uX::EXT_U8);},        //5
+            |h|unsafe{EXT_MAP.insert(h, uX::EXT_U16);},       //6
+            |h|unsafe{EXT_MAP.insert(h, uX::EXT_U32);},       //7
+            |h|unsafe{EXT_MAP.insert(h, uX::EXT_U64);},       //8
+            |h|unsafe{EXT_MAP.insert(h, uX::EXT_U128);},      //9
+            |h|unsafe{EXT_MAP.insert(h, data::EXT_DATA);},    //10
+            |h|unsafe{EXT_MAP.insert(h, ids::EXT_IDS);},      //11
+            |h|unsafe{SYS_HASH.set(h);},                      //12
+            |h|unsafe{EXT_MAP.insert(h, eddsa::EXT_ECDSA);},  //13
+            |h|unsafe{EXT_MAP.insert(h,_unsafe::EXT_UNSAFE);},//14
+            |h|unsafe{EDDSA_HASH.set(h);},                    //15
     ];
-}
+}*/
 
+
+
+/*
 pub struct ServerExternals;
 impl CompilationExternals for ServerExternals {
-    fn compile_call(module: &ModuleLink, fun_idx: u8, params: Vec<ValueRef>, caller: &Hash) -> CompilationResult {
+    fn compile_call(module: &ModuleLink, fun_idx: u8, params: Vec<ValueRef>, caller: &ModuleLink) -> CompilationResult {
         match EXT_MAP.lock().get(module.module_hash()) {
-            None => panic!("Implementation for external module is missing"),
+            None => panic!("Implementation for external module is missing (Hash: {:?})", module.module_hash()),
             Some(ref imp) => imp.compile_call(fun_idx, params, caller)
         }
     }
 
-    fn compile_lit(module: &ModuleLink, data_idx: u8, data: &[u8], caller: &Hash) -> CompilationResult {
+    fn compile_lit(module: &ModuleLink, data_idx: u8, data: &[u8], caller: &ModuleLink) -> CompilationResult {
         match EXT_MAP.lock().get(module.module_hash()) {
-            None => panic!("Implementation for external module is missing"),
+            None => panic!("Implementation for external module is missing (Hash: {:?})", module.module_hash()),
             Some(ref imp) => imp.compile_lit(data_idx, data, caller)
         }
     }
 
     fn get_literal_checker(module: &ModuleLink, data_idx: u8, len: u16) -> ValueSchema {
         match EXT_MAP.lock().get(module.module_hash()) {
-            None => panic!("Implementation for external module is missing"),
+            None => panic!("Implementation for external module is missing (Hash: {:?})", module.module_hash()),
             Some(ref imp) => imp.get_literal_checker(data_idx, len)
         }
     }
@@ -112,4 +102,33 @@ impl RuntimeExternals for ServerExternals {
             _ => unreachable!("Non Existent System Call")
         }
     }
+}*/
+
+pub trait StaticExternalsProvider {
+    fn get(hash:&Hash) -> Option<&'static dyn External>;
 }
+
+pub struct StaticExternals<P:StaticExternalsProvider>(PhantomData<P>);
+impl<P:StaticExternalsProvider> CompilationExternals for StaticExternals<P>  {
+    fn compile_call(module: &ModuleLink, fun_idx: u8, params: Vec<ValueRef>, caller: &ModuleLink) -> CompilationResult {
+        match P::get(module.module_hash()) {
+            None => panic!("Implementation for external module is missing (Hash: {:?})", module.module_hash()),
+            Some(ref imp) => imp.compile_call(fun_idx, params, caller)
+        }
+    }
+
+    fn compile_lit(module: &ModuleLink, data_idx: u8, data: &[u8], caller: &ModuleLink) -> CompilationResult {
+        match P::get(module.module_hash()) {
+            None => panic!("Implementation for external module is missing (Hash: {:?})", module.module_hash()),
+            Some(ref imp) => imp.compile_lit(data_idx, data, caller)
+        }
+    }
+
+    fn get_literal_checker(module: &ModuleLink, data_idx: u8, len: u16) -> ValueSchema {
+        match P::get(module.module_hash())  {
+            None => panic!("Implementation for external module is missing (Hash: {:?})", module.module_hash()),
+            Some(ref imp) => imp.get_literal_checker(data_idx, len)
+        }
+    }
+}
+
